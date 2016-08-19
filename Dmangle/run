@@ -1,0 +1,16 @@
+#! /bin/bash
+
+LINES=10
+
+if [ "$1" != "" ]
+then
+LINES="$1"
+fi
+
+make clean
+clear
+make
+clear
+chmod 666 /tmp/asdfer
+dist/Debug/GNU-Linux/dmangle /tmp/asdfer ./mapping.json $LINES
+
