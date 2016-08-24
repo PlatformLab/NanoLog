@@ -1,0 +1,9 @@
+e 
+*.o
+*.a
+*.log
+TTTest
+
+nbproject
+Bench.sh
+Benchmark
