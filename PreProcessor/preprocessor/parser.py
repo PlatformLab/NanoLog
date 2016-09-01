@@ -46,6 +46,9 @@ FilePosition = namedtuple('FilePosition', ['lineNum', 'offset'])
 # and end of a range within a file
 FileRange = namedtuple('FileRange', ['begin', 'end'])
 
+# Encapsulates an argument that has been printed
+Argument = namedtuple('Argument', ['source', 'fileRange'])
+
 
 # Log function to search for within the C++ files and perform the replacement
 # and stripping of format strings.
@@ -64,6 +67,12 @@ LOG_FUNCTION_REPLACEMENT = "FAST_LOG"
 # format string, the parser will instead replace it with this result.
 # LOG_FUNCTION_NOT_CONST_FMT = "TimeTrace::record"
 LOG_FUNCTION_NOT_CONST_FMT = "SLOW_LOG"
+
+
+# Set of files that are to be ignored by the pre-procesor
+ignored_files = set([
+    "folder/Sample.h"
+])
 
 
 # Initialization function that checks that the replacement functions are shorter
@@ -135,15 +144,15 @@ def clearAndAttemptReplace(lines, argRange, replacementString):
 # should not contain any extraneous characters outside of the string (such as
 # commas). The expect input is along the lines of \"blah blah\"
 #
-# \param lines - lines to parse
+# \param srcStr - source source string to parse
 #
 # \return - argument as a string
-def parseLinesAsString(lines):
+def extractCString(srcStr):
   returnString = ""
   isInQuotes = False
   prevWasEscape = False
 
-  for line in lines:
+  for line in srcStr.splitlines(True):
     for c in line:
       if c == "\"" and not prevWasEscape:
         isInQuotes = not isInQuotes
@@ -155,35 +164,6 @@ def parseLinesAsString(lines):
           return None
 
   return returnString
-# Parse the argument contained in lines as specified by argRange, attempt to
-# parse the range as a C++ string. Multi-line strings are supported, however,
-# the argument should conform to the C++ standard for strings and should not
-# contain any extraneous characters outside the quotes (such as commas).
-#
-# \param lines - lines in the file
-# \param argRange - The FileRange that specifies the beginning and
-#                   end of the argument
-#
-# \return - the parsed string
-def parseArgumentAsString(lines, argRange):
-  begin, end = argRange
-
-  # If it's a one liner
-  if begin.lineNum == end.lineNum:
-    oneLiner = lines[begin.lineNum][begin.offset:end.offset]
-    return parseLinesAsString(oneLiner)
-
-  # Mutli Line
-  else:
-    firstLine = lines[begin.lineNum][begin.offset:]
-    lastLine = lines[end.lineNum][:end.offset]
-
-    linesToParse = [firstLine]
-    for li in range(begin.lineNum + 1, end.lineNum):
-      linesToParse.append(lines[li])
-    linesToParse.append(lastLine)
-    return parseLinesAsString(linesToParse)
-
 
 # Attempt to find the end of an argument given its start position. The start
 # position should be either immediately after the first left parenthesis or
@@ -194,7 +174,7 @@ def parseArgumentAsString(lines, argRange):
 # \param startPosition  - FilePositition denoting the start of the argument
 #
 # \return - a FilePosition denoting the end of the parameter
-def findEndOfArgument(lines, startLineNum, startOffset):
+def parseArgumentStartingAt(lines, startPos):
 
   # The algorithm uses the heuristic of assuming that the argument ends
   # when it finds a terminating character (either a comma or right parenthesis)
@@ -209,9 +189,10 @@ def findEndOfArgument(lines, startLineNum, startOffset):
   curlyDepth = 0
   bracketDepth = 0
   inQuotes = False
+  argSrcStr = ""
 
-  lineNum = startLineNum
-  offset = startOffset
+  lineNum = startPos.lineNum
+  offset = startPos.offset
 
   while True:
     prevWasEscape = False
@@ -219,6 +200,8 @@ def findEndOfArgument(lines, startLineNum, startOffset):
 
     for i in range(offset, len(line)):
       c = line[i]
+      argSrcStr = argSrcStr + c
+
       # If it's an escape, we don't care what comes after it
       if c == "\\" or prevWasEscape:
         prevWasEscape = not prevWasEscape
@@ -247,11 +230,14 @@ def findEndOfArgument(lines, startLineNum, startOffset):
       elif (c == "," or c == ")") and curlyDepth == 0 \
               and parenDepth == 0 and bracketDepth == 0:
         # found it!
-        return FilePosition(lineNum, i)
+        endPos = FilePosition(lineNum, i)
+        argRange = FileRange(startPos, endPos)
+        return Argument(argSrcStr[:-1], argRange);
 
     # Couldn't find it on this line, must be on the next
     offset = 0
-    lineNum += 1
+    lineNum = lineNum + 1
+
 
 
 # Find the start and end positions of the arguments of the LOG_FUNCTION
@@ -261,8 +247,8 @@ def findEndOfArgument(lines, startLineNum, startOffset):
 # \param startPosition  - tuple containing the line number and offset where
 #                         the LOG_FUNCTION starts
 #
-# \return a list of FileRange tuples marking the beginning and ends of
-#         each of the arguments
+# \return a list of Argument tuples marking the beginning and ends of
+#         each of the arguments and its original source
 def findArguments(lines, startPosition):
   lineNum, offset = startPosition;
   assert lines[lineNum].find(LOG_FUNCTION, offset) == offset
@@ -273,33 +259,75 @@ def findArguments(lines, startPosition):
     lineNum = lineNum + 1
     offset = 0
 
+  offset = lines[lineNum].find("(", offset)
+
   # Identify all the argument start and end positions
   returnArgs = []
   while lines[lineNum][offset] != ")":
     offset = offset + 1
     startPos = FilePosition(lineNum, offset);
-    endPos = findEndOfArgument(lines, lineNum, offset)
-    returnArgs.append(FileRange(startPos, endPos))
+    arg = parseArgumentStartingAt(lines, startPos);
+    returnArgs.append(arg)
 
-    lineNum, offset = endPos
+    lineNum, offset = arg.fileRange.end
 
   return returnArgs
 
 # Takes the result returned by parseLogMessage and pretty prints it as a string
 def printLogMsgArgs(lines, listOfArgs):
-  returnString = ""
+    argNum = 0
+    for arg in listOfArgs:
+        source, argRange = arg
+        print "Arg %d: %s" % (argNum, source)
+        argNum = argNum + 1
 
-  for arg in listOfArgs:
-    returnString += "\nArg:\t"
-    if arg[0] == arg[2]:
-      returnString += lines[arg[0]][arg[1]:arg[3]]
-    else:
-      returnString += lines[arg[0]][arg[1]:]
-      for li in range(arg[0]+1, arg[2]):
-        returnString += lines[li]
-      returnString += lines[arg[2]][:arg[3]]
+    print ""
 
-  return returnString
+def isprintable(s, codec='utf8'):
+    try: s.decode(codec)
+    except UnicodeDecodeError: return False
+    else: return True
+
+def peekNextPrintableChar(lines, filePos):
+    lineNum, offset = filePos
+    line = lines[lineNum]
+
+    # First try to scan forward on the same line
+    while offset < len(line):
+        c = line[offset]
+        if isprintable(c) and not c.isspace():
+            return c
+        offset = 1 + offset
+
+    # Okay so we reached the end of that line, start trying the next ones
+    lineNum = lineNum + 1
+    while lineNum < len(lines):
+        line = lines[lineNum]
+        for c in line:
+            if isprintable(c) and not c.isspace():
+                return c
+        lineNum = lineNum + 1
+
+    # If we reach here, there's an error.
+
+
+#  returnString = ""
+#
+#  for arg in listOfArgs:
+#    start, end = arg;
+#    startLine, startOffset = start
+#    endLine, endOffset = end
+#
+#    returnString += "\nArg:\t"
+#    if startLine == endLine:
+#      returnString += lines[startLine][startOffset:endOffset]
+#    else:
+#      returnString += lines[startLine][startOffset]
+#      for li in range(startLine+1, endLine):
+#        returnString += lines[li]
+#      returnString += lines[endLine][:endOffset]
+#
+#  return returnString
 
 def parseFile(mappingFile, inputFiles):
   # Mapping of String -> ID
@@ -315,6 +343,9 @@ def parseFile(mappingFile, inputFiles):
   with open("mappings.map", 'w') as mapOutput:
     for inputFile in inputFiles:
       outputFile = inputFile + "i"
+
+      filenameStr = inputFile
+      ppLineNum = 0
       with open(inputFile) as f, open(outputFile, 'w') as output:
         lines = f.readlines()
 
@@ -323,17 +354,54 @@ def parseFile(mappingFile, inputFiles):
         # works because at this point, the file should already be pre-processed
         # so all the comments have been stripped any any #DEFINE's have been
         # resolved.
+        lastChar = '\0'
         for li in range(len(lines)):
           prevWasEscape = False
           inQuotes = False
 
           line = lines[li]
+
+          # Keep track of of the preprocessor line nums so that we
+          # can put in our own line markers as we edit the file.
+          ppLineNum = ppLineNum + 1
+
+          # Parse special preprocessor directives that start with a #
+          if line[0] == '#':
+              # This denotes that it is a line marker
+              if line[1] == ' ':
+                  i = 2
+                  lineNumStr = ""
+                  while(line[i] != ' '):
+                      lineNumStr = lineNumStr + line[i]
+                      i = i + 1
+
+                  # -1 since the line num describes the line after it, not the
+                  # current one
+                  ppLineNum = int(float(lineNumStr)) - 1
+
+                  # +2 to skip the space and the first "
+                  i = i + 2
+                  filenameStr = ""
+                  while (line[i] != '\"'):
+                      filenameStr = filenameStr + line[i]
+                      i = i + 1
+
+                  i = i + 1;
+                  flags = line[i:].strip()
+
+          if filenameStr in ignored_files:
+              continue
+
+          # Holds log messages we will find along the way when parsing the
+          # following line.
+          logArgsInLine = [];
           for i in range(len(line)):
             c = line[i]
 
             # If escape, we don't really care about the next char
             if c == "\\" or prevWasEscape:
               prevWasEscape = not prevWasEscape
+              lastChar = c
               continue
 
             if c == "\"":
@@ -341,17 +409,35 @@ def parseFile(mappingFile, inputFiles):
 
             # If we match the first character, cheat a little and scan forward
             if c == LOG_FUNCTION[0] and not inQuotes:
+
+            # Check if we've found the log function via the following heuristics
+            #  (a) the next n-1 characters spell out the rest of LOG_FUNCTION
+            #  (b) the previous character was not an alpha numeric (i.e. not
+            #       a part of a longer identifer name)
+            #  (c) the next character after log function is a (
               found = True
               for ii in range(len(LOG_FUNCTION)):
                 if line[i + ii] != LOG_FUNCTION[ii]:
                   found = False
                   break
 
+              if (found):
+                filePosAfter = FilePosition(li, i + len(LOG_FUNCTION));
+                # Valid identifier characters are [a-zA-Z_][a-zA-Z0-9_]*
+                if lastChar.isalnum() or lastChar == '_':
+#                  print "At line %d (%s), failed due to last char being '%c'" % (ppLineNum, line.strip(), lastChar)
+                  found = False
+                if peekNextPrintableChar(lines, filePosAfter) != "(":
+                  found = False
+#                  print "at line %d (%s), failed due to next printableChar being '%c'" % (ppLineNum, line.strip(), peekNextPrintableChar(lines, filePosAfter))
+
               if found:
                 startPosition = FilePosition(li, i)
                 listOfArgs = findArguments(lines, startPosition)
+                logArgsInLine.append(listOfArgs)
+
                 fmtArg = listOfArgs[FORMAT_ARG_NUM]
-                fmtString = parseArgumentAsString(lines, fmtArg)
+                fmtString = extractCString(fmtArg.source)
 
                 if fmtString == None:
                   print("Non-constant String detected: %s" % lines[li][i:])
@@ -372,9 +458,14 @@ def parseFile(mappingFile, inputFiles):
                   lines[li] = line
 
                   # Replace fmt string with id
-                  clearAndAttemptReplace(lines, fmtArg, "%d" % id)
+                  clearAndAttemptReplace(lines, fmtArg.fileRange, "%d" % id)
+
+                  # This works because all our replaces preserves lines
+                  # (But this may change in the future)
+                  line = lines[li]
 
 
+            lastChar = c
 
         # Output all the lines
         for line in lines:
@@ -396,6 +487,7 @@ def parseFile(mappingFile, inputFiles):
     mapOutput.write(json.dumps({'mappings':mappingsAsAList, 'metadata':metadata},
                                 sort_keys=True, indent=4, separators=(',', ': ')))
     mapOutput.close()
+
 
 # Now we attempt to identify all the valid RAMCLOUD_LOG lines
 # We note that

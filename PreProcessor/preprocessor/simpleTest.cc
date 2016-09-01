@@ -7,7 +7,9 @@
  // This program runs a RAMCloud client along with a collection of benchmarks
 // for measuring the perfo
 
-#include "Sample.h"
+#include <string>
+
+#include "folder/Sample.h"
 
 // forward decl
 struct ramcloud_log;
@@ -71,6 +73,38 @@ evilTestCase(ramcloud_log* log) {
      hiddenInHeaderFilePrint();
 
      RAMCLOUD_LOG(ERROR, "{{\"(( False curlies and brackets! %d", 1);
+
+
+    RAMCLOUD_LOG(ERROR, "Same line, bad form"); ++i; RAMCLOUD_LOG(ERROR, "Really bad");
+
+    // RAMCLOUD_LOG (ERROR, "TEST");
+    RAMCLOUD_LOG
+    (ERROR, "TEST");
+}
+
+// I'm not sure how to catch this edge case... Do we just name our functions super special things and hope that no one
+// overwrites it?
+// int RAMCLOUD_LOG(int i) {
+//     return 1;
+// }
+
+
+int
+RAMCLOUD_LOG_FAILURE(int RAMCLOUD_LOG, int RAMCLOUD_LOG2) {
+    // This is tricky!
+
+    return RAMCLOUD_LOG + RAMCLOUD_LOG2 + RAMCLOUD_LOG;
+}
+
+int
+NOT_QUITE_RAMCLOUD_LOG(int NOT_RAMCLOUD_LOG, int NOT_REALLY_RAMCLOUD_LOG, int RA_0RAMCLOUD_LOG) {
+    return NOT_RAMCLOUD_LOG + NOT_REALLY_RAMCLOUD_LOG + RA_0RAMCLOUD_LOG;
+}
+
+void gah()
+{
+    int RAMCLOUD_LOG = 10;
+    RAMCLOUD_LOG_FAILURE((uint32_t) RAMCLOUD_LOG, RAMCLOUD_LOG);
 }
 
 int main()
