@@ -15,12 +15,11 @@
 
 #include "TimeTrace.h"
 
-
 using std::string;
 using std::vector;
 namespace PerfUtils {
 __thread TimeTrace::Buffer* TimeTrace::threadBuffer = NULL;
-__thread TimeTrace::Buffer* TimeTrace::threadBufferBackup = NULL;
+__thread char* TimeTrace::cachedPrintPos = NULL;
 
 //TODO(syang0) This could be a racy condition...
 TimeTrace::Printer* TimeTrace::printer = NULL;
@@ -40,10 +39,32 @@ TimeTrace::createThreadBuffer()
     if (threadBuffer == NULL) {
         threadBuffer = new Buffer;
         threadBuffers.push_back(threadBuffer);
-
-        threadBufferBackup = new Buffer;
-        threadBuffers.push_back(threadBuffer);
     }
+}
+
+
+/**
+ * Construct a TimeTrace::Buffer.
+ */
+TimeTrace::Buffer::Buffer()
+    : nextIndex(0)
+    , recordPointer(NULL)
+    , endOfBuffer(NULL)
+    , activeReaders(0)
+    , events()
+{
+    // Mark all of the events invalid.
+    memset(events, 0, sizeof(events));
+    recordPointer = events;
+    printPointer = events;
+    endOfBuffer = events + BUFFER_SIZE;
+}
+
+/**
+ * Destructor for TimeTrace::Buffer.
+ */
+TimeTrace::Buffer::~Buffer()
+{
 }
 
 
@@ -82,74 +103,53 @@ TimeTrace::createThreadBuffer()
 //    printInternal(&buffers, NULL);
 //}
 
-/**
- * Construct a TimeTrace::Buffer.
- */
-TimeTrace::Buffer::Buffer()
-    : nextIndex(0)
-    , activeReaders(0)
-    , events()
-{
-    // Mark all of the events invalid.
-    for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
-        events[i].format = NULL;
-    }
-}
-
-/**
- * Destructor for TimeTrace::Buffer.
- */
-TimeTrace::Buffer::~Buffer()
-{
-}
-
-/**
- * Record an event in the buffer.
- *
- * \param timestamp
- *      Identifies the time at which the event occurred.
- * \param format
- *      A format string for snprintf that will be used, along with
- *      arg0..arg3, to generate a human-readable message describing what
- *      happened, when the time trace is printed. The message is generated
- *      by calling snprintf as follows:
- *      snprintf(buffer, size, format, arg0, arg1, arg2, arg3)
- *      where format and arg0..arg3 are the corresponding arguments to this
- *      method. This pointer is stored in the buffer, so the caller must
- *      ensure that its contents will not change over its lifetime in the
- *      trace.
- * \param arg0
- *      Argument to use when printing a message about this event.
- * \param arg1
- *      Argument to use when printing a message about this event.
- * \param arg2
- *      Argument to use when printing a message about this event.
- * \param arg3
- *      Argument to use when printing a message about this event.
- */
-void TimeTrace::Buffer::record(uint64_t timestamp, const char* format,
-        uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3)
-{
-    if (activeReaders > 0) {
-        return;
-    }
-
-    Event* event = &events[nextIndex];
-    nextIndex = (nextIndex + 1) & BUFFER_MASK;
-
-    // There used to be code here for prefetching the next few events,
-    // in order to minimize cache misses on the array of events. However,
-    // performance measurements indicate that this actually slows things
-    // down by 2ns per invocation.
-    // prefetch(event+1, NUM_PREFETCH*sizeof(Event));
-
-    event->timestamp = timestamp;
-    event->format = format;
-    event->arg0 = arg0;
-    event->arg1 = arg1;
-    event->arg2 = arg2;
-    event->arg3 = arg3;
-}
+///**
+// * Record an event in the buffer.
+// *
+// * \param timestamp
+// *      Identifies the time at which the event occurred.
+// * \param format
+// *      A format string for snprintf that will be used, along with
+// *      arg0..arg3, to generate a human-readable message describing what
+// *      happened, when the time trace is printed. The message is generated
+// *      by calling snprintf as follows:
+// *      snprintf(buffer, size, format, arg0, arg1, arg2, arg3)
+// *      where format and arg0..arg3 are the corresponding arguments to this
+// *      method. This pointer is stored in the buffer, so the caller must
+// *      ensure that its contents will not change over its lifetime in the
+// *      trace.
+// * \param arg0
+// *      Argument to use when printing a message about this event.
+// * \param arg1
+// *      Argument to use when printing a message about this event.
+// * \param arg2
+// *      Argument to use when printing a message about this event.
+// * \param arg3
+// *      Argument to use when printing a message about this event.
+// */
+//void TimeTrace::Buffer::record(uint64_t timestamp, const char* format,
+//        uint32_t arg0, uint32_t arg1, uint32_t arg2, uint32_t arg3)
+//{
+//    if (activeReaders > 0) {
+//        return;
+//    }
+//
+//    Event* event = &events[nextIndex];
+//    nextIndex = (nextIndex + 1) & BUFFER_MASK;
+//
+//    // There used to be code here for prefetching the next few events,
+//    // in order to minimize cache misses on the array of events. However,
+//    // performance measurements indicate that this actually slows things
+//    // down by 2ns per invocation.
+//    // prefetch(event+1, NUM_PREFETCH*sizeof(Event));
+//
+//    event->timestamp = timestamp;
+//    event->format = format;
+//    event->arg0 = arg0;
+//    event->arg1 = arg1;
+//    event->arg2 = arg2;
+//    event->arg3 = arg3;
+//}
 
 ///**
 // * Return a string containing a printout of the records in the buffer.

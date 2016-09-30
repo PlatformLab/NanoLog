@@ -9,29 +9,49 @@
 
 #include <string>
 
+// TODO(syang0) This should be included in the future
+#include "../../Runtime/FastLogger.h"
+
+#include "folder/lib.h"
 #include "folder/Sample.h"
 
 // forward decl
 struct ramcloud_log;
 static void
 evilTestCase(ramcloud_log* log) {
-    RAMCLOUD_LOG(ERROR, "SD" "F");
+    ////////
+    // Basic Tests
+    ////////
+    RAMCLOUD_LOG(ERROR, "Simple times");
+
+    int cnt = 2;
+    RAMCLOUD_LOG(ERROR, "Hello world number %d of %d (%0.2lf%%)! This is %s!", cnt, 10, 1.0*cnt/10, "Stephen");
+
+    ////////
+    // Name Collision Tests
+    ////////
     const char *falsePositive = "RAMCLOUD_LOG(ERROR, \"yolo\")";
     RAMCLOUD_LOG(ERROR, "RAMCLOUD_LOG() \"RAMCLOUD_LOG(ERROR, \"Hi \")\"");
+
+    printf("Regular Print: RAMCLOUD_LOG()\r\n");
+
+
+    ////////
+    // Joining of strings
+    ////////
+    RAMCLOUD_LOG(ERROR, "SD" "F");
     RAMCLOUD_LOG(ERROR, "NEW"
             "Lines" "So"
             "Evil %s",
             "RAMCLOUD_LOG()");
 
     int i = 0;
-    ++i; RAMCLOUD_LOG(ERROR, "Yup\n" "ie"); i++;
+    ++i; RAMCLOUD_LOG(ERROR, "Yup\n" "ie"); ++i;
 
-    { RAMCLOUD_LOG(ERROR, "No %s", std::string("Hello").c_str()); }
-    {RAMCLOUD_LOG(ERROR,
-        "I am so evil"); }
 
-    printf("Regular Print: RAMCLOUD_LOG()\r\n");
-
+    ////////
+    // Preprocessor's ability to rip out strange comments
+    ////////
     RAMCLOUD_LOG(ERROR, "Hello %d",
         // 5
         5);
@@ -41,6 +61,9 @@ evilTestCase(ramcloud_log* log) {
         // "o"
         "o %d",
         5);
+
+    int id = 0;
+    RAMCLOUD_LOG(ERROR, "This should not be incremented twice (=1):%id", ++id);
 
     /* This */ RAMCLOUD_LOG( /* is */ ERROR, "Hello /* uncool */");
 
@@ -64,31 +87,54 @@ evilTestCase(ramcloud_log* log) {
      const char *str = ";";
      // */
 
-
-     const char *myString = "sdf";
-     RAMCLOUD_LOG(ERROR, myString);
-
+    ////////
+    // Preprocessor substitutions
+    ////////
      LOG(ERROR, "ssneaky #define LOG");
-
      hiddenInHeaderFilePrint();
 
-     RAMCLOUD_LOG(ERROR, "{{\"(( False curlies and brackets! %d", 1);
 
+    { RAMCLOUD_LOG(ERROR, "No %s", std::string("Hello").c_str()); }
+    {RAMCLOUD_LOG(ERROR,
+        "I am so evil"); }
 
-    RAMCLOUD_LOG(ERROR, "Same line, bad form"); ++i; RAMCLOUD_LOG(ERROR, "Really bad");
+    ////////
+    // Non const strings
+    ////////
+    const char *myString = "non-const fmt String";
+    RAMCLOUD_LOG(ERROR, myString);
+    RAMCLOUD_LOG(ERROR, "%s", myString);
 
-    // RAMCLOUD_LOG (ERROR, "TEST");
+    const char *nonConstString = "Lol";
+    RAMCLOUD_LOG(ERROR, "NonConst: %s", nonConstString);
+
+    ////////
+    // Strange Syntax
+    ////////
+    RAMCLOUD_LOG(ERROR, "{{\"(( False curlies and brackets! %d", 1);
+
+    RAMCLOUD_LOG(ERROR, "Same line, bad form");      ++i; RAMCLOUD_LOG(ERROR, "Really bad")   ; ++i  ;
+
+    RAMCLOUD_LOG(ERROR, "Ending on different lines"
+    )
+    ;
+
+    RAMCLOUD_LOG(ERROR, "Make sure that the inserted code is before the ++i"); ++i
+;
+
+    RAMCL\
+OUD_LOG(ERROR, "The worse");
+
     RAMCLOUD_LOG
     (ERROR, "TEST");
+
+    // This is currently unfixed in the system
+    // RAMCLOUD_LOG(ERROR, "Hello %s %\x64", "a", 5);
 }
 
-// I'm not sure how to catch this edge case... Do we just name our functions super special things and hope that no one
-// overwrites it?
-// int RAMCLOUD_LOG(int i) {
-//     return 1;
-// }
-
-
+////////
+// More Name Collision Tests
+////////
 int
 RAMCLOUD_LOG_FAILURE(int RAMCLOUD_LOG, int RAMCLOUD_LOG2) {
     // This is tricky!

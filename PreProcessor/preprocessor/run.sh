@@ -14,6 +14,11 @@ fi
 # ./a.out
 # objdump -s -j .rodata ./a.out
 
+# This should be better abstracted in the future
+RUNTIME_FILES="../../Runtime/Util.cpp ../../Runtime/FastLogger.cpp ../../Runtime/Cycles.cpp ../../Runtime/LogCompressor.cpp"
+O_FILES="Util.o FastLogger.o Cycles.o LogCompressor.o"
+EXTRA_PARAMS="-O3 -std=c++11 -lpthread"
+
 rm -rf processedFiles 2> /dev/null
 mkdir processedFiles
 
@@ -26,5 +31,8 @@ do
   STRIPPED_FILES="$STRIPPED_FILES processedFiles/${FILENAME}.ii"
 done
 
-EXTRA_PARAMS="-O3 -std=c++11 -lpthread"
-g++ -fpreprocessed $EXTRA_PARAMS $STRIPPED_FILES || exit 1
+g++ -c $RUNTIME_FILES $EXTRA_PARAMS
+ar rs runtime.a $O_FILES
+rm $O_FILES
+
+g++ -fpreprocessed $EXTRA_PARAMS $STRIPPED_FILES "runtime.a" || exit 1

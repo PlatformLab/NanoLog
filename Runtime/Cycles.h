@@ -74,6 +74,7 @@ class Cycles {
     /// cycles to seconds, instead of cyclesPerSec above.
     static double mockCyclesPerSec;
 
+  public:
     /**
      * Returns the conversion factor between cycles in seconds, using
      * a mock value for testing when appropriate.

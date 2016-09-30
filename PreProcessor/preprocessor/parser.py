@@ -34,9 +34,9 @@ To support partial recompilation, this script also takes in an optional mapping 
 """
 from docopt import docopt
 
-import sys
 import json
 from collections import namedtuple
+from FunctionGenerator import *
 
 # Simple structure to identify a position within a file via a line number
 # and an offset on that line
@@ -61,7 +61,7 @@ FORMAT_ARG_NUM = 1
 # Once a valid LOG_FUNCTION is found and the format string removed, replace
 # the log function with this function instead
 # LOG_FUNCTION_REPLACEMENT = "TimeTrace::rec_p"
-LOG_FUNCTION_REPLACEMENT = "FAST_LOG"
+LOG_FUNCTION_REPLACEMENT = "RAMCLOUD_NOP"
 
 # If there's an error of some sort, such as not being able to identify the
 # format string, the parser will instead replace it with this result.
@@ -71,7 +71,7 @@ LOG_FUNCTION_NOT_CONST_FMT = "SLOW_LOG"
 
 # Set of files that are to be ignored by the pre-procesor
 ignored_files = set([
-    "folder/Sample.h"
+    "folder/lib.h"
 ])
 
 
@@ -249,9 +249,11 @@ def parseArgumentStartingAt(lines, startPos):
 #
 # \return a list of Argument tuples marking the beginning and ends of
 #         each of the arguments and its original source
-def findArguments(lines, startPosition):
+def parseLogStatement(lines, startPosition):
   lineNum, offset = startPosition;
   assert lines[lineNum].find(LOG_FUNCTION, offset) == offset
+
+  logStatement = {'startPos': startPosition}
 
   # Find the left parenthesis after the LOG_FUNCTION identifier
   offset += len(LOG_FUNCTION_NOT_CONST_FMT);
@@ -260,18 +262,53 @@ def findArguments(lines, startPosition):
     offset = 0
 
   offset = lines[lineNum].find("(", offset)
+  logStatement['openParen'] = FilePosition(lineNum, offset)
 
   # Identify all the argument start and end positions
-  returnArgs = []
+  args = []
   while lines[lineNum][offset] != ")":
     offset = offset + 1
     startPos = FilePosition(lineNum, offset);
     arg = parseArgumentStartingAt(lines, startPos);
-    returnArgs.append(arg)
+    args.append(arg)
 
     lineNum, offset = arg.fileRange.end
 
-  return returnArgs
+  logStatement['closeParen'] = FilePosition(lineNum, offset);
+  logStatement['args'] = args;
+
+  # To finish this off, find the closing semicolon:
+  char, pos = peekNextMeaningfulChar(lines, FilePosition(lineNum, offset + 1))
+  assert (char == ";")
+  logStatement['semiColonPos'] = pos
+
+  return logStatement
+
+
+def markAndSeparateOnSemicolon(lines, startPosition, filename, srcLine):
+    lineNum, offset = startPosition
+
+    line = lines[lineNum]
+    semiColon = line.find(";", offset)
+    if semiColon == -1:
+        return False
+
+    cursor = semiColon + 1
+    while cursor < len(line):
+        c = line[cursor]
+        if c >= "!" and c <= "~" and c != ";":
+            # Something important after semi-colon found! Split the string!
+            lines[lineNum] = line[:semiColon + 1] + "\r\n"
+            newLine = " "*(semiColon + 1) + line[semiColon + 1:]
+            lines.insert(lineNum + 1, newLine)
+
+            marker = "# %d \"%s\"\r\n" % (srcLine, filename)
+            lines.insert(lineNum + 1, marker)
+            return True
+        cursor = cursor + 1
+    return False
+
+
 
 # Takes the result returned by parseLogMessage and pretty prints it as a string
 def printLogMsgArgs(lines, listOfArgs):
@@ -288,57 +325,26 @@ def isprintable(s, codec='utf8'):
     except UnicodeDecodeError: return False
     else: return True
 
-def peekNextPrintableChar(lines, filePos):
+# Starting at filePos, find the next valid character that is syntatically
+# important for the C/C++ program.
+def peekNextMeaningfulChar(lines, filePos):
     lineNum, offset = filePos
-    line = lines[lineNum]
 
-    # First try to scan forward on the same line
-    while offset < len(line):
-        c = line[offset]
-        if isprintable(c) and not c.isspace():
-            return c
-        offset = 1 + offset
-
-    # Okay so we reached the end of that line, start trying the next ones
-    lineNum = lineNum + 1
     while lineNum < len(lines):
         line = lines[lineNum]
-        for c in line:
+        while offset < len(line):
+            c = line[offset]
             if isprintable(c) and not c.isspace():
-                return c
+                return (c, FilePosition(lineNum, offset))
+            offset = offset + 1
+        offset = 0
         lineNum = lineNum + 1
 
     # If we reach here, there's an error.
 
 
-#  returnString = ""
-#
-#  for arg in listOfArgs:
-#    start, end = arg;
-#    startLine, startOffset = start
-#    endLine, endOffset = end
-#
-#    returnString += "\nArg:\t"
-#    if startLine == endLine:
-#      returnString += lines[startLine][startOffset:endOffset]
-#    else:
-#      returnString += lines[startLine][startOffset]
-#      for li in range(startLine+1, endLine):
-#        returnString += lines[li]
-#      returnString += lines[endLine][:endOffset]
-#
-#  return returnString
-
 def parseFile(mappingFile, inputFiles):
-  # Mapping of String -> ID
-  uniqStrings = {}
-
-  # Restores the previous mapping, if it exists
-  if mappingFile:
-    with open(mappingFile) as json_file:
-      prevMappings = json.load(json_file)["mappings"];
-      for string in prevMappings:
-        uniqStrings[string] = len(uniqStrings)
+  fg = FunctionGenerator("fakeFile")
 
   with open("mappings.map", 'w') as mapOutput:
     for inputFile in inputFiles:
@@ -355,7 +361,14 @@ def parseFile(mappingFile, inputFiles):
         # so all the comments have been stripped any any #DEFINE's have been
         # resolved.
         lastChar = '\0'
-        for li in range(len(lines)):
+        li = -1
+
+        firstFilename = None
+        while True:
+          li = li + 1
+          if li >= len(lines):
+              break
+
           prevWasEscape = False
           inQuotes = False
 
@@ -386,6 +399,9 @@ def parseFile(mappingFile, inputFiles):
                       filenameStr = filenameStr + line[i]
                       i = i + 1
 
+                  if not firstFilename:
+                      firstFilename = filenameStr
+
                   i = i + 1;
                   flags = line[i:].strip()
 
@@ -394,8 +410,12 @@ def parseFile(mappingFile, inputFiles):
 
           # Holds log messages we will find along the way when parsing the
           # following line.
-          logArgsInLine = [];
-          for i in range(len(line)):
+          i = -1
+          while True:
+            i = i + 1
+            if i >= len(line):
+                break
+
             c = line[i]
 
             # If escape, we don't really care about the next char
@@ -414,31 +434,35 @@ def parseFile(mappingFile, inputFiles):
             #  (a) the next n-1 characters spell out the rest of LOG_FUNCTION
             #  (b) the previous character was not an alpha numeric (i.e. not
             #       a part of a longer identifer name)
-            #  (c) the next character after log function is a (
+            #  (c) the next syntatical character after log function is a (
               found = True
               for ii in range(len(LOG_FUNCTION)):
                 if line[i + ii] != LOG_FUNCTION[ii]:
                   found = False
                   break
 
-              if (found):
+              if found:
                 filePosAfter = FilePosition(li, i + len(LOG_FUNCTION));
                 # Valid identifier characters are [a-zA-Z_][a-zA-Z0-9_]*
                 if lastChar.isalnum() or lastChar == '_':
 #                  print "At line %d (%s), failed due to last char being '%c'" % (ppLineNum, line.strip(), lastChar)
                   found = False
-                if peekNextPrintableChar(lines, filePosAfter) != "(":
-                  found = False
-#                  print "at line %d (%s), failed due to next printableChar being '%c'" % (ppLineNum, line.strip(), peekNextPrintableChar(lines, filePosAfter))
 
               if found:
-                startPosition = FilePosition(li, i)
-                listOfArgs = findArguments(lines, startPosition)
-                logArgsInLine.append(listOfArgs)
+                mChar, mPos = peekNextMeaningfulChar(lines, filePosAfter)
+                if mChar != "(":
+                  found = False
+#                  print "at line %d (%s), failed due to next printableChar being '%c'" % (ppLineNum, line.strip(), mChar)
 
-                fmtArg = listOfArgs[FORMAT_ARG_NUM]
+              if found:
+                logStatement = parseLogStatement(lines, (li, i))
+
+
+                if markAndSeparateOnSemicolon(lines, logStatement['semiColonPos'], filenameStr, ppLineNum):
+                    line = lines[li]
+
+                fmtArg = logStatement['args'][FORMAT_ARG_NUM]
                 fmtString = extractCString(fmtArg.source)
-
                 if fmtString == None:
                   print("Non-constant String detected: %s" % lines[li][i:])
                   # lines[li] = line[:i] + line[i:].replace(
@@ -447,25 +471,42 @@ def parseFile(mappingFile, inputFiles):
                   # if we encounter a slow log, just leave the code in place.
 
                 else:
-                  id = uniqStrings.get(fmtString, None)
-                  if id == None:
-                    id = len(uniqStrings)
-                    uniqStrings[fmtString] = id
 
-                  # Replace line with fast print
+                  # Replace line with nop function
                   line = line[:i] + line[i:].replace(LOG_FUNCTION,
                                                 LOG_FUNCTION_REPLACEMENT, 1)
                   lines[li] = line
 
-                  # Replace fmt string with id
-                  clearAndAttemptReplace(lines, fmtArg.fileRange, "%d" % id)
 
-                  # This works because all our replaces preserves lines
-                  # (But this may change in the future)
-                  line = lines[li]
+                  # Code Injection time!
 
+                  # Clip the front of the args so that we get everything after
+                  # format string
+                  args = logStatement['args'][FORMAT_ARG_NUM+1:]
+
+
+                  (recordDecl, recordInvoke) = fg.generateLogFunctions(
+                        fmtString, args, firstFilename, filenameStr, ppLineNum)
+
+                  codeToInject = [
+                    recordDecl + ";\n",
+                    recordInvoke + ";\n"
+                  ]
+
+                  insertPos = logStatement['semiColonPos'].lineNum + 1
+                  lines = lines[:insertPos]  + codeToInject + lines[insertPos:]
 
             lastChar = c
+
+        # Last step, retrieve the generated code and insert it at the end
+        if firstFilename != filenameStr:
+            print "Error: Stephen yang made the wrong assumption about EOF"
+
+        lines.append("# 1 \"generatedCode.h\" 3\n")
+        recFns = fg.getRecordFunctionDefinitionsFor(firstFilename)
+        recFns = "\n".join(recFns);
+
+        lines += recFns
 
         # Output all the lines
         for line in lines:
@@ -473,20 +514,9 @@ def parseFile(mappingFile, inputFiles):
 
         output.close()
 
-    # Output map file in a json format
-    metadata = {'totalMappings':len(uniqStrings)}
-    id2string = {}
-
-    for string in uniqStrings:
-      id2string[uniqStrings[string]] = string
-
-    mappingsAsAList = []
-    for i in range(0, len(uniqStrings)):
-      mappingsAsAList.append(id2string[i])
-
-    mapOutput.write(json.dumps({'mappings':mappingsAsAList, 'metadata':metadata},
-                                sort_keys=True, indent=4, separators=(',', ': ')))
-    mapOutput.close()
+#    mapOutput.write(json.dumps({'mappings':mappingsAsAList, 'metadata':metadata},
+#                                sort_keys=True, indent=4, separators=(',', ': ')))
+#    mapOutput.close()
 
 
 # Now we attempt to identify all the valid RAMCLOUD_LOG lines

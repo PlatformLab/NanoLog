@@ -2,6 +2,7 @@ e
 *.o
 *.a
 *.log
+test
 TTTest
 
 nbproject

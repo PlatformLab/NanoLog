@@ -37,7 +37,6 @@
 
 #include "Atomic.h"
 #include "Cycles.h"
-#include "Printer.h"
 #include "Util.h"
 
 namespace PerfUtils {
@@ -67,12 +66,10 @@ class TimeTrace {
   public:
     class Printer;
     class Buffer;
-    static std::string getTrace();
 
     static void setOutputFileName(const char *filename) {
         TimeTrace::filename = filename;
     }
-    static void print();
 
     /**
      * Record an event in a thread-local buffer, creating a new buffer
@@ -99,10 +96,10 @@ class TimeTrace {
      * \param arg3
      *      Argument to use when printing a message about this event.
      */
+
+    template<typename... Args>
     static inline void
-    record(uint64_t timestamp, const char* format,
-            uint32_t arg0 = 0, uint32_t arg1 = 0, uint32_t arg2 = 0,
-            uint32_t arg3 = 0) {
+    record(uint64_t timestamp, uint32_t fmtId, Args... args) {
         if (threadBuffer == NULL) {
             createThreadBuffer();
 
@@ -111,38 +108,25 @@ class TimeTrace {
             }
         }
 
-        if (threadBuffer->nextIndex == 0) {
-            if (threadBufferBackup->activeReaders > 0) {
+        int64_t bytes = threadBuffer->record(timestamp, fmtId, args...);
+        if (bytes <= 0 ) {
+            // Failure to write means we ran out of space, try to catch up
+            // to the print thread before calling it a miss.
+            if (cachedPrintPos == threadBuffer->printPointer)
                 return;
-            }
 
-            Buffer *swap = threadBufferBackup;
-            threadBufferBackup = threadBuffer;
-            threadBuffer = swap;
+            cachedPrintPos = threadBuffer->printPointer;
 
-            printer->enqueueWork(threadBufferBackup);
+            // Try one more time for good measure
+            printf("Had to try one more time\r\n");
+            if (threadBuffer->record(timestamp, fmtId, args...) <= 0)
+                return;
         }
-
-        threadBuffer->record(timestamp, format, arg0, arg1, arg2, arg3);
-    }
-    static inline void record(const char* format, uint32_t arg0 = 0,
-            uint32_t arg1 = 0, uint32_t arg2 = 0, uint32_t arg3 = 0) {
-        record(Cycles::rdtsc(), format, arg0, arg1, arg2, arg3);
     }
 
-    // Swaps the buffers buffers and pushes all events to the print thread
-    // May busy wait if the print thread is not ready to swap.
-    static inline void flush() {
-        if (threadBuffer == NULL)
-            return;
-
-        while (threadBufferBackup->activeReaders > 0); // Busy wait
-
-        Buffer *swap = threadBufferBackup;
-        threadBufferBackup = threadBuffer;
-        threadBuffer = swap;
-
-        printer->enqueueWork(threadBufferBackup);
+    template<typename... Args>
+    static inline void record(uint32_t fmtId, Args... args) {
+        record(Cycles::rdtsc(), fmtId, args...);
     }
 
     static inline void sync() {
@@ -162,7 +146,12 @@ class TimeTrace {
     // Points to a private per-thread TimeTrace::Buffer object; NULL means
     // no such object has been created yet for the current thread.
     static __thread Buffer* threadBuffer;
-    static __thread Buffer* threadBufferBackup;
+
+    // Save a copy of the print position so that this thread can record
+    // up to it before checking the real value and incurring potential cache
+    // coherence performance degregations.
+    static __thread char* cachedPrintPos;
+
     static Printer* printer;
 
     // Holds pointers to all of the thread-private TimeTrace objects created
@@ -175,23 +164,6 @@ class TimeTrace {
     // The name of the file to write records into. If it is null, then we will
     // write to stdout
     static const char* filename;
-
-    /**
-     * This structure holds one entry in the TimeTrace.
-     */
-    struct Event {
-      uint64_t timestamp;        // Time when a particular event occurred.
-      const char* format;        // Format string describing the event.
-                                 // NULL means that this entry is unused.
-      uint32_t arg0;             // Argument that may be referenced by format
-                                 // when printing out this event.
-      uint32_t arg1;             // Argument that may be referenced by format
-                                 // when printing out this event.
-      uint32_t arg2;             // Argument that may be referenced by format
-                                 // when printing out this event.
-      uint32_t arg3;             // Argument that may be referenced by format
-                                 // when printing out this event.
-    };
 
   public:
     /**
@@ -206,18 +178,11 @@ class TimeTrace {
         std::string getTrace();
         void print();
         void printToLog();
-        void record(uint64_t timestamp, const char* format, uint32_t arg0 = 0,
-                uint32_t arg1 = 0, uint32_t arg2 = 0, uint32_t arg3 = 0);
-        void record(const char* format, uint32_t arg0 = 0, uint32_t arg1 = 0,
-                uint32_t arg2 = 0, uint32_t arg3 = 0) {
-            record(Cycles::rdtsc(), format, arg0, arg1, arg2, arg3);
-        }
-        void reset();
-
+        
         //TODO(syang0) This should be protected
       public:
         // Determines the number of events we can retain as an exponent of 2
-        static const uint8_t BUFFER_SIZE_EXP = 22;
+        static const uint8_t BUFFER_SIZE_EXP = 26;
 
         // Total number of events that we can retain any given time.
         static const uint32_t BUFFER_SIZE = 1 << BUFFER_SIZE_EXP;
@@ -229,41 +194,202 @@ class TimeTrace {
         // record method.
         int nextIndex;
 
+        // Pointer within events[] of where TimeTrace should record next.
+        // This value is typically as up to date as possible and is updated
+        // once per timeTrace::record().
+        char *recordPointer;
+
+        //TODO(syang0) There's got to be a more elegant/portable way to do this
+        static const uint32_t BYTES_PER_CACHE_LINE = 64;
+        char cacheLine[BYTES_PER_CACHE_LINE];
+
+        // Pointer within events[] of where the printer thread should start
+        // printing from. This value is typically as up to date as possible.
+        char *printPointer;
+
         // Count of number of calls to printInternal that are currently active
         // for this buffer; if nonzero, then it isn't safe to log new
         // entries, since this could interfere with readers.
         Atomic<int> activeReaders;
 
+        //  Marks the first invalid byte of events[].
+        char *endOfBuffer;
+
         // Holds information from the most recent calls to the record method.
-        Event events[BUFFER_SIZE];
+        char events[BUFFER_SIZE];
 
         friend class TimeTrace;
         DISALLOW_COPY_AND_ASSIGN(Buffer);
+
+        // First checks our space against the cache before attempting to update
+        // it.
+        inline bool
+        hasSpace(uint64_t req, bool allowWrap) {
+            if (recordPointer >= cachedPrintPos) {
+                uint64_t remainingSpace = endOfBuffer - recordPointer;
+                if (req <= remainingSpace)
+                    return true;
+
+                // Not enough space at the end of the buffer, wrap back around
+                if (!allowWrap)
+                    return false;
+
+                recordPointer = events;
+                if (cachedPrintPos - recordPointer >= req)
+                    return true;
+
+                // Last chance, update the print pos and check again
+                if (cachedPrintPos == printPointer)
+                    return false;
+
+                cachedPrintPos = printPointer;
+                remainingSpace = cachedPrintPos - recordPointer;
+                return (remainingSpace >= req);
+            } else {
+                if (cachedPrintPos - recordPointer >= req)
+                    return true;
+
+                // Try update print pos
+                if (cachedPrintPos == printPointer)
+                    return false;
+
+                cachedPrintPos = printPointer;
+                return hasSpace(req, allowWrap);
+            }
+        }
+
+        // End of recursion, see templated instances for more detail.
+        inline int64_t
+        recordRecursive(char **writePtr)
+        {
+            return 0;
+        }
+
+        /**
+         * Partial Specialization of record where it takes in a const char *str
+         * 
+         * @param str
+         * @param tail
+         * @return
+         */
+        template<typename... Tail>
+        inline int64_t
+        recordRecursive(char **writePtr, const char* str, Tail... tail)
+        {
+            uint32_t length = strlen(str);
+            uint32_t spaceReqHint = sizeof...(tail) << 3 + length;
+            
+            if (!hasSpace(spaceReqHint, false))
+                return -(1UL << 63);
+
+            *((uint32_t*)(*writePtr)) = length;
+            *writePtr += sizeof(uint32_t);
+
+            memcpy(*writePtr, str, length);
+            *writePtr += length;
+
+            return length + recordRecursive(tail...);
+        }
+
+        template<typename Head, typename... Tail>
+        inline int64_t
+        recordRecursive(char **writePtr, Head head, Tail... tail)
+        {
+            *((Head*)*writePtr) = head;
+            *writePtr += sizeof(Head);
+
+          return sizeof(Head) + recordRecursive(writePtr, tail...);
+        }
+
+        /**
+         * Format to be laid out in the recordBuffer shall be
+         * uint64_t timestamp
+         * uint8_t fmtId
+         * uint8_t numArgs
+         * [uint32_t lengthIfString]
+         * uintx_t argx
+         *
+         * where the last 2 can be repeated as many times as needed.
+         */
+
+        /**
+         * Tries to append a bunch of stuff to the folder. If it fails, it will
+         * return a number <= 0.
+         * @param timestamp
+         * @param fmtId
+         * @param args
+         * @return
+         */
+        template<typename... Args>
+        inline int64_t
+        record(uint64_t timestamp, uint32_t fmtId, Args... args)
+        {
+            // Ensure that we have a minimum amount of guestimated space.
+            uint32_t reqSpaceHint =
+                    sizeof...(args) << 3 + sizeof(uint64_t) + sizeof(uint32_t)
+                    + sizeof(uint8_t);
+            if (!hasSpace(reqSpaceHint, true))
+                return -1;
+
+            char* writePtr = recordPointer;
+
+            *((uint64_t*)(writePtr)) = timestamp;
+            writePtr += sizeof(uint64_t);
+
+            *((uint32_t*)(writePtr)) = fmtId;
+            writePtr += sizeof(uint32_t);
+            
+            int64_t ret = recordRecursive(&writePtr, args...);
+            if (ret <= 0) {
+                return -1;
+            }
+
+            int64_t diff = writePtr - recordPointer;
+            recordPointer = writePtr;
+            return diff;
+        }
+
+        void reset() {
+            recordPointer = &events[0];
+            printPointer = &events[0];
+        }
     };
 
+
+
+
+
+
+
+
+
+
+
+
+
     class Printer {
-    struct CompressedEvent {
-        uint8_t additionalFmtIdBytes:2;
-        uint8_t additionalTimestampBytes:3;
-        uint8_t numArgs:3;
+        struct CompressedEvent {
+            uint8_t additionalFmtIdBytes:2;
+            uint8_t additionalTimestampBytes:3;
+            uint8_t numArgs:3;
 
-        // After this comes the fmtId, (delta) timestamp,
-        // and up to four 4-byte format string arguments.
-        uint8_t data[];
+            // After this comes the fmtId, (delta) timestamp,
+            // and up to four 4-byte format string arguments.
+            uint8_t data[];
 
-        static uint32_t getMaxSize() {
-            return 1 // metadata
-                    + 4 // format
-                    + 8 // timestamp
-                    + 4*4; // 4-byte arguments
-        }
-    } __attribute__((packed));
+            static uint32_t getMaxSize() {
+                return 1 // metadata
+                        + 4 // format
+                        + 8 // timestamp
+                        + 4*4; // 4-byte arguments
+            }
+        } __attribute__((packed));
+
+
 
     public:
         static const int fileParams = O_WRONLY|O_CREAT|O_NOATIME|O_DSYNC|O_DIRECT;
-        std::deque<Buffer*> toPrint;
         std::mutex mutex;
-        std::mutex queueMutex;
         std::thread printerThread;
 
         std::condition_variable workAdded;
@@ -272,59 +398,73 @@ class TimeTrace {
 
         bool run;
         uint32_t numBuffersProcessed;
-        uint64_t cyclesDequeueing;
+        uint64_t cyclesWaitingForWork;
         uint64_t cyclesOutputting;
         uint64_t cyclesProcessing;
         uint64_t padBytesWritten;
         uint64_t totalBytesWritten;
-        uint64_t totalEventsWritten;
+        uint64_t eventsProcessed;
 
         bool hasOustandingOperation;
         struct aiocb aioCb;
+        char *outputBuffer;
+        char *posixBuffer;
 
         Printer(const char *logFile) :
-         toPrint(),
-         mutex(),
-         queueMutex(),
-         printerThread(),
-         workAdded(),
-         output(0),
-         run(true),
-         numBuffersProcessed(0),
-         cyclesDequeueing(0),
-         cyclesOutputting(0),
-         cyclesProcessing(0),
-         padBytesWritten(0),
-         totalBytesWritten(0),
-         totalEventsWritten(0),
-         hasOustandingOperation(false),
-         aioCb()
+            mutex(),
+            printerThread(),
+            workAdded(),
+            output(0),
+            run(true),
+            numBuffersProcessed(0),
+            cyclesWaitingForWork(0),
+            cyclesOutputting(0),
+            cyclesProcessing(0),
+            padBytesWritten(0),
+            totalBytesWritten(0),
+            eventsProcessed(0),
+            hasOustandingOperation(false),
+            aioCb(),
+            outputBuffer(NULL),
+            posixBuffer(NULL)
         {
             output = open(logFile, fileParams);
-            printerThread = std::thread(&PerfUtils::TimeTrace::Printer::threadMain, this);
             memset(&aioCb, 0, sizeof(aioCb));
+
+            int err = posix_memalign(reinterpret_cast<void**>(&outputBuffer),
+                                        512, Buffer::BUFFER_SIZE);
+            if (err) {
+                perror("Memalign failed");
+                std::exit(-1);
+            }
+
+            err = posix_memalign(reinterpret_cast<void**>(&posixBuffer),
+                                        512, Buffer::BUFFER_SIZE);
+            if (err) {
+                perror("Memalign failed");
+                std::exit(-1);
+            }
+
+            printerThread = std::thread(
+                    &PerfUtils::TimeTrace::Printer::threadMain, this);
         }
 
         ~Printer() {
             close(output);
         }
 
-        void enqueueWork(Buffer *buffer) {
-            //TODO(syang0) This seems like a bug. Grabbing the mutex will block the enqueueWork, which defeats the purpose of a queueMutex
-            std::lock_guard<std::mutex> lock(mutex);
-            std::lock_guard<std::mutex> lock2(queueMutex);
-            buffer->activeReaders.inc();
-            toPrint.push_back(buffer);
-            workAdded.notify_all();
-        }
-
         void sync() {
             std::unique_lock<std::mutex> lock(mutex);
-            while (!toPrint.empty()) {
-                if (run == false) {
-                    run = true;
-                    printerThread = std::thread(&PerfUtils::TimeTrace::Printer::threadMain, this);
+            workAdded.notify_all();
+
+            bool stillHasWork = false;
+            for (Buffer *b : threadBuffers) {
+                if (b->recordPointer != b->printPointer) {
+                    stillHasWork = true;
                 }
+            }
+
+            if (stillHasWork) {
                 workAdded.notify_all();
                 queueEmptied.wait(lock);
             }
@@ -350,12 +490,12 @@ class TimeTrace {
             cyclesOutputting += (stop - start);
 
             double outputTime = Cycles::toSeconds(cyclesOutputting);
-            double lockTime = Cycles::toSeconds(cyclesDequeueing);
+            double lockTime = Cycles::toSeconds(cyclesWaitingForWork);
             double compressTime = Cycles::toSeconds(cyclesProcessing);
 
             printf("Wrote %lu events (%0.2lf MB) in %0.3lf seconds "
                     "(%0.3lf seconds spent compressing)\r\n",
-                    totalEventsWritten,
+                    eventsProcessed,
                     totalBytesWritten/1.0e6,
                     outputTime,
                     compressTime);
@@ -373,192 +513,225 @@ class TimeTrace {
                     (totalBytesWritten/1.0e6)/(outputTime - compressTime - lockTime),
                     (outputTime - compressTime - lockTime)*1.0e9/totalBytesWritten,
                     (totalBytesWritten/1.0e6)/numBuffersProcessed,
-                    totalBytesWritten*1.0/totalEventsWritten,
-                    outputTime*1.0e9/totalEventsWritten,
-                    compressTime*1.0e9/totalEventsWritten);
+                    totalBytesWritten*1.0/eventsProcessed,
+                    outputTime*1.0e9/eventsProcessed,
+                    compressTime*1.0e9/eventsProcessed);
 
             if (fileParams & O_DIRECT) {
                 printf("\t%lu pad bytes written\r\n", padBytesWritten);;
             }
         }
 
-        static inline uint32_t
-        compressEvent(Event *eventIn, CompressedEvent *eventOut,
-                uint64_t& prevEventTimestamp) {
-            int cursor = 0;
-            int fmtIdBytes = 0;
-            int timestampBytes = 0;
-
-
-            int fmtId = 1; // hacked
-            if (fmtId <= (1 << 8))
-                fmtIdBytes = 1;
-            else if (fmtId <= (1 << 16))
-                fmtIdBytes = 2;
-            else if (fmtId <= (1 << 24))
-                fmtIdBytes = 3;
-            else
-                fmtIdBytes = 4;
-
-            eventOut->additionalFmtIdBytes = fmtIdBytes - 1;
-            memcpy(&eventOut->data[cursor], &fmtId,
-                    fmtIdBytes);
-            cursor += fmtIdBytes;
-
-            uint64_t timeStampOut;
-            // Record only the diff in cycles unless it is the first
-            timeStampOut = eventIn->timestamp - prevEventTimestamp;
-            if (timeStampOut <= (1UL << 8))
-                timestampBytes = 1;
-            else if (timeStampOut <= (1UL << 16))
-                timestampBytes = 2;
-            else if (timeStampOut <= (1UL << 24))
-                timestampBytes = 3;
-            else if (timeStampOut <= (1UL << 32))
-                timestampBytes = 4;
-            else if (timeStampOut <= (1UL << 40))
-                timestampBytes = 5;
-            else if (timeStampOut <= (1UL << 48))
-                timestampBytes = 6;
-            else if (timeStampOut <= (1UL << 56))
-                timestampBytes = 7;
-            else
-                timestampBytes = 8;
-
-            prevEventTimestamp = eventIn->timestamp;
-
-            eventOut->additionalTimestampBytes = timestampBytes - 1;
-            memcpy(&eventOut->data[cursor], &timeStampOut,
-                     timestampBytes);
-            cursor += timestampBytes;
-
-
-            // TODO(syang0) We could compress this even more by
-            // compressing the arguments.
-            if(eventIn->arg3 > 0)
-                eventOut->numArgs = 4;
-            else if (eventIn->arg2 > 0)
-                eventOut->numArgs =3;
-            else if (eventIn->arg1 > 0)
-                eventOut->numArgs = 2;
-            else if (eventIn->arg0 > 0)
-                eventOut->numArgs = 1;
-            else
-                eventOut->numArgs = 0;
-
-            memcpy(&(eventOut->data[cursor]), &(eventIn->arg0),
-                    (eventOut->numArgs)*sizeof(uint32_t));
-            cursor += (eventOut->numArgs)*sizeof(uint32_t);
-
-            return sizeof(CompressedEvent) + cursor;
-        }
+//        static inline uint32_t
+//        compressEvent(Event *eventIn, CompressedEvent *eventOut,
+//                uint64_t& prevEventTimestamp) {
+//            int cursor = 0;
+//            int fmtIdBytes = 0;
+//            int timestampBytes = 0;
+//
+//
+//            int fmtId = 1; // hacked
+//            if (fmtId <= (1 << 8))
+//                fmtIdBytes = 1;
+//            else if (fmtId <= (1 << 16))
+//                fmtIdBytes = 2;
+//            else if (fmtId <= (1 << 24))
+//                fmtIdBytes = 3;
+//            else
+//                fmtIdBytes = 4;
+//
+//            eventOut->additionalFmtIdBytes = fmtIdBytes - 1;
+//            memcpy(&eventOut->data[cursor], &fmtId,
+//                    fmtIdBytes);
+//            cursor += fmtIdBytes;
+//
+//            uint64_t timeStampOut;
+//            // Record only the diff in cycles unless it is the first
+//            timeStampOut = eventIn->timestamp - prevEventTimestamp;
+//            if (timeStampOut <= (1UL << 8))
+//                timestampBytes = 1;
+//            else if (timeStampOut <= (1UL << 16))
+//                timestampBytes = 2;
+//            else if (timeStampOut <= (1UL << 24))
+//                timestampBytes = 3;
+//            else if (timeStampOut <= (1UL << 32))
+//                timestampBytes = 4;
+//            else if (timeStampOut <= (1UL << 40))
+//                timestampBytes = 5;
+//            else if (timeStampOut <= (1UL << 48))
+//                timestampBytes = 6;
+//            else if (timeStampOut <= (1UL << 56))
+//                timestampBytes = 7;
+//            else
+//                timestampBytes = 8;
+//
+//            prevEventTimestamp = eventIn->timestamp;
+//
+//            eventOut->additionalTimestampBytes = timestampBytes - 1;
+//            memcpy(&eventOut->data[cursor], &timeStampOut,
+//                     timestampBytes);
+//            cursor += timestampBytes;
+//
+//
+//            // TODO(syang0) We could compress this even more by
+//            // compressing the arguments.
+//            if(eventIn->arg3 > 0)
+//                eventOut->numArgs = 4;
+//            else if (eventIn->arg2 > 0)
+//                eventOut->numArgs =3;
+//            else if (eventIn->arg1 > 0)
+//                eventOut->numArgs = 2;
+//            else if (eventIn->arg0 > 0)
+//                eventOut->numArgs = 1;
+//            else
+//                eventOut->numArgs = 0;
+//
+//            memcpy(&(eventOut->data[cursor]), &(eventIn->arg0),
+//                    (eventOut->numArgs)*sizeof(uint32_t));
+//            cursor += (eventOut->numArgs)*sizeof(uint32_t);
+//
+//            return sizeof(CompressedEvent) + cursor;
+//        }
 
         void threadMain() {
-            std::unique_lock<std::mutex> lock(mutex);
-
-            char *buffer;
-            uint32_t maxEventSize = CompressedEvent::getMaxSize();
-            int err = posix_memalign(reinterpret_cast<void**>(&buffer), 512,
-                                            maxEventSize*Buffer::BUFFER_SIZE);
-            if (err) {
-                perror("Memalign failed");
-                std::exit(-1);
-            }
-
+            uint32_t lastBufferIndex = 0;
             while(run) {
-                Util::serialize();
                 Buffer *buff = NULL;
+                uint64_t start = Cycles::rdtsc();
                 do {
-                    uint64_t start = Cycles::rdtsc();
+                    std::unique_lock<std::mutex> lock(mutex);
+
+                    if (!run)
+                        return;
+
                     buff = NULL;
-                    {
-                        std::lock_guard<std::mutex> lock(queueMutex);
-                        if (toPrint.size() == 0)
-                            continue;
-
-                        buff = toPrint.front();
-                        toPrint.pop_front();
-                    }
-                    cyclesDequeueing += (Cycles::rdtsc() - start);
-
-                    // Compressed write
-                    Util::serialize();
-                    uint64_t compressStart = Cycles::rdtsc();
-                    uint64_t prevTimestamp = 0;
-                    uint32_t bytesProcessed = 0;
-
-                    for (uint32_t i = 0; i < Buffer::BUFFER_SIZE; ++i) {
-                        CompressedEvent *eventOut = (CompressedEvent*)
-                                                (&buffer[bytesProcessed]);
-                        Event *eventIn = &(buff->events[i]);
-
-                        if (eventIn->format == NULL)
+                    for (int i = 0; i < threadBuffers.size(); ++i) {
+                        uint32_t index =
+                                (i + lastBufferIndex) % threadBuffers.size();
+                        Buffer *b = threadBuffers[index];
+                        
+                        // TODO(syang0) Come back and add caching to this....
+                        if (b->recordPointer != b->printPointer) {
+                            buff = b;
+                            lastBufferIndex = index;
                             break;
-
-                        bytesProcessed +=
-                                compressEvent(eventIn, eventOut, prevTimestamp);
-                        ++totalEventsWritten;
-                        eventIn->format = NULL;
+                        }
                     }
 
-                    cyclesProcessing += Cycles::rdtsc() - compressStart;
-                    Util::serialize();
-
-                    uint32_t bytesToWrite = bytesProcessed;
-
-                    if (fileParams & O_DIRECT) {
-                        uint32_t bytesOver = bytesProcessed%512;
-                        padBytesWritten += bytesOver;
-                        if (bytesOver == 0)
-                            bytesToWrite = bytesProcessed;
-                        else
-                            bytesToWrite = bytesProcessed + 512 - bytesOver;
+                    if (buff == NULL) {
+                        queueEmptied.notify_all();
+                        workAdded.wait(lock);
                     }
 
-                    if (useAIO) {
-                        //TODO(syang0) This could be swapped out for aio_err or something
-                        if (hasOustandingOperation) {
-                            // burn time waiting for io (could aio_suspend)
-                            while (aio_error(&aioCb) == EINPROGRESS);
-                            int err = aio_error(&aioCb);
-                            int ret = aio_return(&aioCb);
+                } while (buff == NULL);
+                cyclesWaitingForWork += (Cycles::rdtsc() - start);
 
-                            if (err != 0) {
-                                printf("PosixAioWritePoll Failed with code %d: %s\r\n",
-                                        err, strerror(err));
-                            }
+                // Compressed write
+                Util::serialize();
+                uint64_t processStart = Cycles::rdtsc();
+                uint64_t prevTimestamp = 0;
+                uint32_t bytesProcessed = 0;
 
-                            if (ret < 0) {
-                                perror("Posix AIO Write operation failed");
-                            }
+
+                // Cache the last record pointer, so that we don't
+                // have to worry about cache coherence as much
+                char *cachedRecordPointer = buff->recordPointer;
+
+                while (buff->printPointer != cachedRecordPointer) {
+
+                    // Peek at the timestamp to make sure it's valid
+                    uint64_t *timestamp = 
+                            reinterpret_cast<uint64_t*>(buff->printPointer);
+
+                    if (*timestamp == 0) {
+                        // If it is invalid, we must be equal with the 
+                        // record pointer, else it's a bug!
+                        assert(cachedRecordPointer < buff->printPointer);
+                        buff->printPointer = buff->events;
+                        continue;
+                    }
+
+                    buff->printPointer += sizeof(uint64_t);
+                    
+                    uint32_t fmtId = *((uint32_t*)buff->printPointer);
+                    buff->printPointer += sizeof(uint32_t);
+
+                    //  TODO(syang0) "Lookup" the format
+                    uint32_t arg0 = *((uint32_t*)buff->printPointer);
+                    buff->printPointer += sizeof(uint32_t);
+
+                    uint32_t arg1 = *((uint32_t*)buff->printPointer);
+                    buff->printPointer += sizeof(uint32_t);
+
+                    uint32_t arg2 = *((uint32_t*)buff->printPointer);
+                    buff->printPointer += sizeof(uint32_t);
+
+                    uint32_t arg3 = *((uint32_t*)buff->printPointer);
+                    buff->printPointer += sizeof(uint32_t);
+
+//                    printf("Found   %lu - %u: %u %u %u %u\r\n",
+//                            *timestamp, fmtId, arg0, arg1, arg2, arg3);
+
+                    // Put in the time and call it a day for now
+                    bytesProcessed += 4;
+
+                    *timestamp = 0;
+                    eventsProcessed++;
+                }
+
+                // Check for more to do? We don't really get efficient until
+                // more is done. 
+
+                cyclesProcessing += Cycles::rdtsc() - processStart;
+                Util::serialize();
+
+                uint32_t bytesToWrite = bytesProcessed;
+                if (fileParams & O_DIRECT) {
+                    uint32_t bytesOver = bytesProcessed%512;
+                    padBytesWritten += bytesOver;
+                    if (bytesOver == 0)
+                        bytesToWrite = bytesProcessed;
+                    else
+                        bytesToWrite = bytesProcessed + 512 - bytesOver;
+                }
+
+                if (useAIO) {
+                    //TODO(syang0) This could be swapped out for aio_err or something
+                    if (hasOustandingOperation) {
+                        // burn time waiting for io (could aio_suspend)
+                        while (aio_error(&aioCb) == EINPROGRESS);
+                        int err = aio_error(&aioCb);
+                        int ret = aio_return(&aioCb);
+
+                        if (err != 0) {
+                            printf("PosixAioWritePoll Failed with code %d: %s\r\n",
+                                    err, strerror(err));
                         }
 
-                        aioCb.aio_fildes = output;
-                        aioCb.aio_buf = buffer;
-                        aioCb.aio_nbytes = bytesToWrite;
-
-                        if (aio_write(&aioCb) == -1) {
-                            printf(" Error at aio_write(): %s\n", strerror(errno));
+                        if (ret < 0) {
+                            perror("Posix AIO Write operation failed");
                         }
-                        hasOustandingOperation = true;
-                    } else {
-                        if (bytesToWrite != write(output, buffer, bytesToWrite))
-                            perror("Error dumping log");
                     }
-                    totalBytesWritten += bytesProcessed;
-                    cyclesOutputting += (Cycles::rdtsc() - start);
 
-                    --(buff->activeReaders);
-                    ++numBuffersProcessed;
+                    aioCb.aio_fildes = output;
+                    aioCb.aio_buf = outputBuffer;
+                    aioCb.aio_nbytes = bytesToWrite;
 
-                } while (buff != NULL);
+                    if (aio_write(&aioCb) == -1) {
+                        printf(" Error at aio_write(): %s\n", strerror(errno));
+                    }
+                    hasOustandingOperation = true;
+                } else {
+                    if (bytesToWrite != write(output, outputBuffer, bytesToWrite))
+                        perror("Error dumping log");
+                }
+                totalBytesWritten += bytesProcessed;
+                cyclesOutputting += (Cycles::rdtsc() - start);
 
+                --(buff->activeReaders);
+                ++numBuffersProcessed;
 
-                queueEmptied.notify_all();
-                workAdded.wait(lock);
             }
-
-            free(buffer);
         }
     };
 };
