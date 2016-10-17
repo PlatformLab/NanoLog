@@ -46,84 +46,85 @@ TEST_F(FastLoggerTest, StagingBuffer_alloc)
 
     // basic - Case 1: Printer is caught up/slightly behind
     EXPECT_EQ(sb->storage, sb->alloc(100));
-    EXPECT_EQ(sb->storage + 100U, sb->recordPointer);
+    EXPECT_EQ(sb->storage + 100U, sb->recordHead);
 
     EXPECT_EQ(sb->storage + 100U, sb->alloc(250));
-    EXPECT_EQ(sb->storage + 350U, sb->recordPointer);
+    EXPECT_EQ(sb->storage + 350U, sb->recordHead);
 
     // Case 2: Printer Caught up + Wrap around required
-    sb->cachedReadPointer = sb->recordPointer = endOfBuffer - 10;
+    sb->hintContiguouslyAllocable = 0;
+    sb->cachedReadPointer = sb->recordHead = endOfBuffer - 10;
     EXPECT_EQ(sb->storage, sb->alloc(100));
-    EXPECT_EQ(sb->storage + 100U, sb->recordPointer);
+    EXPECT_EQ(sb->storage + 100U, sb->recordHead);
 
     // Case 3: Printer is far-far behind and a wrap around fails
     sb->cachedReadPointer = sb->storage + 10;
-    sb->readPointer = sb->cachedReadPointer;
-    sb->recordPointer = endOfBuffer - 10;
+    sb->readHead = sb->cachedReadPointer;
+    sb->recordHead = endOfBuffer - 10;
     EXPECT_EQ(NULL, sb->alloc(100));
-    EXPECT_EQ(endOfBuffer - 10, sb->recordPointer);
+    EXPECT_EQ(endOfBuffer - 10, sb->recordHead);
 
 
     // case 4: Printer was far behind, caught up a bit, but is still behind
     // with wrap around
     sb->cachedReadPointer = sb->storage + 10;
-    sb->readPointer = sb->storage + 100;
-    sb->recordPointer = endOfBuffer - 10;
+    sb->readHead = sb->storage + 100;
+    sb->recordHead = endOfBuffer - 10;
     EXPECT_EQ(NULL, sb->alloc(100));
     EXPECT_EQ(sb->storage + 100, sb->cachedReadPointer);
-    EXPECT_EQ(sb->storage + 100, sb->readPointer);
-    EXPECT_EQ(endOfBuffer - 10, sb->recordPointer);
+    EXPECT_EQ(sb->storage + 100, sb->readHead);
+    EXPECT_EQ(endOfBuffer - 10, sb->recordHead);
 
     // case 5: Printer was far behind but now has caught up, w/ wrap around
     sb->cachedReadPointer = sb->storage + 10;
-    sb->readPointer = sb->storage + 101;
-    sb->recordPointer = endOfBuffer - 10;
+    sb->readHead = sb->storage + 101;
+    sb->recordHead = endOfBuffer - 10;
     EXPECT_EQ(sb->storage, sb->alloc(100));
     EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-    EXPECT_EQ(sb->storage + 101, sb->readPointer);
-    EXPECT_EQ(sb->storage + 100, sb->recordPointer);
+    EXPECT_EQ(sb->storage + 101, sb->readHead);
+    EXPECT_EQ(sb->storage + 100, sb->recordHead);
 
     // Exact allocation fails (cannot overlap record/printer pointers)
     EXPECT_EQ(NULL, sb->alloc(1));
 
     // Case 6: Printer is behind, but there is still space ahead
-    sb->readPointer = sb->cachedReadPointer = sb->storage + 101;
-    sb->recordPointer = sb->storage;
+    sb->readHead = sb->cachedReadPointer = sb->storage + 101;
+    sb->recordHead = sb->storage;
     EXPECT_EQ(sb->storage, sb->alloc(100));
     EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-    EXPECT_EQ(sb->storage + 101, sb->readPointer);
+    EXPECT_EQ(sb->storage + 101, sb->readHead);
 
     // Case 7: Printer is behind, but there is exact space ahead (fail)
-    sb->readPointer = sb->cachedReadPointer = sb->storage + 100;
-    sb->recordPointer = sb->storage;
+    sb->readHead = sb->cachedReadPointer = sb->storage + 100;
+    sb->recordHead = sb->storage;
     EXPECT_EQ(NULL, sb->alloc(100));
     EXPECT_EQ(sb->storage + 100, sb->cachedReadPointer);
-    EXPECT_EQ(sb->storage + 100, sb->readPointer);
+    EXPECT_EQ(sb->storage + 100, sb->readHead);
 
     // Case 8: Printer is behind, but caught up just enough
     sb->cachedReadPointer = sb->storage + 100;
-    sb->readPointer = sb->storage + 101;
-    sb->recordPointer = sb->storage;
+    sb->readHead = sb->storage + 101;
+    sb->recordHead = sb->storage;
     EXPECT_EQ(sb->storage, sb->alloc(100));
     EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-    EXPECT_EQ(sb->storage + 101, sb->readPointer);
+    EXPECT_EQ(sb->storage + 101, sb->readHead);
 
     // The following two cases (9+10) at this point are just repeating a
     // subset of the original few to test for recursion
 
     // Case 9: Printer had wrapped around and there's enough space
     sb->cachedReadPointer = endOfBuffer - 50;
-    sb->readPointer = sb->storage + 101;
-    sb->recordPointer = endOfBuffer - 100;
+    sb->readHead = sb->storage + 101;
+    sb->recordHead = endOfBuffer - 100;
     EXPECT_EQ(sb->storage, sb->alloc(100));
     EXPECT_EQ(sb->cachedReadPointer, sb->storage + 101);
 
     // Case 10: printer pointer had wrapped around and there's not enough space
     sb->cachedReadPointer = endOfBuffer - 50;
-    sb->readPointer = sb->storage + 100;
-    sb->recordPointer = endOfBuffer - 100;
+    sb->readHead = sb->storage + 100;
+    sb->recordHead = endOfBuffer - 100;
     EXPECT_EQ(NULL, sb->alloc(100));
-    EXPECT_EQ(sb->cachedReadPointer, sb->readPointer);
+    EXPECT_EQ(sb->cachedReadPointer, sb->readHead);
 
     delete sb;
 }
@@ -174,4 +175,7 @@ TEST_F(FastLoggerTest, alloc) {
     reset();
 }
 
-} //namespace
+TEST_F(FastLoggerTest, read) {
+}
+
+}; //namespace

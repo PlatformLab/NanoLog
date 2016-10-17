@@ -14,9 +14,18 @@ import sys
 import json
 import os.path
 
-ENTRY_HEADER = "PerfUtils::FastLogger::RecordMetadata"
-RECORD_HEADER_FN = "PerfUtils::FastLogger::recordMetadata"
-RECORD_PRIMITIVE_FN = "PerfUtils::FastLogger::recordPrimitive"
+ENTRY_HEADER = "BufferUtils::RecordEntry"
+NIBBLE_OBJ = "BufferUtils::Nibble"
+
+RECORD_HEADER_FN = "BufferUtils::recordMetadata"
+RECORD_PRIMITIVE_FN = "BufferUtils::recordPrimitive"
+
+ALLOC_FN = "PerfUtils::FastLogger::alloc"
+FINISH_ALLOC_FN = "PerfUtils::FastLogger::finishAlloc"
+
+PACK_FN = "BufferUtils::pack"
+UNPACK_FN = "BufferUtils::unpack"
+
 
 
 def genRecordName(fmtId):
@@ -143,15 +152,17 @@ def parseTypesInFmtString(fmtString):
 
 class FunctionGenerator(object):
     # input_file is a previously generated function file
-    def __init__(self, mappingFile=None, outputHeader="BufferStuffer.h"):
+    def __init__(self, mappingFile=None):
         self.mappingFile = mappingFile
-        self.outputHeader = outputHeader
         self.fmtStr2Id = { }
 
         # The mapping file maintains various mappings related to the format
         # string (such as its unique identifier and compression functions).
         # This is encoded in a JSON format so that it can easily be serailized
         # and de-serialized for partial compilations.
+
+        # TODO(syang0) This should be split into data.json and index the
+        # functions by argument types.
         self.fmtId2Code = [
             {
                 "fmtString"        : "INVALID",
@@ -159,28 +170,110 @@ class FunctionGenerator(object):
                 "linenum"          : "-1",
                 "compilationUnit"  : "INVALID.cc",
                 "recordFnDef"      : "invalidRecord(int arg0) { ... }",
-                "compressFnDef"    : "invalidCompress(...)",
-                "decompressFnDef"  : "invalidDecompress(...)"
+                "compressFnDef"    : "invalidCompress(...) { ....}",
+                "decompressFnDef"  : "invalidDecompress(...) { ... }"
             }
         ]
 
         self.fmtStr2Id = {}
         self.unusedIds = []
+        self.uniqueArgs2Cnt = {}
+        self.argLists2Cnt = {}
 
         if mappingFile and os.path.isfile(mappingFile):
             with open(mappingFile) as json_file:
                 loaded = json.load(json_file)
 
-                self.fmtId2Code = loaded["fmtId2Code"]
-                self.unusedIds = loaded["unusedIds"]
-                self.fmtStr2Id = loaded["fmtStr2Id"]
+                self.fmtId2Code = loaded.get("fmtId2Code", [])
+                self.unusedIds = loaded.get("unusedIds", [])
+                self.fmtStr2Id = loaded.get("fmtStr2Id", {})
+                self.argLists2Cnt = loaded.get("argLists2Cnt", {})
 
-    def clearLogFunctionsForFile(self, filename=None):
+    def outputMappingFile(self, filename):
+        with open(filename, 'w') as json_file:
+            outputJSON = {
+                "fmtId2Code":self.fmtId2Code,
+                "unusedIds":self.unusedIds,
+                "fmtStr2Id":self.fmtStr2Id,
+                "argLists2Cnt":self.argLists2Cnt
+            }
+
+            json_file.write(json.dumps(outputJSON, sort_keys=True,
+                                            indent=4, separators=(',', ': ')))
+
+    def outputCompilationFiles(self, filename="BufferStuffer.h"):
+        with open(filename, 'w') as oFile:
+            oFile.write("#ifndef BUFFER_STUFFER\n")
+            oFile.write("#define BUFFER_STUFFER\n\n")
+
+            oFile.write("#include \"Packer.h\"\n")
+            oFile.write("#include \"FastLogger.h\"\n\n")
+
+            oFile.write("#include <fstream>     // for decompression\n")
+            oFile.write("#include <string>\n\n")
+
+            # output the record functions in its own namspace for
+            # debugging purposes
+            oFile.write("// Record code (for debugging)\n\n")
+            oFile.write("namespace {\n")
+            for fmtId, code in enumerate(self.fmtId2Code[1:]):
+                oFile.write(code["recordFnDef"])
+                oFile.write("\n")
+                oFile.write(code["compressFnDef"])
+                oFile.write("\n")
+                oFile.write(code["decompressFnDef"])
+                oFile.write("\n")
+            oFile.write("} // end empty namespace\n\n")
+
+            numFns = len(self.fmtId2Code)
+
+#            # Print out the compressor and decompressor functions
+#            oFile.write("// Compression Code\n")
+#            for fmtId, code in enumerate(self.fmtId2Code[1:]):
+#                oFile.write(code["compressFnDef"])
+#                oFile.write("\n")
+#
+#            oFile.write("// Decompression Code\n")
+#            for fmtId, code in enumerate(self.fmtId2Code[1:]):
+#                oFile.write(code["decompressFnDef"])
+#                oFile.write("\n")
+
+            # Output arrays that we can address into
+            # Note that the first element is nullptr since fmtId=0 is invalid
+            compressFnNameArray = ["\tnullptr"]
+            decompressFnNameArray = ["\tnullptr"]
+
+            for i in range(1, len(self.fmtId2Code)):
+                compressFnNameArray.append("\tcompressArgs%d" % i)
+                decompressFnNameArray.append("\tdecompressPrintArg%d" % i)
+
+            oFile.write("static void (*compressFnArray[%d])(%s *re, char** out)"
+                            " {\n%s\n};\n\n" %
+                            (numFns, ENTRY_HEADER, ",\n".join(compressFnNameArray)))
+
+            oFile.write("static void (*decompressAndPrintFnArray[%d])(std::ifstream &in) "
+                            "{\n%s\n};\n" %
+                                (numFns, ",\n".join(decompressFnNameArray)))
+
+            # Output a list of the fmtStrings so we can refer to them
+            allFmtStrings = []
+            for i in range(1, len(self.fmtId2Code)):
+                allFmtStrings.append("\t\"%s\"" % self.fmtId2Code[i]["fmtString"])
+
+            oFile.write("// Format Id to original Format String\n")
+            oFile.write("static const char* fmtId2Str[%d] = {\n" % len(allFmtStrings))
+            oFile.write(",\n".join(allFmtStrings))
+            oFile.write("\n};\n\n");
+
+            oFile.write("\n\n#endif /* BUFFER_STUFFER */\n")
+
+
+    def clearLogFunctionsForCompilationUnit(self, filename=None):
         if not filename:
             return
 
         for fmtId, code in self.fmtId2Code.iteritems():
-            if code["filename"] == filename:
+            if code["compilationUnit"] == filename:
                 self.fmtStr2Id.pop(value["fmtString"], None)
                 self.fmtId2Code[fmtId] = None
                 self.unusedIds.append(fmtId)
@@ -218,8 +311,14 @@ class FunctionGenerator(object):
             fmtId = len(self.fmtStr2Id) + 1
             self.fmtStr2Id[fmtString] = fmtId
 
+        #TODO(syang0) Add in __attribute__((printf...)) and the fmtString.
         recordDeclaration = "void %s(%s)" % (genRecordName(fmtId), parameterDeclarationString)
         recordInvocation = "%s(%s)" % (genRecordName(fmtId), invocationArgumentsString)
+
+        if parameterDeclarationString in self.argLists2Cnt:
+            self.argLists2Cnt[parameterDeclarationString] += 1
+        else:
+            self.argLists2Cnt[parameterDeclarationString] = 1
 
         if prevCodeExists:
             return (recordDeclaration, recordInvocation)
@@ -251,21 +350,29 @@ class FunctionGenerator(object):
             recordCode += "\tint %s;\n" % strlenDeclarationsString
 
         recordCode += "\tint maxSizeOfArgs = %s + %s;\n" % (primitiveSizeSumString, strlenSumString)
-        recordCode += "\tint reqSize = sizeof(%s) + maxSizeOfArgs;\n" % ENTRY_HEADER
-        recordCode += "\tint maxSizeOfCompressedArgs = maxSizeOfArgs + %d;\n" % nibbleByteSizes
 
-        recordCode += "\tchar *buffer = PerfUtils::FastLogger::alloc(reqSize);\n\n"
-        recordCode += "\tif (buffer == nullptr)\n"
+        recordCode += "\t%s *re = %s(maxSizeOfArgs);\n\n" % (ENTRY_HEADER, ALLOC_FN)
+        # recordCode += "\tprintf(\"I am at %d; buffer is %%p\\n\", re);\n" % fmtId
+        recordCode += "\tif (re == nullptr)\n"
         recordCode += "\t\treturn;\n\n"
 
-        recordCode += "\t%s(buffer, %d, maxSizeOfCompressedArgs);\n" %  (RECORD_HEADER_FN, fmtId)
+        recordCode += "\t%s(re, %d, maxSizeOfArgs, %d);\n" %  (RECORD_HEADER_FN, fmtId, nibbleByteSizes)
+        # recordCode += "\tre->fmtId = %d;" % fmtId
+        # recordCode += "\tre->timestamp = Cycles::rdtsc();\n"
+        # recordCode += "\tre->entrySize = maxSizeOfArgs + sizeof(%s);" % ENTRY_HEADER
+        # recordCode += "\tre->argMetadataBytes = %d;" % nibbleByteSizes
 
+        # For debug only...
+#        recordCode += "\tprintf(\"Recording for fmtId=%%d which is %%s\\n\\n\", %d, \"%s\");\n" % (fmtId, fmtString)
+
+        recordCode += "\tchar *buffer = re->argData;\n"
         recordCode += "\n" if primitiveArgIds else ""
         recordCode += "".join(["\t%s(buffer, arg%d);\n" % (RECORD_PRIMITIVE_FN, idx) for idx in primitiveArgIds])
 
         recordCode += "\n" if primitiveArgIds else ""
         recordCode += "".join(["\tmemcpy(buffer, arg%d, str%dLen); buffer += str%dLen;\n" % (idx, idx, idx) for idx in stringArgIds])
 
+        recordCode += "\t%s(re);\n" % FINISH_ALLOC_FN
         recordCode += "}\n"   # end function
 
 
@@ -278,61 +385,77 @@ class FunctionGenerator(object):
 
         # At this point, the C++ code should have already read in and compressed the metadata, thus we only compress
         # the arguments at this point.
-        compressionCode =  "inline void\ncompressArgs%d(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {\n" % fmtId
+        compressionCode =  "inline void\ncompressArgs%d(%s *re, char** out) {\n" % (fmtId, ENTRY_HEADER)
 
         #TODO(syang0) Should do pointer compression a bit differently than the primitives.
 
         # Step 1: Allocate the nibbles to store the primitives
         if nibbleByteSizes:
-            compressionCode += "\tPerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(out);\n"
-            compressionCode += "\tout += %d;\n" % nibbleByteSizes
+            compressionCode += "\t%s *nib = reinterpret_cast<%s*>(*out);\n" % (NIBBLE_OBJ, NIBBLE_OBJ)
+            compressionCode += "\t*out += %d;\n" % nibbleByteSizes
 
         # Step 2a: Read back all the primitives
+
+        compressionCode += "\tchar* args = re->argData;\n"
         for idx in primitiveArgIds:
             type = argTypes[idx]
-            compressionCode += "\t%s arg%d = *reinterpret_cast<%s*>(in); in += sizeof(%s);\n" % (type, idx, type, type)
+            compressionCode += "\t%s arg%d = *reinterpret_cast<%s*>(args); args += sizeof(%s);\n" % (type, idx, type, type)
 
         # Step 2b: pack all the primitives
         compressionCode += "\n"
         for i, idx in enumerate(primitiveArgIds):
             mem = "first" if (i%2 == 0) else "second"
             arrIndex = i/2
-            compressionCode += "\tnib[%d].%s = PerfUtils::pack(out, arg%d);\n" % (arrIndex, mem, idx)
+            compressionCode += "\tnib[%d].%s = %s(out, arg%d);\n" % (arrIndex, mem, PACK_FN, idx)
 
         # Step 3: Figure out size of strings and just memcpy it
         if stringArgIds:
-            compressionCode += "\n\tint stringBytes = maxSizeOfCompressedArgs - (%s) - %d;\n" % (primitiveSizeSumString, nibbleByteSizes)
-            compressionCode += "\tmemcpy(out, in, stringBytes);\n\tin += stringBytes;\n\tout += stringBytes;\n"
+            compressionCode += "\n\tint stringBytes = re->entrySize - (%s) - sizeof(%s);\n" % (primitiveSizeSumString, ENTRY_HEADER)
+            compressionCode += "\tmemcpy(*out, args, stringBytes);\n\targs += stringBytes;\n\t*out += stringBytes;\n"
 
         compressionCode += "}\n"
 
         ###
         # Generate Decompression
         ###
-        decompressionCode = "inline void\ndecompressPrintArg%d(char* &in) {\n" % fmtId
+#        decompressionCode = "inline void\ndecompressPrintArg%d(std::ifstream &in, char *buffer, uint32_t bufferSize) {\n" % fmtId
 
         # Step 1: Read back all the nibbles
-        decompressionCode += "\tPerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(in);\n"
-        decompressionCode += "\tin += %d;\n" % nibbleByteSizes
+#        decompressionCode += "\tin.read(buffer, %d); buffer += %d;\n" % (nibbleBytes, nibbleBytes)
+#        decompressionCode += "\t%s *nib = reinterpret_cast<%s*>(in);\n" %(NIBBLE_OBJ, NIBBLE_OBJ)
+
+
+
+        decompressionCode = "inline void\ndecompressPrintArg%d(std::ifstream &in) {\n" % fmtId
+
+        # Step 1: Read back all the nibbles
+        decompressionCode += "\t%s nib[%d];\n" % (NIBBLE_OBJ, nibbleByteSizes)
+        decompressionCode += "\tin.read(reinterpret_cast<char*>(&nib), %d);\n\n" % nibbleByteSizes
 
         # Step 2: Read back all the primitives
-        decompressionCode += "\n"
         for i, idx in enumerate(primitiveArgIds):
             type = argTypes[idx]
             mem = "first" if (i%2 == 0) else "second"
             arrIndex = i/2
-            decompressionCode += "\t%s arg%d = PerfUtils::unpack<%s>(out, nib[%d].%s);\n" % (type, idx, type, arrIndex, mem)
+            decompressionCode += "\t%s arg%d = %s<%s>(in, nib[%d].%s);\n" % (type, idx, UNPACK_FN, type, arrIndex, mem)
 
         # Step 3: Find all da strings
         decompressionCode += "\n"
         for idx in stringArgIds:
             type = argTypes[idx]
-            decompressionCode += "\t%s arg%d = in; in += strlen(arg%d) + 1;\n" % (type, idx, idx)
+            strType = "std::wstring" if "w_char" in type else "std::string"
 
+            decompressionCode += "\t%s arg%d_str;\n" % (strType, idx)
+            decompressionCode += "\tstd::getline(in, arg%d_str, \'\\0\');\n" % (idx)
+            decompressionCode += "\t%s arg%d = arg%d_str.c_str();\n" % (type, idx, idx)
+
+#TODO(syang0) I had some trouble with mapping the pack/unpack function names due
+# to name space changes... i wonder if I should just do substitutions and the
+# JSON saves sorta the %s type and we can subsitution on output.
         # Step 3: Integrate our static knowledge
-        decompressionCode += "\n\tconst char *fmtString = \"%s\";\n" % "Test"
+        decompressionCode += "\n\tconst char *fmtString = \"%s\";\n" % fmtString
         decompressionCode += "\tconst char *filename = \"%s\";\n" % filename
-        decompressionCode += "\tint linenum = %d;\n" % linenum
+        decompressionCode += "\tconst int linenum = %d;\n" % linenum
 
         # Step 4: Final Printout
         if argTypes:

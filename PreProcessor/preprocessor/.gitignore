@@ -2,3 +2,6 @@
 a.out
 *.o
 *.a
+
+decompressor
+compressedLog

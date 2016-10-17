@@ -8,7 +8,7 @@ LogCompressor* FastLogger::compressor = NULL;
 __thread FastLogger::StagingBuffer* FastLogger::stagingBuffer = NULL;
 
 std::vector<FastLogger::StagingBuffer*> FastLogger::threadBuffers;
-std::mutex FastLogger::mutex;
+std::mutex FastLogger::bufferMutex;
 
 FastLogger::FastLogger() {
 }

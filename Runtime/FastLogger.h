@@ -1,19 +1,18 @@
 #ifndef FASTLOGGER_H
 #define FASTLOGGER_H
 
+#include <assert.h>
+#include <ctime>
 #include <mutex>
 #include <vector>
 
 //TODO(syang0) Maybe move to std::atomics instead of this
 #include "Atomic.h"
 #include "Common.h"
-#include "Cycles.h"
+
+#include "BufferUtils.h"
 #include "LogCompressor.h"
 
-
-
-#include <ctime>
-#include "Packer.h"
 
 namespace PerfUtils {
 
@@ -26,25 +25,51 @@ private:
 
     //TODO(syang0) should be PROTECTED
 public:
-    static LogCompressor* compressor;
+    static PerfUtils::LogCompressor* compressor;
     static __thread StagingBuffer* stagingBuffer;
     static std::vector<StagingBuffer*> threadBuffers;
-    static std::mutex mutex;
+    static std::mutex bufferMutex;
 
 public:
-    static inline
-    char* alloc(int nbytes) {
-        if (stagingBuffer == NULL) {
-            std::lock_guard<std::mutex> guard(mutex);
 
-            if (stagingBuffer == NULL)
+
+    //TODO(synag0) There can be a race here if you don't lock....
+    static inline void
+    sync() {
+//        std::lock_guard<std::mutex> guard(bufferMutex);
+        if (compressor)
+            compressor->sync();
+    }
+
+    static inline void
+    exit() {
+//        std::lock_guard<std::mutex> guard(bufferMutex);
+        if (compressor)
+            compressor->exit();
+    }
+
+    //TODO(synag0) This doesn't seem to be the best place to put this...
+    static inline BufferUtils::RecordEntry*
+    alloc(int nbytes) {
+        if (stagingBuffer == NULL) {
+            std::lock_guard<std::mutex> guard(bufferMutex);
+
+            if (stagingBuffer == NULL) {
                 stagingBuffer = new StagingBuffer();
+                threadBuffers.push_back(stagingBuffer);
+            }
 
             if (compressor == NULL)
                 compressor = new LogCompressor();
         }
 
-        return stagingBuffer->alloc(nbytes);
+        return stagingBuffer->reserveAlloc(nbytes);
+    }
+
+    static inline void
+    finishAlloc(BufferUtils::RecordEntry *re)
+    {
+        stagingBuffer->finishAlloc(re);
     }
 
     class StagingBuffer {
@@ -56,18 +81,21 @@ public:
 
         //TODO(syang0): Should be PRIVATE
         public:
-        // Pointer within events[] of where TimeTrace should record next.
-        // This value is typically as up to date as possible and is updated
-        // once per timeTrace::record().
-
         // Position within storage[] where the next log message will be placed
-        // This is updated once per record()
-        char *recordPointer;
+        // This is updated once per alloc
+        char *recordHead;
 
         // Position within storage[] where the printer would start printing from
         // This value is a stale value of printPos so that fewer cache coherence
         // messages would be generated when vigorously recording + printing
         char *cachedReadPointer;
+
+        // Hints as to how much contiguous space one can allocate without
+        // rolling over the log head or stalling behind the readPointer.
+        // Note that this should be managed by the producer not the consumer
+        int hintContiguouslyAllocable;
+
+        int reservedSpace;
 
         //TODO(syang0) There's got to be a more elegant/portable way to do this
         static const uint32_t BYTES_PER_CACHE_LINE = 64;
@@ -75,7 +103,12 @@ public:
 
         // Pointer within events[] of where the printer thread should start
         // printing from. This value is typically as up to date as possible.
-        char *readPointer;
+        char *readHead;
+        char *cachedRecordPointer;
+
+        // Hints at how many contiguous bytes one can read without
+        // rolling over the log head or stalling behind the recordPointer
+        int hintContiguouslyReadable;
 
         Atomic<int> activeReaders;
 
@@ -84,19 +117,19 @@ public:
 
         char storage[BUFFER_SIZE];
 
-        /**
-         * Attempt to allocate a contiguous array of bytes from internal storage
-         * This is an internal function with an allowRecursion toggle to limit
-         * recursion.
-         *
-         * \param allowRecursion - True enables a single recursive call
-         * \param req            - Number of bytes required
-         *
-         * \return  - pointer to valid space; NULL if not enough space.
-         */
-        inline char*
-        alloc(uint64_t nbytes, bool allowRecursion) {
+        char *endOfBuffer;
+
+        //TODO(syang0) There's a race condition here whereby the recording
+        // thread can be recording data while the printer catches up and
+        // reads the data before it's finished.
+
+
+        inline BufferUtils::RecordEntry*
+        reserveAlloc(int argBytes, bool allowRecursion = false) {
             static const char *endOfBuffer = storage + BUFFER_SIZE;
+
+            //TODO(syang0) This seems sorta retarded that alloc doesn't alloc bytes...
+            int reqSpace = sizeof(BufferUtils::RecordEntry) + argBytes;
 
             // There's a subtle point here, all the checks for remaining
             // space are strictly < or >, not <= or => because if we allow
@@ -104,191 +137,309 @@ public:
             // if the buffer either completely full or completely empty.
             // Doing this check here ensures that == means completely empty.
 
-            char *ret = NULL;
-            if (recordPointer >= cachedReadPointer) {
-                uint64_t remainingSpace = endOfBuffer - recordPointer;
-                if (nbytes < remainingSpace) {
-                    ret = recordPointer;
-                    recordPointer += nbytes;
-                    return ret;
+            if (recordHead >= cachedReadPointer) {
+                if (reqSpace < endOfBuffer - recordHead) {
+                    reservedSpace = reqSpace;
+                    return reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
                 }
 
-                // Do we have enough space if we wrap around?
-                if (cachedReadPointer - storage > nbytes) {
-
-                    // Clear the last byte so that the Printer knows that
-                    // the data following this point is invalid.
-                    *recordPointer = 0;
+                // Is there enough space if we wrap around?
+                if (cachedReadPointer - storage > reqSpace) {
+                    // Clear the last bit of the buffer so that printer knows
+                    // it's invalid and that it should wrap around
+                    int bytesToClear = hintContiguouslyAllocable;
+                    if (hintContiguouslyAllocable > sizeof(BufferUtils::RecordEntry))
+                        bytesToClear = sizeof(BufferUtils::RecordEntry);
+                    bzero(recordHead, bytesToClear);
 
                     // Wrap around
-                    recordPointer = storage + nbytes;
-                    return storage;
+                    reservedSpace = reqSpace;
+                    recordHead = storage;
+                    return reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
                 }
 
                 // There's no space, should now attempt to update the cached
                 // print position and check again
-                if (cachedReadPointer == readPointer) {
+                if (cachedReadPointer == readHead) {
                     ++allocFailures;
                     return NULL;
                 }
 
-                cachedReadPointer = readPointer;
-                if (cachedReadPointer - storage <= nbytes) {
+                cachedReadPointer = readHead;
+                if (cachedReadPointer - storage <= reqSpace) {
                     ++allocFailures;
                     return NULL;
                 }
 
-                recordPointer = storage + nbytes;
-                return storage;
+                recordHead = storage;
+                reservedSpace = reqSpace;
+                return reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
             } else {
-                if (cachedReadPointer - recordPointer > nbytes) {
-                    ret = recordPointer;
-                    recordPointer += nbytes;
-                    return ret;
-                }
+                if (cachedReadPointer - recordHead > reqSpace)
+                    return reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
 
-                if (cachedReadPointer == readPointer) {
+                if (cachedReadPointer == readHead) {
                     ++allocFailures;
                     return NULL;
                 }
 
                 // Try updating print position and try again
-                cachedReadPointer = readPointer;
+                cachedReadPointer = readHead;
 
                 if (!allowRecursion) {
                     ++allocFailures;
                     return NULL;
                 }
 
-                return alloc(nbytes, false);
+                return reserveAlloc(argBytes, false);
             }
         }
 
+        //TODO(syang0) I think a better thing to do is use a reserve pointer
+        // and a record pointer. When reserving, bump the reserve pointer
+        // when retiring, bump the recordHead while checking the size.
+
+        inline void
+        finishAlloc(BufferUtils::RecordEntry* in) {
+            assert(recordHead == reinterpret_cast<char*>(in));
+
+            recordHead += reservedSpace;
+        }
+
+        // One way to solve this (tho I'm not sure about the performance)
+        // is to allocate a Record Entry object which would contain
+        // pointers to the metadata and arguments. And then at destruction
+        // it would automagically bump the record pointer.
+        // The problem with this is that it may not be the most performant.
+
+        // Intended to be used as reserve() followed by a bunch of allocs
+        inline bool
+        reserve(int nbytes, bool allowRecursion=false){
+            static const char *endOfBuffer = storage + BUFFER_SIZE;
+
+            if (hintContiguouslyAllocable > nbytes)
+                return true;
+
+            // There's a subtle point here, all the checks for remaining
+            // space are strictly < or >, not <= or => because if we allow
+            // the record and print positions to overlap, we can't tell
+            // if the buffer either completely full or completely empty.
+            // Doing this check here ensures that == means completely empty.
+            if (recordHead >= cachedReadPointer) {
+                hintContiguouslyAllocable = endOfBuffer - recordHead;
+                if (nbytes < hintContiguouslyAllocable)
+                    return true;
+
+                // Do we have enough space if we wrap around?
+                if (cachedReadPointer - storage > nbytes) {
+                    hintContiguouslyAllocable = cachedReadPointer - storage;
+
+                    // Clear the last bit of the buffer so that printer knows
+                    // it's invalid and that it should wrap around
+                    int bytesToClear = hintContiguouslyAllocable;
+                    if (hintContiguouslyAllocable > sizeof(BufferUtils::RecordEntry))
+                        bytesToClear = sizeof(BufferUtils::RecordEntry);
+                    bzero(recordHead, bytesToClear);
+
+                    // Wrap around
+                    recordHead = storage;
+                    return true;
+                }
+
+                // There's no space, should now attempt to update the cached
+                // print position and check again
+                if (cachedReadPointer == readHead) {
+                    ++allocFailures;
+                    return NULL;
+                }
+
+                cachedReadPointer = readHead;
+                hintContiguouslyAllocable = cachedReadPointer - storage;
+                if (hintContiguouslyAllocable <= nbytes) {
+                    ++allocFailures;
+                    return NULL;
+                }
+
+                recordHead = storage;
+                return true;
+            } else {
+                hintContiguouslyAllocable = cachedReadPointer - recordHead;
+                if (hintContiguouslyAllocable > nbytes)
+                    return true;
+
+                if (cachedReadPointer == readHead) {
+                    ++allocFailures;
+                    return false;
+                }
+
+                // Try updating print position and try again
+                cachedReadPointer = readHead;
+
+                if (!allowRecursion) {
+                    ++allocFailures;
+                    return false;
+                }
+
+                return reserve(nbytes, false);
+            }
+        }
+        
+        /**
+         * Attempt to allocate a contiguous array of bytes from internal storage
+         * An optional hint can be provided to reserve a larger chunk of memory
+         * and amortize the cost of future alloc invocations.
+         * 
+         * Note the intended usage is that the user code will alloc with a
+         * reservation and then perform regular allocs until the reservation
+         * is used up.
+         *
+         * \param nbytes             - Number of contiguous bytes to allocate
+         * \param hintBytesToReserve - Optional hint of how many bytes the user
+         *                             will need.
+         *
+         * \return  - pointer to valid space; NULL if not enough space.
+         */
+        inline char*
+        alloc(int nbytes, int hintBytesToReserve=0) {
+            hintBytesToReserve = hintBytesToReserve ? hintBytesToReserve : nbytes;
+            
+            if (!reserve(nbytes))
+                return NULL;
+
+            char* ret = recordHead;
+            hintContiguouslyAllocable -= nbytes;
+            recordHead += nbytes;
+            return ret;
+        }
+
+        //TODO(syang0) Change the alloc so that size is embedded.
+        // This will allow us to abstract it even more such that
+        // read will return the size and we can just interpret the
+        // bytes... Yeah the current form just breaks abstractions
+        // left and right.
+
+
+        //TODO(syang0) RACE CONDITION! It's possible to read an alloc before it's
+        // ready and vice versa. 
+
+
+        char*
+        peek(uint64_t nbytes, bool allowRecursion=true) {
+            static const char *endOfBuffer = storage + BUFFER_SIZE;
+            char *ret = NULL;
+            
+            if (cachedRecordPointer >= readHead) {
+                if (cachedRecordPointer - readHead >= nbytes) {
+                    ret = readHead;
+                    readHead += nbytes;
+                    return ret;
+                }
+
+                if (cachedRecordPointer == recordHead)
+                    return NULL;
+
+                cachedReadPointer = recordHead;
+
+                if (!allowRecursion)
+                    return NULL;
+
+                return peek(nbytes, false);
+            } else {
+                // Roll over event
+                if (*readHead == 0) {
+                    readHead = storage;
+                    return peek(nbytes, readHead == storage);
+                }
+
+                if (endOfBuffer - readHead >= nbytes) {
+                    ret = readHead;
+                    readHead += nbytes;
+                    return ret;
+                }
+
+                printf("Internal Logger Error! Logger sho" );
+            }
+        }
+
+        BufferUtils::RecordEntry*
+        peek(bool allowRecursion=true)
+        {
+            static const char *endOfBuffer = storage + BUFFER_SIZE;
+            BufferUtils::RecordEntry *re = NULL;
+
+            if (cachedRecordPointer >= readHead) {
+                int readableBytes = cachedRecordPointer - readHead;
+                if (readableBytes >= sizeof(BufferUtils::RecordEntry)) {
+
+                    re = reinterpret_cast<BufferUtils::RecordEntry*>(readHead);
+                    if (readableBytes < re->entrySize) {
+                        return NULL;
+                    }
+                    
+                    return re;
+                }
+
+                if (cachedRecordPointer == recordHead) {
+                    return NULL;
+                }
+
+                cachedRecordPointer = recordHead;
+                if (!allowRecursion) {
+                    return NULL;
+                }
+
+                return peek(false);
+            } else {
+                // Roll over event
+                //TODO(syang0) Not quite right..
+                if (*readHead == 0) {
+                    readHead = storage;
+                    return peek(false);
+                }
+
+                int readableBytes = endOfBuffer - readHead;
+                if (readableBytes >= sizeof(BufferUtils::RecordEntry)) {
+                    re = reinterpret_cast<BufferUtils::RecordEntry*>(readHead);
+
+                    if (readableBytes < re->entrySize) {
+                        return NULL;
+                    }
+                    
+                    return re;
+                }
+
+                printf("Internal Logger Error! Logger sho" );
+            }
+        }
+
+        BufferUtils::RecordEntry*
+        consumeNext() {
+            BufferUtils::RecordEntry* re = peek();
+            readHead += re->entrySize;
+
+            return re;
+        }
       public:
 
         StagingBuffer()
-            : recordPointer(storage)
+            : recordHead(storage)
             , cachedReadPointer(storage)
+            , hintContiguouslyAllocable(BUFFER_SIZE)
+            , reservedSpace(0)
             , cacheLine()
-            , readPointer(storage)
+            , readHead(storage)
+            , cachedRecordPointer(storage)
+            , hintContiguouslyReadable(0)
             , activeReaders(0)
             , storage()
+            , endOfBuffer(storage + BUFFER_SIZE)
             , allocFailures(0)
         {
-            storage[0] = 0;
-        }
-
-        /**
-         * Attempt to return a contiguous array of bytes from internal storage.
-         *
-         * \param nbytes - Number of bytes requested
-         * \return - pointer to contiguous space; NULL if not enough space
-         */
-        inline char*
-        alloc(int nbytes) {
-            return alloc(nbytes, true);
+            bzero(storage, BUFFER_SIZE);
         }
     };
-    
-    // Describes an entry within the staging buffer
-    struct RecordMetadata {
-        // Stores the format ID assigned to the log message by the preprocessor
-        // component. A value of 0 is used to indicate an invalid entry.
-        uint32_t fmtId;
 
-        // Stores the rdtsc value at the time of invocation
-        uint64_t timestamp;
-
-        // The number of bytes in uncompress bytes the entry takes up (includes metadata size)
-
-        // The maximum number of bytes the argument compressor could use to
-        // represent this particular entry (includes metadata); The reason why
-        // this is specified is because the argument compression decisions are
-        // mad ein the python script and the code here is oblivious to its methods
-        uint32_t maxSizeOfCompressedArgs;
-
-        // After this comes regular, uncompressed arguments related to the
-        // log message
-    };
-
-    enum EntryType : int {
-        INVALID = 0,
-        LOG_MSG = 1,
-        CHECKPOINT = 2
-    };
-
-    struct Nibble {
-        int first:4;
-        int second:4;
-    } __attribute__((packed));
-
-    // Output Buffer metdata that describes the entry coming afterwards.
-    struct CompressedMetadata {
-        int entryType:2;
-        int additionalFmtIdBytes:2;
-        int additionalTimestampBytes:3;
-
-        // After this, format id that's 1 + additionalFmtIdBytes long,
-        // timestamp diff that's 1 + additionalTimeStampBytes long,
-        // and then the arguments. The exact layout defined in the python scripts.
-
-    } __attribute__((packed));
-
-    struct Checkpoint : CompressedMetadata {
-        uint64_t rdtsc;
-        time_t unixTime;
-        double cyclesPerSecond;
-        void *relativePointer;
-    } __attribute__((packed));
-
-    template<typename T>
-    static inline void
-    recordPrimitive(char* &buff, T t) {
-        *(reinterpret_cast<T*>(buff)) = t;
-        buff += sizeof(T);
-    }
-
-    template<typename T>
-    static inline T*
-    interpretAndBump(char* &buff) {
-        T* val = reinterpret_cast<T*>(buff);
-        buff += sizeof(T);
-        return val;
-    }
-
-    static inline void
-    recordMetadata(char* &buff, uint32_t fmtId, uint32_t maxArgSize) {
-        RecordMetadata *m = reinterpret_cast<RecordMetadata*>(buff);
-        m->fmtId = fmtId;
-        m->timestamp = Cycles::rdtsc();
-        m->maxSizeOfCompressedArgs = maxArgSize;
-
-        buff += sizeof(RecordMetadata);
-    }
-
-    static inline void
-    compressMetadata(RecordMetadata *m, char* &out, uint64_t &lastTimestamp, uint32_t &lastFmtId) {
-        CompressedMetadata *mo = interpretAndBump<CompressedMetadata>(out);
-        mo->entryType = EntryType::LOG_MSG;
-        mo->additionalFmtIdBytes = pack(&out, m->fmtId - lastFmtId) - 1; // TODO check for when fmtId = 0
-        mo->additionalTimestampBytes = pack(&out, m->timestamp - lastTimestamp) - 1;
-        lastTimestamp = m->timestamp;
-        lastFmtId = m->fmtId;
-    }
-
-    // Inserts an uncompressed checkpoint into an output buffer. This a fairly
-    // expensive operation in terms of storage size, so only use it when log files
-    // are bifercated or explicit resynchronization is needed
-    static inline void
-    insertCheckpoint(char* &out, void* relativePointer) {
-        Checkpoint *ck = interpretAndBump<Checkpoint>(out);
-        ck->entryType = EntryType::CHECKPOINT;
-        ck->rdtsc = Cycles::rdtsc();
-        ck->unixTime = std::time(nullptr);
-        ck->cyclesPerSecond = Cycles::getCyclesPerSec();
-        ck->relativePointer = relativePointer;
-    }
-};
+};  // FastLogger
 
 
 }; // namespace PerfUtils

@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 
 using namespace std;
+using namespace BufferUtils;
 namespace {
 
 // The fixture for testing class Foo.

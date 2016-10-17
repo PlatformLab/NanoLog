@@ -5,6 +5,8 @@ e
 test
 TTTest
 
+compressedLog
+BufferStuffer.h
 nbproject
 Bench.sh
 Benchmark

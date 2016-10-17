@@ -1,10 +1,20 @@
 #! /usr/bin/python
 
-"""Usage: parser.py [-h] [-m MAP] FILES ...
+"""Fast Logger Preprocessor
+
+Usage:
+    parser.py [-h] [-m MAP] FILES ...
+    parser.py -c MAP [-o OUTPUT]
 
 Options:
-  -h --help         show this
-  -m MAP            Previously generated mapping file for partial compilation
+  -h --help         Show this help messages
+  -m MAP            Filename for the previously generated mappings. This option
+                    will both read in the file (if it exists) and overwrite
+                    it with new contents
+  -c MAP            Convert the previously generated mapping into a compilable
+                    C++ file
+  -o OUTPUT         Optional output name for the compilable C++ output
+                    [default: BufferStuffer.h]
 
 
 This script is 1 part of 3 part system that enables fast, submillisecond logging.
@@ -344,9 +354,8 @@ def peekNextMeaningfulChar(lines, filePos):
 
 
 def parseFile(mappingFile, inputFiles):
-  fg = FunctionGenerator("fakeFile")
+    fg = FunctionGenerator(mappingFile)
 
-  with open("mappings.map", 'w') as mapOutput:
     for inputFile in inputFiles:
       outputFile = inputFile + "i"
 
@@ -500,7 +509,7 @@ def parseFile(mappingFile, inputFiles):
 
         # Last step, retrieve the generated code and insert it at the end
         if firstFilename != filenameStr:
-            print "Error: Stephen yang made the wrong assumption about EOF"
+            print "Error: Stephen Yang made the wrong assumption about EOF"
 
         lines.append("# 1 \"generatedCode.h\" 3\n")
         recFns = fg.getRecordFunctionDefinitionsFor(firstFilename)
@@ -513,6 +522,8 @@ def parseFile(mappingFile, inputFiles):
           output.write(line)
 
         output.close()
+
+    fg.outputMappingFile(mappingFile)
 
 #    mapOutput.write(json.dumps({'mappings':mappingsAsAList, 'metadata':metadata},
 #                                sort_keys=True, indent=4, separators=(',', ': ')))
@@ -530,5 +541,9 @@ if __name__ == "__main__":
   arguments = docopt(__doc__, version='LogStripper v1.0')
 
   init()
-  parseFile(arguments['-m'], arguments['FILES'])
+  if arguments['-c']:
+      fg = FunctionGenerator(arguments['-c'])
+      fg.outputCompilationFiles(arguments['-o'])
+  else:
+    parseFile(arguments['-m'], arguments['FILES'])
 

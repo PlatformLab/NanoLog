@@ -17,7 +17,7 @@ fi
 # This should be better abstracted in the future
 RUNTIME_FILES="../../Runtime/Util.cpp ../../Runtime/FastLogger.cpp ../../Runtime/Cycles.cpp ../../Runtime/LogCompressor.cpp"
 O_FILES="Util.o FastLogger.o Cycles.o LogCompressor.o"
-EXTRA_PARAMS="-O3 -std=c++11 -lpthread"
+EXTRA_PARAMS="-O3 -std=c++11 -lpthread -lrt -g"
 
 rm -rf processedFiles 2> /dev/null
 mkdir processedFiles
@@ -27,12 +27,18 @@ for var in "$@"
 do
   FILENAME=${var##*/}
   g++ -O3 -std=c++11 -E ${var} > processedFiles/${FILENAME}.i || exit 1
-  python parser.py  processedFiles/${FILENAME}.i || exit 1
+  python parser.py  -m "mapping.map" processedFiles/${FILENAME}.i || exit 1
   STRIPPED_FILES="$STRIPPED_FILES processedFiles/${FILENAME}.ii"
 done
 
+# Compile the runtime library
+python parser.py -c "mapping.map" -o "../../Runtime/BufferStuffer.h"
 g++ -c $RUNTIME_FILES $EXTRA_PARAMS
 ar rs runtime.a $O_FILES
 rm $O_FILES
 
+# Link it with the user code
 g++ -fpreprocessed $EXTRA_PARAMS $STRIPPED_FILES "runtime.a" || exit 1
+
+# Compile the decompressor
+g++ -o decompressor $RUNTIME_FILES $EXTRA_PARAMS ../../Runtime/LogDecompressor.cpp

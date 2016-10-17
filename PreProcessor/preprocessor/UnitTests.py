@@ -3,6 +3,7 @@
 # and open the template in the editor.
 
 import unittest
+import os
 from parser import *
 from FunctionGenerator import *
 
@@ -226,9 +227,9 @@ decompressPrintArg1(char* &in) {
 
 
 
-\tconst char *fmtString = "Test";
+\tconst char *fmtString = "Empty Print";
 \tconst char *filename = "mar.cc";
-\tint linenum = 293;
+\tconst int linenum = 293;
 
 \tprintf(fmtString);
 }
@@ -314,9 +315,9 @@ decompressPrintArg1(char* &in) {
 	const char* arg1 = in; in += strlen(arg1) + 1;
 	const char* arg3 = in; in += strlen(arg3) + 1;
 
-	const char *fmtString = "Test";
+	const char *fmtString = "Hello World! %u %s %lf %s";
 	const char *filename = "testFile.cc";
-	int linenum = 100;
+	const int linenum = 100;
 
 	printf(fmtString, arg0, arg1, arg2, arg3);
 }
@@ -394,6 +395,178 @@ decompressPrintArg1(char* &in) {
     # different files
 #    def test_generateLogFunctions_clearLogFunctionsForFile(self):
 #        "goodbyte"
+
+
+    def test_outputMappingFile(self):
+        fg = FunctionGenerator()
+        args = []
+        args1 = [
+            Argument("someVariable", FileRange(FilePosition(0,0), FilePosition(1,0)))
+        ]
+
+        fg.generateLogFunctions("A", args, "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("B", args, "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("C", args, "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("D %d", args1, "s.cc", "s.cc", 100)
+
+        fg.unusedIds.append(10)
+
+        # Test serialization and deserialization
+        fg.outputMappingFile("test.json");
+        fg2 = FunctionGenerator("test.json")
+
+        self.assertEqual(fg.fmtId2Code, fg2.fmtId2Code)
+        self.assertEqual(fg.unusedIds, fg2.unusedIds)
+        self.assertEqual(fg.fmtStr2Id, fg2.fmtStr2Id)
+        self.assertEqual(fg.argLists2Cnt, fg2.argLists2Cnt)
+
+        os.remove("test.json")
+
+    def test_loadPartialyMappingFile(self):
+        mapping = {
+            "unusedIds":[1, 2, 3, 4, 5]
+        }
+
+        with open("test.json", 'w') as json_file:
+            json_file.write(json.dumps(mapping, sort_keys=True, indent=4,
+                                                        separators=(',', ': ')))
+
+        fg = FunctionGenerator("test.json")
+        self.assertEqual([], fg.fmtId2Code)
+        self.assertEqual([1, 2, 3, 4, 5], fg.unusedIds)
+        self.assertEqual({}, fg.fmtStr2Id)
+        self.assertEqual({}, fg.argLists2Cnt)
+
+        os.remove("test.json")
+
+    def test_outputCompilationFiles(self):
+        self.maxDiff = None
+        fg = FunctionGenerator()
+        args = []
+        args1 = [
+            Argument("someVariable", FileRange(FilePosition(0,0), FilePosition(1,0)))
+        ]
+
+        fg.generateLogFunctions("A", args, "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("B", args, "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("C", args, "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("D %d", args1, "s.cc", "s.cc", 100)
+
+        fg.unusedIds.append(10)
+
+        expectedContents = """#ifndef BUFFER_STUFFER
+#define BUFFER_STUFFER
+
+#include "FastLogger.h"
+
+// Compression Code
+inline void
+compressArgs1(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {
+
+}
+
+inline void
+compressArgs2(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {
+
+}
+
+inline void
+compressArgs3(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {
+
+}
+
+inline void
+compressArgs4(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {
+	PerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(out);
+	out += 1;
+	int arg0 = *reinterpret_cast<int*>(in); in += sizeof(int);
+
+	nib[0].first = PerfUtils::pack(out, arg0);
+}
+
+// Decompression Code
+inline void
+decompressPrintArg1(char* &in) {
+	PerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(in);
+	in += 0;
+
+
+
+	const char *fmtString = "A";
+	const char *filename = "mar.cc";
+	const int linenum = 293;
+
+	printf(fmtString);
+}
+
+inline void
+decompressPrintArg2(char* &in) {
+	PerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(in);
+	in += 0;
+
+
+
+	const char *fmtString = "B";
+	const char *filename = "mar.cc";
+	const int linenum = 294;
+
+	printf(fmtString);
+}
+
+inline void
+decompressPrintArg3(char* &in) {
+	PerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(in);
+	in += 0;
+
+
+
+	const char *fmtString = "C";
+	const char *filename = "mar.cc";
+	const int linenum = 200;
+
+	printf(fmtString);
+}
+
+inline void
+decompressPrintArg4(char* &in) {
+	PerfUtils::FastLogger::Nibble *nib = reinterpret_cast<PerfUtils::FastLogger::Nibble*>(in);
+	in += 1;
+
+	int arg0 = PerfUtils::unpack<int>(out, nib[0].first);
+
+
+	const char *fmtString = "D %d";
+	const char *filename = "s.cc";
+	const int linenum = 100;
+
+	printf(fmtString, arg0);
+}
+
+void (*compressFnArray[4])(char* &in, char* &out, uint32_t maxSizeOfCompressedArgs) {
+	compressArgs1,
+	compressArgs2,
+	compressArgs3,
+	compressArgs4
+};
+
+void (*decompressAndPrintFnArray[4])(char* &in) {
+	decompressPrintArg1,
+	decompressPrintArg2,
+	decompressPrintArg3,
+	decompressPrintArg4
+};
+
+
+#endif /* BUFFER_STUFFER */
+"""
+
+        fg.outputCompilationFiles("test.h")
+        with open("test.h", 'r') as headerFile:
+            contents = headerFile.read();
+            self.assertMultiLineEqual(expectedContents, contents)
+
+
+        os.remove("test.h")
 
 if __name__ == '__main__':
     unittest.main()

@@ -10,12 +10,14 @@
 #include <stdint.h>
 
 #include <string.h>     /* strlen + memcpy*/
+#include <fstream>          // std::ifstream
 
 #include "Cycles.h"
-#include "TimeTrace.h"
 
 #ifndef PACKER_H
 #define PACKER_H
+
+namespace BufferUtils {
 
 /**
  * Below is a collection of pack functions that will attempt to pack a primitive
@@ -36,16 +38,12 @@
  *
  */
 
-
 // For a given unsigned integral ,this function will return the
 // smallest number of bytes that can be used to represent the integral.
 template<typename T>
 inline typename std::enable_if<std::is_integral<T>::value &&
                                 !std::is_signed<T>::value, int>::type
 pack(char **ptr, T val) {
-    if (val == 0)
-        return 0;
-
     // Binary search for the smallest container. It is also worth noting that
     // with -O3, the compiler will strip out extraneous if-statements based on T
     // For example, if T is uint16_t, it would only leave the t < 1U<<8 check
@@ -90,9 +88,6 @@ pack(char **ptr, T val) {
 inline int
 pack(char **ptr, int8_t val)
 {
-    if (val == 0)
-        return 0;
-
     **ptr = val;
     (*ptr)++;
     return 1;
@@ -148,6 +143,25 @@ unpack(char **ptr, uint8_t packResult)
     return -res;
 }
 
+template<typename T>
+inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type
+unpack(std::ifstream &in, uint8_t packResult)
+{
+    T packed = 0;
+
+    if (packResult == 0)
+        return packed;
+
+    if (packResult <= 8) {
+       in.read(reinterpret_cast<char*>(&packed), packResult);
+       return packed;
+    }
+
+    int bytes = packResult - 8;
+    in.read(reinterpret_cast<char*>(&packed), bytes);
+    return -packed;
+}
+
 // Pointer specialization
 template<typename T>
 inline int
@@ -161,14 +175,17 @@ unpackPointer(char **ptr, uint8_t packResult) {
     return (T*)(unpack<uint64_t>(ptr, packResult));
 }
 
+template<typename T>
+inline T*
+unpackPointer(std::ifstream &in, uint8_t packResult) {
+    return (T*)(unpack<uint64_t>(in, packResult));
+}
+
 
 // Floating point specialization
 template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, int>::type
 pack(char **ptr, T val) {
-    if (val == 0.0)
-        return 0;
-
     *((T*)*ptr) = val;
     *ptr += sizeof(T);
     return sizeof(T);
@@ -184,6 +201,20 @@ unpack(char **ptr, uint8_t packResult) {
     *ptr += packResult;
     return res;
 }
+
+template<typename T>
+inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
+unpack(std::ifstream &in, uint8_t packResult) {
+    if (packResult == 0)
+        return 0.0;
+
+    T res = 0.0;
+    in.read(reinterpret_cast<char*>(&res), packResult);
+    
+    return res;
+}
+
+} /* BufferUtils */
 
 
 #endif /* PACKER_H */
