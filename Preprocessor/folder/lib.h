@@ -6,11 +6,11 @@
 
 #define ERROR 1
 
-__attribute__ ((format (printf, 2, 3)))
-static void
-RAMCLOUD_LOG(int logLevel, const char* fmt, ... ) {
-  printf("This is a slow version of the log that did not get replaced: %s\r\n", fmt);
-}
+// __attribute__ ((format (printf, 2, 3)))
+// static void
+// RAMCLOUD_LOG(int logLevel, const char* fmt, ... ) {
+//   printf("This is a slow version of the log that did not get replaced: %s\r\n", fmt);
+// }
 
 // Fake version of RAMCLOUD_LOG that does absolutely nothing
 __attribute__ ((format (printf, 2, 3)))

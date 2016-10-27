@@ -26,7 +26,7 @@ static int numVClients;
 static void
 hiddenInHeaderFilePrint()
 {
-    RAMCLOUD_LOG(ERROR, "Messages in the Header"
+    RAMCLOUD_LOG("Messages in the Header"
         " File"
         );
 }

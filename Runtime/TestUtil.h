@@ -12,19 +12,16 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#ifndef TESTUTIL_H
+#define TESTUTIL_H
 
-// Unfortunately, unit tests based on gtest can't access private members
-// of classes.  If the following uppercase versions of "private" and
-// "protected" are used instead, it works around the problem:  when
-// compiling unit test files (anything that includes TestUtil.h)
-// everything becomes public.
+/**
+ * Test Utilities file that should be included in all the gtests
+ */
 
-#ifdef EXPOSE_PRIVATES
-#define PRIVATE public
-#define PROTECTED public
-#define PUBLIC public
-#else
-#define PRIVATE private
-#define PROTECTED protected
-#define PUBLIC public
+#define EXPOSE_PRIVATES
+
 #endif
+
+#endif /* TESTUTIL_H */
+

@@ -1,49 +1,80 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+/* Copyright (c) 2016 Stanford University
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR(S) DISCLAIM ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL AUTHORS BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-
-/* Includes for types */
 #include <cstddef>
-#include <stdint.h>
-
-#include <string.h>     /* strlen + memcpy*/
 #include <fstream>          // std::ifstream
 
-#include "Cycles.h"
+#include <stdint.h>
 
 #ifndef PACKER_H
 #define PACKER_H
 
-namespace BufferUtils {
-
 /**
- * Below is a collection of pack functions that will attempt to pack a primitive
- * type into an array and return a special code that is to be used to unpack
- * the argument.
+ * This file contains a collection of pack/unpack functions that are used
+ * by the LogCompressor/Decompressor to find the smallest representation
+ * possible for various primitive types and pack/unpack them into a char
+ * array. The current implementation of the pack/unpack functions requires
+ * the passing of a special code that identifies how the primitive was
+ * packed.
  *
- * For documentation sake,
- * Argument sizes is a set of nibbles (4-bits sets) that specify how many
- * bytes are to be used for interpreting an argument. Nibbles are omitted
- * for string arguments and require the presence of a null character to
- * determine size. The values of the nibbles are as follows;
+ * The special code that is returned is a nibble (4-bits sets) that specify
+ * how many bytes are to be used for interpreting an argument. Nibbles are
+ * omitted for string arguments and require the presence of a null character to
+ * determine size. The values of the nibbles are as follows:
  *      (a) From 0 to sizeof(T) -> That many bytes were used to represent
  *          the integral
  *      (b) From 8 to 8 + sizeof(T) - 1 -> That many - 9 bytes were used
  *          to represent a negated integral. Note that it's not worth having
  *          a representation of a negated 8byte number because compaction-wise
- *          it saves us no additional space.
+ *          it saves no additional space.
  *
+ * Note however, that the special code only indicates how many bytes and
+ * whether a negation occurred for the packed primitive. It does not encode
+ * a type and it's also impossible for the C++ type system to infer the
+ * type from the ifstream the unpack() function takes. Thus the user of this
+ * library must encode the type in some other way (The FastLogger's
+ * LogDecompressor achieves this by encoding the type in generated source code).
  */
 
-// For a given unsigned integral ,this function will return the
-// smallest number of bytes that can be used to represent the integral.
+namespace BufferUtils {
+
+
+/**
+ * Packs two 4-bit nibbles into one byte. This is used to pack the special
+ * codes returned by pack() in the compressed log.
+ */
+struct Nibble {
+    uint8_t first:4;
+    uint8_t second:4;
+} __attribute__((packed));
+
+
+/**
+ * Given an unsigned integral and a char array, find the fewest number of 
+ * bytes needed to represent the integral, copy that many bytes into the
+ * char array, and bump the char array pointer.
+ *
+ * \param buffer - char array to copy the integral into
+ * \param val - Unsigned Integral to pack into the buffer
+ *
+ * \return - Special 4-bit value indicating how the primitive was packed
+ */
 template<typename T>
 inline typename std::enable_if<std::is_integral<T>::value &&
                                 !std::is_signed<T>::value, int>::type
-pack(char **ptr, T val) {
+pack(char **buffer, T val) {
     // Binary search for the smallest container. It is also worth noting that
     // with -O3, the compiler will strip out extraneous if-statements based on T
     // For example, if T is uint16_t, it would only leave the t < 1U<<8 check
@@ -79,69 +110,99 @@ pack(char **ptr, T val) {
         else numBytes = 8;
     }
 
-    *reinterpret_cast<T*>(*ptr) = val;
-    *ptr += numBytes;
+    *reinterpret_cast<T*>(*buffer) = val;
+    *buffer += numBytes;
 
     return numBytes;
 }
 
+/**
+ * Below are a series of pack functions that take in a signed integral,
+ * test to see if the value will be smaller if negated, and then invoke
+ * the unsigned version of the pack() function above.
+ *
+ * \param buffer - char array to copy the integral into
+ * \param val - Unsigned Integral to pack into the buffer
+ *
+ * \return - Special 4-bit value indicating how the primitive was packed
+ */
 inline int
-pack(char **ptr, int8_t val)
+pack(char **buffer, int8_t val)
 {
-    **ptr = val;
-    (*ptr)++;
+    **buffer = val;
+    (*buffer)++;
     return 1;
 }
 
 inline int
-pack(char **ptr, int16_t val)
+pack(char **buffer, int16_t val)
 {
     if (val >= 0 || val <= int16_t(-(1<<8)))
-        return pack(ptr, static_cast<uint16_t>(val));
+        return pack(buffer, static_cast<uint16_t>(val));
     else
-        return 8 + pack(ptr, static_cast<uint16_t>(-val));
+        return 8 + pack(buffer, static_cast<uint16_t>(-val));
 }
 
 inline int
-pack(char **ptr, int32_t val)
+pack(char **buffer, int32_t val)
 {
     if (val >= 0 || val <= int32_t(-(1<<24)))
-        return pack(ptr, static_cast<uint32_t>(val));
+        return pack(buffer, static_cast<uint32_t>(val));
     else
-        return 8 + pack(ptr, static_cast<uint32_t>(-val));
+        return 8 + pack(buffer, static_cast<uint32_t>(-val));
 }
 
 inline int
-pack(char **ptr, int64_t val)
+pack(char **buffer, int64_t val)
 {
     if (val >= 0 || val <= int64_t(-(1LL<<56)))
-        return pack(ptr, static_cast<uint64_t>(val));
+        return pack(buffer, static_cast<uint64_t>(val));
     else
-        return 8 + pack(ptr, static_cast<uint64_t>(-val));
+        return 8 + pack(buffer, static_cast<uint64_t>(-val));
 }
 
+/**
+ * Pointer specialization for the pack template that will copy the value
+ * without compression.
+ *
+ * \param buffer - char array to copy the integral into
+ * \param val - Unsigned Integral to pack into the buffer
+ *
+ * \return - Special 4-bit value indicating how the primitive was packed
+ */
 template<typename T>
-inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type
-unpack(char **ptr, uint8_t packResult)
-{
-    T res = 0;
-    if (packResult == 0)
-        return res;
-
-    if (packResult <= 8) {
-        res = *reinterpret_cast<T*>(*ptr);
-        uint64_t mask = (packResult == 8) ? -1 : (1ULL<<(8*packResult)) - 1;
-        res &= mask;
-        *ptr += packResult;
-        return res;
-    }
-
-    int bytes = packResult - 8;
-    res = *reinterpret_cast<T*>(*ptr);
-    res &= ((1LL<<(8*bytes)) - 1);
-    *ptr += bytes;
-    return -res;
+inline int
+pack(char **buffer, T* pointer) {
+    // TODO(syang0) Implement and benchmark an alterative where we take
+    // differences in pointer values and pack that.
+    return pack<uint64_t>(buffer, reinterpret_cast<uint64_t>(pointer));
 }
+
+/**
+ * Floating point specialization for the pack template that will copy the value
+ * without compression.
+ *
+ * \param buffer - char array to copy the integral into
+ * \param val - Unsigned Integral to pack into the buffer
+ *
+ * \return - Special 4-bit value indicating how the primitive was packed
+ */
+template<typename T>
+inline typename std::enable_if<std::is_floating_point<T>::value, int>::type
+pack(char **buffer, T val) {
+    *((T*)*buffer) = val;
+    *buffer += sizeof(T);
+    return sizeof(T);
+}
+
+/**
+ * Below are various unpack functions that will take an input stream and
+ * the special code and return the original value.
+ *
+ * \param in - std::ifstream to read the data from
+ * \param packResult - special 4-bit code returned from pack()
+ * \return - original full-width value before compression
+ */
 
 template<typename T>
 inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type
@@ -161,45 +222,10 @@ unpack(std::ifstream &in, uint8_t packResult)
     in.read(reinterpret_cast<char*>(&packed), bytes);
     return -packed;
 }
-
-// Pointer specialization
-template<typename T>
-inline int
-pack(char **ptr, T* pointer) {
-    return pack<uint64_t>(ptr, reinterpret_cast<uint64_t>(pointer));
-}
-
-template<typename T>
-inline T*
-unpackPointer(char **ptr, uint8_t packResult) {
-    return (T*)(unpack<uint64_t>(ptr, packResult));
-}
-
 template<typename T>
 inline T*
 unpackPointer(std::ifstream &in, uint8_t packResult) {
     return (T*)(unpack<uint64_t>(in, packResult));
-}
-
-
-// Floating point specialization
-template<typename T>
-inline typename std::enable_if<std::is_floating_point<T>::value, int>::type
-pack(char **ptr, T val) {
-    *((T*)*ptr) = val;
-    *ptr += sizeof(T);
-    return sizeof(T);
-}
-
-template<typename T>
-inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
-unpack(char **ptr, uint8_t packResult) {
-    if (packResult == 0)
-        return 0.0;
-
-    T res = *reinterpret_cast<T*>(*ptr);
-    *ptr += packResult;
-    return res;
 }
 
 template<typename T>
@@ -213,9 +239,7 @@ unpack(std::ifstream &in, uint8_t packResult) {
     
     return res;
 }
-
 } /* BufferUtils */
-
 
 #endif /* PACKER_H */
 

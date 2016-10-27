@@ -1,5 +1,5 @@
-SRCS=Cycles.cpp Util.cpp FastLogger.cpp LogCompressor.cpp LogDecompressor.cpp
-INCLUDES=CacheTrace.h Cycles.h Util.h Packer.h Common.h FastLogger.h
+SRCS=Cycles.cpp Util.cpp FastLogger.cpp LogCompressor.cpp
+INCLUDES=Cycles.h Util.h Packer.h Common.h FastLogger.h BufferUtils.h
 BENCHMARKS=Benchmark.cpp
 TESTS=PackerTest.cpp FastLoggerTest.cpp
 
@@ -19,19 +19,19 @@ libPerfUtils.a: $(SRCS) $(INCLUDES)
 $(OBJECTS) : %.o :%.cpp
 	g++ $(CXX_ARGS) -c $< -o $@
 
-test: $(TESTS) $(SRCS) $(INCLUDES) libgtest.a
-	g++ -g -$(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) libgtest.a -DEXPOSE_PRIVATES -o test
+test: $(TESTS) $(OBJECTS) $(INCLUDES) libgtest.a
+	g++ -g -$(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) $(GTEST_DIR)/src/gtest_main.cc libgtest.a -DEXPOSE_PRIVATES -o test
 
-libgtest.a: $(OBJECTS)
+libgtest.a:
 	g++ -std=c++11 -isystem $(GTEST_DIR)/include -I$(GTEST_DIR) -pthread -c $(GTEST_DIR)/src/gtest-all.cc
 	ar -rv libgtest.a gtest-all.o
 	rm gtest-all.o
-
-TTTest: TTTest.cpp
-	g++ -o TTTest -std=c++0x  TTTest.cpp TimeTrace.cpp Cycles.cpp
 
 benchmark : $(SRCS) $(INCLUDES)
 	g++ -o benchmark -O3 -std=c++0x $(SRCS)  $(BENCHMARKS) -lpthread -lrt
 
 clean:
-	rm -f libPerfUtils.a TTTest test benchmark *.o *.gch *.log *.a
+	rm -f TTTest test benchmark compressedLog *.o *.gch *.log
+
+clean-all: clean
+	rm -f libPerfUtils.a

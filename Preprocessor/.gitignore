@@ -2,6 +2,8 @@
 a.out
 *.o
 *.a
+.idea
 
 decompressor
 compressedLog
+processedFiles

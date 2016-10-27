@@ -1,14 +1,16 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
-/* 
- * File:   LogCompressor.h
- * Author: syang0
+/* Copyright (c) 2016 Stanford University
  *
- * Created on September 30, 2016, 2:21 AM
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR(S) DISCLAIM ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL AUTHORS BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #ifndef LOGCOMPRESSOR_H
@@ -16,66 +18,111 @@
 
 #include <aio.h>                /* POSIX AIO */
 #include <condition_variable>
-#include <mutex>
-#include <thread>
-
 #include <fcntl.h>
+#include <mutex>
 #include <sys/stat.h>
+#include <thread>
 #include <xmmintrin.h>
 
-
 namespace PerfUtils {
+/**
+ * LogCompressor manages a thread that will pull items off the thread local
+ * StagingBuffers in the FastLogger System and compress them into an output
+ * file.
+ */
 class LogCompressor {
 public:
-    static const bool useAIO = true;
     void sync();
     void exit();
 
-    void threadMain();
     void printStats();
 
-    LogCompressor(const char *logFile="compressedLog");
+    LogCompressor(const char *logFile="/tmp/compressedLog");
     ~LogCompressor();
+
+private:
+    void threadMain();
+    void waitForAIO();
     
 public:
+    // Toggles whether the compressed log file will be outputted via POSIX AIO
+    // or via regular, blocking file writes (for debugging)
+    static const bool USE_AIO = true;
 
-    static const int fileParams = O_WRONLY|O_CREAT|O_NOATIME|O_DSYNC|O_DIRECT;
+    // Controls in what mode the file will be opened in
+    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|O_DSYNC|O_DIRECT;
 
-    // Mutex used to lock the condition variables.
-    std::mutex mutex;
-    
-    std::thread workerThread;
+    // Size of the output buffer
+    static const uint32_t BUFFER_SIZE = 1<<26;
 
-    std::condition_variable workAdded;
-    std::condition_variable queueEmptied;
+    // File handle for the output file; should only be opened once at the
+    // construction of the LogCompressor
     int outputFd;
 
-    bool run;
-    bool syncRequested;
-    uint32_t numBuffersProcessed;
-    uint64_t cyclesSearchingForWork;
-    uint64_t cyclesAioAndFsync;
-    uint64_t cyclesCompressing;
-    uint64_t padBytesWritten;
-    uint64_t totalBytesRead;
-    uint64_t totalBytesWritten;
-    uint64_t eventsProcessed;
-
-    bool hasOustandingOperation;
+    // POSIX AIO structure used to communicate requests
     struct aiocb aioCb;
 
-    uint32_t bufferSize;
+    // Indicates there's an operation in aioCb that should be waited on
+    bool hasOustandingOperation;
+
+    // Background thread that polls the various staging buffer, compresses
+    // the staged records, and outputs it to a file.
+    std::thread workerThread;
+
+    // Flag indicating whether the LogCompressor thread should be running
+    bool run;
+
+    // Mutex to protect the condition variables
+    std::mutex mutex;
+
+    // Signal for when the LogCompress thread should wake up. 
+    std::condition_variable workAdded;
+
+    // Signaled when the LogCompressor makes a complete pass through all the
+    // thread staging buffers and finds no log messages to output.
+    std::condition_variable hintQueueEmptied;
+    
+    // Level trigger for the LogCompressor to make a complete pass through
+    // all the staging buffers before pausing
+    bool syncRequested;
 
     // Used to stage the compressed log messages before passing it on to the
     // POSIX AIO library.
     char *outputBuffer;
 
-    char *endOfOutputBuffer;
-
     // Double buffer for outputBuffer that is used to hold compressed log
     // messages while POSIX AIO outputs it to a file.
     char *posixBuffer;
 
+    // Metric: Number of times when the LogCompressor was able to consume all
+    // the log messages within a staging buffer (i.e. catch up)
+    uint32_t numBuffersProcessed;
+
+    // Metric: Number of times an AIO write was completed.
+    uint32_t numAioWritesCompleted;
+
+    // Metric: Amount of time spent scanning the buffers for work.
+    uint64_t cyclesSearchingForWork;
+
+    // Metric: Amount of time spent on fsync() and writes. Note that if posix
+    // AIO is used, the only the amount of time it takes to submit the job is
+    // recorded.
+    uint64_t cyclesAioAndFsync;
+
+    // Metric: Amount of time spent compressing the dynamic log data
+    uint64_t cyclesCompressing;
+
+    // Metric: Number of pad bytes written to round the file to the nearest 512B
+    uint64_t padBytesWritten;
+
+    // Metric: Number of bytes read in from the staging buffers
+    uint64_t totalBytesRead;
+
+    // Metric: Number of bytes written to the output file (includes padding)
+    uint64_t totalBytesWritten;
+
+    // Metric: Number of events compressed and outputted.
+    uint64_t eventsProcessed;
 };
 }; // namespace PerfUtils
 

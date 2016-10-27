@@ -1,0 +1,8 @@
+benchmark
+generated/
+
+*.a
+*.o
+*.i
+*.ii
+*.map

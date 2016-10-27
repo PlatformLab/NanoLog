@@ -1,26 +1,30 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
-
-/*
- * File:   dmangler.cpp
- * Author: syang0
+/* Copyright (c) 2016 Stanford University
  *
- * Created on October 12, 2016, 1:49 AM
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR(S) DISCLAIM ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL AUTHORS BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
 #include <cstdlib>
-#include <fstream>          // std::ifstream
+#include <fstream>
 
 #include "BufferUtils.h"
 #include "BufferStuffer.h"
 
 using namespace BufferUtils;
 
-/*
- *
+/**
+ * Simple program to decompress log files produced by the FastLogging System.
+ * Note that this executable must be compiled with the same BufferStuffer.h
+ * as the LogCompressor that generated the compressedLog for this to work.
  */
 int main(int argc, char** argv) {
     uint32_t bufferSize = 1<<26;
@@ -33,10 +37,9 @@ int main(int argc, char** argv) {
     char *scratchBufferSpace = static_cast<char*>(calloc(1, bufferSize));
     if (!scratchBufferSpace) {
         printf("Malloc of a %d byte array as a staging buffer "
-                "for decompressing failed\r\n", 1<<26);
+                "for decompressing failed\r\n", bufferSize);
         exit(-1);
     }
-
 
     int linesToPrint = std::stoi(argv[2]);
     std::ifstream in(argv[1], std::ifstream::binary);
@@ -51,36 +54,30 @@ int main(int argc, char** argv) {
         EntryType nextType = BufferUtils::peekEntryType(in);
 
         if (nextType == EntryType::LOG_MSG) {
-            DecompressedMetadata dm = BufferUtils::decompressMetadata(in, lastFmtId, lastTimestamp);
+            DecompressedMetadata dm =
+                BufferUtils::decompressMetadata(in, lastFmtId, lastTimestamp);
 
-            printf("\r\nDealing with fmtId=%u\r\n", dm.fmtId);
-
-            // Decompress can fail if we haven't read enough into the buffer
             decompressAndPrintFnArray[dm.fmtId](in);
 
             lastFmtId = dm.fmtId;
             lastTimestamp = dm.timestamp;
 
         } else if (nextType == EntryType::CHECKPOINT) {
-            // Read in the rest of the checkpoint and process
+            // Read in the rest of the checkpoint and don't process (for now)
             Checkpoint cp = BufferUtils::readCheckpoint(in);
             printf("Found a checkpoint\r\n");
         } else if (nextType == EntryType::INVALID) {
             // It's possible we hit a pad byte, double check.
-
-            //TODO(syang0) Is this really where this logic should go?
-            //TODO(syang0) This can be done faster if we know the file will
-            // be offset by 512 bytes at a time.
-            while(in.peek() == 0 && in.good()) {
+            while(in.peek() == 0 && in.good())
                 in.get();
-            }
         } else {
-            printf("Entry type read in metadata does not match anything...at %d\r\n", nextType);
+            printf ("Entry type read in metadata does not match anything "
+                                                        "(%d)\r\n", nextType);
         }
     }
 
-    printf("\r\n\r\nDecompression Complete\r\n");
-
+    printf("\r\n\r\nDecompression Complete after printing %d lines\r\n",
+            linesPrinted);
 
     return 0;
 }
