@@ -15,7 +15,7 @@ fi
 # objdump -s -j .rodata ./a.out
 
 # This should be better abstracted in the future
-RUNTIME_FILES="../Runtime/Util.cpp ../Runtime/FastLogger.cpp ../Runtime/Cycles.cpp ../Runtime/LogCompressor.cpp"
+RUNTIME_FILES="../runtime/Util.cc ../runtime/FastLogger.cc ../runtime/Cycles.cc ../runtime/LogCompressor.cc"
 O_FILES="Util.o FastLogger.o Cycles.o LogCompressor.o"
 EXTRA_PARAMS="-O3 -std=c++11 -lpthread -lrt -g"
 
@@ -32,7 +32,7 @@ do
 done
 
 # Compile the runtime library
-python parser.py --map="mapping.map" --output="../Runtime/BufferStuffer.h"
+python parser.py --map="mapping.map" --output="../runtime/BufferStuffer.h"
 g++ -c $RUNTIME_FILES $EXTRA_PARAMS
 ar rs runtime.a $O_FILES
 rm $O_FILES
@@ -41,4 +41,4 @@ rm $O_FILES
 g++ -fpreprocessed $EXTRA_PARAMS $STRIPPED_FILES "runtime.a" || exit 1
 
 # Compile the decompressor
-g++ -o decompressor $RUNTIME_FILES $EXTRA_PARAMS ../Runtime/LogDecompressor.cpp
+g++ -o decompressor $RUNTIME_FILES $EXTRA_PARAMS ../runtime/LogDecompressor.cc

@@ -21,12 +21,12 @@ static int numVClients;
 #include <stdio.h>
 #include <stdint.h>
 
-#define LOG RAMCLOUD_LOG
+#define LOG FAST_LOG
 
 static void
 hiddenInHeaderFilePrint()
 {
-    RAMCLOUD_LOG("Messages in the Header"
+    FAST_LOG("Messages in the Header"
         " File"
         );
 }

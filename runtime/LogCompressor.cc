@@ -95,7 +95,7 @@ LogCompressor::waitForAIO() {
         // and could signal back when ready via a register.
         while (aio_error(&aioCb) == EINPROGRESS);
         int err = aio_error(&aioCb);
-        int ret = aio_return(&aioCb);
+        ssize_t ret = aio_return(&aioCb);
 
         if (err != 0) {
             printf("LogCompressor's POSIX AIO failed with %d: %s\r\n",
@@ -115,7 +115,7 @@ void
 LogCompressor::threadMain() {
     FastLogger::StagingBuffer *buff = NULL;
     uint32_t lastBufferIndex = 0;
-    uint32_t currentBufferIndex = 0;
+    size_t currentBufferIndex = 0;
 
     uint64_t lastTimestamp = 0;
     uint32_t lastFmtId = 0;
@@ -198,9 +198,9 @@ LogCompressor::threadMain() {
         uint64_t start = Cycles::rdtsc();
 
         // Determine how many pad bytes we will need if O_DIRECT is used
-        uint32_t bytesToWrite = out - outputBuffer;
+        ssize_t bytesToWrite = out - outputBuffer;
         if (FILE_PARAMS & O_DIRECT) {
-            uint32_t bytesOver = bytesToWrite%512;
+            ssize_t bytesOver = bytesToWrite%512;
 
             if (bytesOver != 0) {
                 bytesToWrite = bytesToWrite + 512 - bytesOver;
@@ -287,17 +287,24 @@ void LogCompressor::printStats() {
         }
     }
 
+    double totalBytesWrittenDouble = static_cast<double>(totalBytesWritten);
+    double totalBytesReadDouble = static_cast<double>(totalBytesRead);
+    double padBytesWrittenDouble = static_cast<double>(padBytesWritten);
+    double numEventsProcessedDouble = static_cast<double>(eventsProcessed);
+    double logMissesDouble = static_cast<double>(logMisses);
+
     printf("Wrote %lu events (%0.2lf MB) in %0.3lf seconds "
             "(%0.3lf seconds spent compressing)\r\n",
             eventsProcessed,
-            totalBytesWritten/1.0e6,
+            totalBytesWrittenDouble/1.0e6,
             outputTime,
             compressTime);
 
     printf("There were %u buffers processed, %u file flushes, and "
             "%lu events were  missed due to lack of space (%0.2lf%%)\r\n",
                 numBuffersProcessed, numAioWritesCompleted, logMisses,
-                100.0*logMisses/(eventsProcessed + logMisses));
+                100.0*logMissesDouble/(numEventsProcessedDouble +
+                                                            logMissesDouble));
     printf("Final fsync time was %lf sec\r\n",
                 Cycles::toSeconds(stop - start));
 
@@ -305,22 +312,23 @@ void LogCompressor::printStats() {
             "\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n"
             "\t%0.2lf MB/s or %0.2lf ns/byte raw output\r\n"
             "\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
-            (totalBytesWritten/1.0e6)/(workTime),
-            (workTime*1.0e9)/totalBytesWritten,
-            (totalBytesWritten/1.0e6)/outputTime,
-            (outputTime)*1.0e9/totalBytesWritten,
-            (totalBytesWritten/1.0e6)/numBuffersProcessed,
-            totalBytesWritten*1.0/eventsProcessed);
+            (totalBytesWrittenDouble/1.0e6)/(workTime),
+            (workTime*1.0e9)/totalBytesWrittenDouble,
+            (totalBytesWrittenDouble/1.0e6)/outputTime,
+            (outputTime)*1.0e9/totalBytesWrittenDouble,
+            (totalBytesWrittenDouble/1.0e6)/numBuffersProcessed,
+            totalBytesWrittenDouble*1.0/numEventsProcessedDouble);
 
     printf("\t%0.2lf ns/event in total\r\n"
             "\t%0.2lf ns/event compressing\r\n",
-            (outputTime + compressTime)*1.0e9/eventsProcessed,
-            compressTime*1.0e9/eventsProcessed);
+            (outputTime + compressTime)*1.0e9/numEventsProcessedDouble,
+            compressTime*1.0e9/numEventsProcessedDouble);
 
     printf("The compression ratio was %0.2lf-%0.2lfx "
             "(%lu bytes in, %lu bytes out, %lu pad bytes)\n",
-                    1.0*totalBytesRead/(totalBytesWritten + padBytesWritten),
-                    1.0*totalBytesRead/totalBytesWritten,
+                    1.0*totalBytesReadDouble/(totalBytesWrittenDouble
+                                                    + padBytesWrittenDouble),
+                    1.0*totalBytesReadDouble/totalBytesWrittenDouble,
                     totalBytesRead,
                     totalBytesWritten,
                     padBytesWritten);

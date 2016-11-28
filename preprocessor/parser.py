@@ -45,7 +45,7 @@ from FunctionGenerator import *
 
 # Log function to search for within the C++ files and perform the replacement
 # and stripping of format strings.
-LOG_FUNCTION = "RAMCLOUD_LOG"
+LOG_FUNCTION = "FAST_LOG"
 
 # Marks which argument of the record function is the static format string
 # and assumes the arguments come after this point.

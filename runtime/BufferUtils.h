@@ -146,11 +146,11 @@ namespace BufferUtils {
      *                                  the pack() nibbles.
      */
     inline void
-    recordMetadata(RecordEntry* re, uint32_t fmtId, uint32_t maxArgSize,
-                        uint32_t compressedArgsMetaBytes) {
+    recordMetadata(RecordEntry* re, uint32_t fmtId, size_t maxArgSize,
+                        uint8_t compressedArgsMetaBytes) {
         re->fmtId = fmtId;
         re->timestamp = PerfUtils::Cycles::rdtsc();
-        re->entrySize = maxArgSize += sizeof(RecordEntry);
+        re->entrySize = static_cast<uint32_t>(maxArgSize + sizeof(RecordEntry));
         re->argMetaBytes = compressedArgsMetaBytes;
     }
 
@@ -179,10 +179,12 @@ namespace BufferUtils {
         *out += sizeof(CompressedMetadata);
 
         mo->entryType = EntryType::LOG_MSG;
-        mo->additionalFmtIdBytes =
-                BufferUtils::pack(out, re->fmtId - lastFmtId) - 1;
-        mo->additionalTimestampBytes =
-                BufferUtils::pack(out, re->timestamp - lastTimestamp) - 1;
+
+        // Bitmask is needed to prevent -Wconversion warnings
+        mo->additionalFmtIdBytes = 0x03 & static_cast<uint8_t>(
+                BufferUtils::pack(out, re->fmtId - lastFmtId) - 1);
+        mo->additionalTimestampBytes = 0x07 & static_cast<uint8_t>(
+                    BufferUtils::pack(out, re->timestamp - lastTimestamp) - 1);
     }
 
     /**
@@ -205,9 +207,11 @@ namespace BufferUtils {
         assert(cm.entryType == EntryType::LOG_MSG);
         
         dm.fmtId =
-            BufferUtils::unpack<uint32_t>(in, cm.additionalFmtIdBytes + 1);
+            BufferUtils::unpack<uint32_t>(in,
+                        static_cast<uint8_t>(cm.additionalFmtIdBytes + 1));
         dm.timestamp =
-            BufferUtils::unpack<uint64_t>(in, cm.additionalTimestampBytes + 1);
+            BufferUtils::unpack<uint64_t>(in,
+                        static_cast<uint8_t>(cm.additionalTimestampBytes + 1));
 
         dm.fmtId += lastFmtId;
         dm.timestamp += lastTimestamp;
@@ -253,7 +257,7 @@ namespace BufferUtils {
      */
     static inline bool
     insertCheckpoint(char** out, char *outLimit) {
-        if (outLimit - *out < sizeof(Checkpoint))
+        if (static_cast<uint64_t>(outLimit - *out) < sizeof(Checkpoint))
             return false;
 
         Checkpoint *ck = reinterpret_cast<Checkpoint*>(*out);

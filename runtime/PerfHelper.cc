@@ -12,16 +12,27 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#ifndef TESTUTIL_H
-#define TESTUTIL_H
 
-/**
- * Test Utilities file that should be included in all the gtests
- */
+#include <stdint.h>
 
-#define EXPOSE_PRIVATES
+namespace PerfHelper {
 
-#endif
+/// Flush the CPU data cache by reading and writing 100MB of new data.
+void
+flushCache()
+{
+    int hundredMegs = 100 * 1024 * 1024;
+    volatile char* block = new char[hundredMegs];
+    for (int i = 0; i < hundredMegs; i++)
+        block[i] = 1;
+    delete[] block;
+}
 
-#endif /* TESTUTIL_H */
+/// Used in functionCall().
+uint64_t
+plusOne(uint64_t x)
+{
+    return x + 1;
+}
 
+}

@@ -19,6 +19,6 @@ RAMCLOUD_NOP(int logLevel, const char* fmt, ... ) {
 }
 
 static void
-FAST_LOG(int logLevel, uint32_t id, ...) {
+FAST_LOG_REAL(int logLevel, uint32_t id, ...) {
     printf("Fast Log! %u\n", id);
 }

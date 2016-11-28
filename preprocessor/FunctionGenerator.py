@@ -126,6 +126,13 @@ class FunctionGenerator(object):
             oFile.write("#include <fstream>     // for decompression\n")
             oFile.write("#include <string>\n\n")
 
+            # Some of the functions/variables output below are for debugging
+            # purposes only (i.e. they're not used in their current form), so
+            # we squash all the gcc complaints about unused functions.
+            oFile.write("#pragma GCC diagnostic push\n")
+            oFile.write("#pragma GCC diagnostic ignored \"-Wunused-function\"\n")
+            oFile.write("#pragma GCC diagnostic ignored \"-Wunused-variable\"\n\n")
+
             # Output the record/compress/decompress functions in a separate
             # namespace
             oFile.write("// Record code in an empty namespace(for debugging)\n")
@@ -169,6 +176,9 @@ class FunctionGenerator(object):
                                                         % len(allFmtStrings))
             oFile.write(",\n".join(allFmtStrings))
             oFile.write("\n};")
+
+            oFile.write("// Pop -Wunused-function")
+            oFile.write("#pragma GCC diagnostic pop")
 
             oFile.write("\n\n#endif /* BUFFER_STUFFER */\n")
 
@@ -292,9 +302,9 @@ class FunctionGenerator(object):
         recordCode = recordDeclaration + " {\n" # start function
 
         if strlenDeclarationsString:
-            recordCode += "\tint %s;\n" % strlenDeclarationsString
+            recordCode += "\tsize_t %s;\n" % strlenDeclarationsString
 
-        recordCode += "\tint maxSizeOfArgs = %s + %s;\n" % \
+        recordCode += "\tsize_t maxSizeOfArgs = %s + %s;\n" % \
                                     (primitiveSizeSumString, strlenSumString)
 
         recordCode += "\t%s *re = %s(maxSizeOfArgs);\n\n" % \
@@ -351,12 +361,12 @@ class FunctionGenerator(object):
         for i, idx in enumerate(primitiveArgIds):
             mem = "first" if (i%2 == 0) else "second"
             arrIndex = i/2
-            compressionCode += "\tnib[%d].%s = %s(out, arg%d);\n" \
+            compressionCode += "\tnib[%d].%s = 0x07 & static_cast<uint8_t>(%s(out, arg%d));\n" \
                                                 % (arrIndex, mem, PACK_FN, idx)
 
         # Step 3: Figure out size of strings and just memcpy it
         if stringArgIds:
-            compressionCode += "\n\tint stringBytes = re->entrySize - (%s) - " \
+            compressionCode += "\n\tsize_t stringBytes = re->entrySize - (%s) - " \
                         "sizeof(%s);\n" % (primitiveSizeSumString, RECORD_ENTRY)
             compressionCode += "\tmemcpy(*out, args, stringBytes);\n" \
                             "\targs += stringBytes;\n\t*out += stringBytes;\n"
@@ -400,10 +410,12 @@ class FunctionGenerator(object):
 
         # Step 4: Final Printout
         if argTypes:
-            decompressionCode += "\n\tprintf(fmtString, %s);\n" % ", ".join(
-                        ["arg%d" % idx for idx, type in enumerate(argTypes)])
+            decompressionCode += "\n\tprintf(\"%s\", %s);\n" % (
+                fmtString,
+                ", ".join(
+                    ["arg%d" % idx for idx, type in enumerate(argTypes)]))
         else:
-            decompressionCode += "\n\tprintf(fmtString);\n"
+            decompressionCode += "\n\tprintf(\"%s\");\n" % fmtString
 
         decompressionCode += "}\n"
 
