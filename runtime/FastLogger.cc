@@ -24,6 +24,82 @@ __thread FastLogger::StagingBuffer* FastLogger::stagingBuffer = NULL;
 std::vector<FastLogger::StagingBuffer*> FastLogger::threadBuffers;
 std::mutex FastLogger::bufferMutex;
 
+// Slow path
+char*
+FastLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
+{
+    const char *endOfBuffer = storage + BUFFER_SIZE;
+
+    // There's a subtle point here, all the checks for remaining
+    // space are strictly < or >, not <= or => because if we allow
+    // the record and print positions to overlap, we can't tell
+    // if the buffer either completely full or completely empty.
+    // Doing this check here ensures that == means completely empty.
+
+    while (minFreeSpace <= nbytes) {
+        // Since readHead can be updated in a different thread, we
+        // save a consistent copy of it here to do calculations on
+        char *cachedReadPos = consumerPos;
+
+        if (cachedReadPos <= producerPos) {
+            minFreeSpace = endOfBuffer - producerPos;
+
+            if (minFreeSpace > nbytes)
+                return producerPos;
+
+            // Not enough space at the end of the buffer; wrap around
+            //TODO(syang0) I think a lock is needed here in case of reordering
+            endOfRecordedSpace = producerPos;
+            producerPos = storage;
+        }
+
+        minFreeSpace = cachedReadPos - producerPos;
+
+        // Needed to prevent infinite loops in tests
+        if (!blocking && minFreeSpace <= nbytes)
+            return nullptr;
+    }
+
+    return producerPos;
+}
+
+//TODO(syang0) There's a problem here, we're going to have to peek
+// twice to get everything in case of a wrap around.
+/**
+ * Peek at the data available for consumption within the stagingBuffer.
+ * The consumer should also invoke consume() to release space back
+ * to the producer. This can and should be done piece-wise where a
+ * large peek can be consume()-ed in smaller pieces to prevent blocking
+ * the producer.
+ *
+ * \param[out] bytesAvailable
+ *      Number of bytes consumable
+ *
+ * \return
+ *      Pointer to the consumable space
+ */
+char*
+FastLogger::StagingBuffer::peek(uint64_t* bytesAvailable)
+{
+    // Save a consistent copy of recordHead
+    char *cachedRecordHead = producerPos;
+
+    if (cachedRecordHead < consumerPos) {
+        //TODO(syang0) LocK? See reserveSpaceInternal
+        *bytesAvailable = endOfRecordedSpace - consumerPos;
+
+        if (*bytesAvailable > 0)
+            return consumerPos;
+
+        // Roll over
+        consumerPos = storage;
+    }
+
+    *bytesAvailable = cachedRecordHead - consumerPos;
+    return consumerPos;
+}
+
+
 /**
  * Stops the LogCompressor thread.
  *

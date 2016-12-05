@@ -13,6 +13,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+/**
+ * This file contains functions/variables needed to support the operations
+ * benchmarked by Perf.cc
+ */
+
 #ifndef PERFHELPER_H
 #define PERFHELPER_H
 
@@ -84,6 +89,21 @@ static int (*functionArray[50])() {
     emptyFunction<49>
 };
 
+
+/*
+ * This function just discards its argument. It's used to make it
+ * appear that data is used,  so that the compiler won't optimize
+ * away the code we're trying to measure.
+ *
+ * \param value
+ *      Pointer to arbitrary value; it's discarded.
+ */
+void discard(void* value) {
+    int x = *reinterpret_cast<int*>(value);
+    if (x == 0x43924776) {
+        printf("Value was 0x%x\n", x);
+    }
+}
 } // PerfHelper
 
 #endif  // PERFHELPER_H

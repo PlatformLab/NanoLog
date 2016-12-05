@@ -23,5 +23,9 @@
 #define EXPOSE_PRIVATES
 #endif
 
+#ifndef TESTING
+#define TESTING true
+#endif
+
 #endif /* TESTUTIL_H */
 

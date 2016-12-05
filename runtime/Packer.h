@@ -34,9 +34,9 @@
  * omitted for string arguments and require the presence of a null character to
  * determine size. The values of the nibbles are as follows:
  *      (a) From 0 to sizeof(T) -> That many bytes were used to represent
- *          the integral
+ *          the integer
  *      (b) From 8 to 8 + sizeof(T) - 1 -> That many - 9 bytes were used
- *          to represent a negated integral. Note that it's not worth having
+ *          to represent a negated integer. Note that it's not worth having
  *          a representation of a negated 8byte number because compaction-wise
  *          it saves no additional space.
  *
@@ -46,6 +46,8 @@
  * type from the ifstream the unpack() function takes. Thus the user of this
  * library must encode the type in some other way (The FastLogger's
  * LogDecompressor achieves this by encoding the type in generated source code).
+ *
+ * IMPORTANT NOTE: These compression schemes only work on little-endian machines
  */
 
 namespace BufferUtils {
@@ -55,21 +57,24 @@ namespace BufferUtils {
  * Packs two 4-bit nibbles into one byte. This is used to pack the special
  * codes returned by pack() in the compressed log.
  */
-struct Nibble {
+struct TwoNibbles {
     uint8_t first:4;
     uint8_t second:4;
 } __attribute__((packed));
 
 
 /**
- * Given an unsigned integral and a char array, find the fewest number of 
- * bytes needed to represent the integral, copy that many bytes into the
+ * Given an unsigned integer and a char array, find the fewest number of
+ * bytes needed to represent the integer, copy that many bytes into the
  * char array, and bump the char array pointer.
  *
- * \param buffer - char array to copy the integral into
- * \param val - Unsigned Integral to pack into the buffer
+ * \param[in/out] buffer
+ *      char array pointer used to store the compressed value and bump
+ * \param val
+ *      Unsigned integer to pack into the buffer
  *
- * \return - Special 4-bit value indicating how the primitive was packed
+ * \return
+ *      Special 4-bit value indicating how the primitive was packed
  */
 template<typename T>
 inline typename std::enable_if<std::is_integral<T>::value &&
@@ -78,6 +83,8 @@ pack(char **buffer, T val) {
     // Binary search for the smallest container. It is also worth noting that
     // with -O3, the compiler will strip out extraneous if-statements based on T
     // For example, if T is uint16_t, it would only leave the t < 1U<<8 check
+
+    //TODO(syang0) Is this too costly vs. a simple for loop?
     int numBytes;
     if (val < (1ULL << 32))
     {
@@ -110,6 +117,9 @@ pack(char **buffer, T val) {
         else numBytes = 8;
     }
 
+    // Although we store the entire value here, we take advantage of the fact
+    // that x86-64 is little-endian (storing the least significant bits first)
+    // and lop off the rest by only partially incrementing the buffer pointer
     *reinterpret_cast<T*>(*buffer) = val;
     *buffer += numBytes;
 
@@ -117,14 +127,17 @@ pack(char **buffer, T val) {
 }
 
 /**
- * Below are a series of pack functions that take in a signed integral,
+ * Below are a series of pack functions that take in a signed integer,
  * test to see if the value will be smaller if negated, and then invoke
  * the unsigned version of the pack() function above.
  *
- * \param buffer - char array to copy the integral into
- * \param val - Unsigned Integral to pack into the buffer
+ * \param[in/out] buffer
+ *      char array to copy the value into and bump
+ * \param val
+ *      Unsigned integer to pack into the buffer
  *
- * \return - Special 4-bit value indicating how the primitive was packed
+ * \return
+ *      Special 4-bit value indicating how the primitive was packed
  */
 inline int
 pack(char **buffer, int8_t val)
@@ -165,8 +178,10 @@ pack(char **buffer, int64_t val)
  * Pointer specialization for the pack template that will copy the value
  * without compression.
  *
- * \param buffer - char array to copy the integral into
- * \param val - Unsigned Integral to pack into the buffer
+ * \param[in/out] buffer
+ *      char array to copy the integer into and bump
+ * \param val
+ *      Unsigned integer to pack into the buffer
  *
  * \return - Special 4-bit value indicating how the primitive was packed
  */
@@ -182,8 +197,10 @@ pack(char **buffer, T* pointer) {
  * Floating point specialization for the pack template that will copy the value
  * without compression.
  *
- * \param buffer - char array to copy the integral into
- * \param val - Unsigned Integral to pack into the buffer
+ * \param buffer
+ *      char array to copy the integer into and bump
+ * \param val
+ *      Unsigned integer to pack into the buffer
  *
  * \return - Special 4-bit value indicating how the primitive was packed
  */
@@ -199,9 +216,13 @@ pack(char **buffer, T val) {
  * Below are various unpack functions that will take an input stream and
  * the special code and return the original value.
  *
- * \param in - std::ifstream to read the data from
- * \param packResult - special 4-bit code returned from pack()
- * \return - original full-width value before compression
+ * \param in
+ *      std::ifstream to read the data from
+ * \param packResult
+ *      special 4-bit code returned from pack()
+ *
+ * \return
+ *      original full-width value before compression
  */
 
 template<typename T>

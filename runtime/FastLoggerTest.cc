@@ -28,13 +28,29 @@ class FastLoggerTest : public ::testing::Test {
  protected:
   // You can remove any or all of the following functions if its body
   // is empty.
+  uint32_t bufferSize;
+  uint32_t halfSize;
+  PerfUtils::FastLogger::StagingBuffer *sb;
 
-  FastLoggerTest() {
-    // You can do set-up work for each test here.
+  FastLoggerTest()
+    : bufferSize(PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE)
+    , halfSize(bufferSize/2)
+    , sb(new PerfUtils::FastLogger::StagingBuffer())
+  {
+      static_assert(1024 <= PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE,
+                                "Test requires at least 1KB of buffer space");
   }
 
   virtual ~FastLoggerTest() {
-    // You can do clean-up work that doesn't throw exceptions here.
+    if (sb) {
+        // Since the tests screw with internal state, it's best to
+        // reset them before exiting
+        sb->producerPos = sb->consumerPos = sb->storage;
+        sb->minFreeSpace = 0;
+        delete sb;
+    }
+
+    sb = nullptr;
   }
 
   // If the constructor and destructor are not enough for setting up
@@ -52,148 +68,191 @@ class FastLoggerTest : public ::testing::Test {
 
   // Objects declared here can be used by all tests in the test case for Foo.
 };
-//
-//TEST_F(FastLoggerTest, StagingBuffer_alloc)
-//{
-//    static_assert(1024 <= PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE,
-//            "Test requires at least 1KB of buffer space");
-//    PerfUtils::FastLogger::StagingBuffer *sb =
-//                                    new PerfUtils::FastLogger::StagingBuffer();
-//    char *endOfBuffer =
-//                sb->storage + PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE;
-//
-//    // basic - Case 1: Printer is caught up/slightly behind
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 100U, sb->recordHead);
-//
-//    EXPECT_EQ(sb->storage + 100U, sb->alloc(250));
-//    EXPECT_EQ(sb->storage + 350U, sb->recordHead);
-//
-//    // Case 2: Printer Caught up + Wrap around required
-//    sb->hintContiguouslyAllocable = 0;
-//    sb->cachedReadPointer = sb->recordHead = endOfBuffer - 10;
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 100U, sb->recordHead);
-//
-//    // Case 3: Printer is far-far behind and a wrap around fails
-//    sb->cachedReadPointer = sb->storage + 10;
-//    sb->readHead = sb->cachedReadPointer;
-//    sb->recordHead = endOfBuffer - 10;
-//    EXPECT_EQ(NULL, sb->alloc(100));
-//    EXPECT_EQ(endOfBuffer - 10, sb->recordHead);
-//
-//
-//    // case 4: Printer was far behind, caught up a bit, but is still behind
-//    // with wrap around
-//    sb->cachedReadPointer = sb->storage + 10;
-//    sb->readHead = sb->storage + 100;
-//    sb->recordHead = endOfBuffer - 10;
-//    EXPECT_EQ(NULL, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 100, sb->cachedReadPointer);
-//    EXPECT_EQ(sb->storage + 100, sb->readHead);
-//    EXPECT_EQ(endOfBuffer - 10, sb->recordHead);
-//
-//    // case 5: Printer was far behind but now has caught up, w/ wrap around
-//    sb->cachedReadPointer = sb->storage + 10;
-//    sb->readHead = sb->storage + 101;
-//    sb->recordHead = endOfBuffer - 10;
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-//    EXPECT_EQ(sb->storage + 101, sb->readHead);
-//    EXPECT_EQ(sb->storage + 100, sb->recordHead);
-//
-//    // Exact allocation fails (cannot overlap record/printer pointers)
-//    EXPECT_EQ(NULL, sb->alloc(1));
-//
-//    // Case 6: Printer is behind, but there is still space ahead
-//    sb->readHead = sb->cachedReadPointer = sb->storage + 101;
-//    sb->recordHead = sb->storage;
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-//    EXPECT_EQ(sb->storage + 101, sb->readHead);
-//
-//    // Case 7: Printer is behind, but there is exact space ahead (fail)
-//    sb->readHead = sb->cachedReadPointer = sb->storage + 100;
-//    sb->recordHead = sb->storage;
-//    EXPECT_EQ(NULL, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 100, sb->cachedReadPointer);
-//    EXPECT_EQ(sb->storage + 100, sb->readHead);
-//
-//    // Case 8: Printer is behind, but caught up just enough
-//    sb->cachedReadPointer = sb->storage + 100;
-//    sb->readHead = sb->storage + 101;
-//    sb->recordHead = sb->storage;
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->storage + 101, sb->cachedReadPointer);
-//    EXPECT_EQ(sb->storage + 101, sb->readHead);
-//
-//    // The following two cases (9+10) at this point are just repeating a
-//    // subset of the original few to test for recursion
-//
-//    // Case 9: Printer had wrapped around and there's enough space
-//    sb->cachedReadPointer = endOfBuffer - 50;
-//    sb->readHead = sb->storage + 101;
-//    sb->recordHead = endOfBuffer - 100;
-//    EXPECT_EQ(sb->storage, sb->alloc(100));
-//    EXPECT_EQ(sb->cachedReadPointer, sb->storage + 101);
-//
-//    // Case 10: printer pointer had wrapped around and there's not enough space
-//    sb->cachedReadPointer = endOfBuffer - 50;
-//    sb->readHead = sb->storage + 100;
-//    sb->recordHead = endOfBuffer - 100;
-//    EXPECT_EQ(NULL, sb->alloc(100));
-//    EXPECT_EQ(sb->cachedReadPointer, sb->readHead);
-//
-//    delete sb;
-//}
-//
-//inline void
-//reset() {
-//    if (FastLogger::compressor != NULL) {
-//        delete FastLogger::compressor;
-//        FastLogger::compressor = NULL;
-//    }
-//
-//    bool found = false;
-//    for (FastLogger::StagingBuffer *buff : FastLogger::threadBuffers) {
-//        if (buff == FastLogger::stagingBuffer)
-//            found = true;
-//        delete buff;
-//    }
-//
-//    if (!found && FastLogger::stagingBuffer != NULL)
-//        delete FastLogger::stagingBuffer;
-//
-//    FastLogger::stagingBuffer = NULL;
-//}
-//
-//TEST_F(FastLoggerTest, alloc) {
-//    // If some other test has alloc-ed space, free it.
-//    reset();
-//
-//    ASSERT_EQ(NULL, FastLogger::compressor);
-//    ASSERT_EQ(NULL, FastLogger::stagingBuffer);
-//
-//    char *buff1 = FastLogger::alloc(100);
-//    void *null = NULL;
-//
-//    EXPECT_NE(null, buff1);
-//    EXPECT_NE(null, FastLogger::compressor);
-//    EXPECT_NE(null, FastLogger::stagingBuffer);
-//
-//    LogCompressor *print = FastLogger::compressor;
-//    FastLogger::StagingBuffer *stage = FastLogger::stagingBuffer;
-//
-//    char *buff2 = FastLogger::alloc(100);
-//    EXPECT_EQ(print, FastLogger::compressor);
-//    EXPECT_EQ(stage, FastLogger::stagingBuffer);
-//
-//    EXPECT_EQ(buff1 + 100, buff2);
-//
-//    reset();
-//}
 
-TEST_F(FastLoggerTest, read) {
+TEST_F(FastLoggerTest, StagingBuffer_reserveProducerSpace)
+{
+    EXPECT_EQ(sb->minFreeSpace, bufferSize);
+    EXPECT_EQ(sb->storage, sb->reserveProducerSpace(100));
+    EXPECT_EQ(sb->minFreeSpace, bufferSize);
+
+    // Mimic running out of minFreeSpace
+    sb->minFreeSpace = 0;
+    EXPECT_EQ(sb->storage, sb->reserveProducerSpace(100));
+    EXPECT_EQ(bufferSize, sb->minFreeSpace);
+
+    // Roll over tests are done in reserveSpaceInternal
+}
+
+
+TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal)
+{
+    // Case 1: Empty buffer
+    EXPECT_EQ(bufferSize, sb->minFreeSpace);
+    EXPECT_EQ(sb->storage, sb->reserveSpaceInternal(100));
+
+    // Case 2: Empty buffer but minFreeSpace is out of date
+    sb->minFreeSpace = 0;
+    EXPECT_EQ(sb->storage, sb->reserveSpaceInternal(100));
+    EXPECT_EQ(bufferSize, sb->minFreeSpace);
+
+    // Case 3: Buffer is about half utilized
+    sb->minFreeSpace = 0;
+    sb->consumerPos = sb->storage + halfSize;
+    EXPECT_EQ(sb->storage, sb->reserveSpaceInternal(100));
+    EXPECT_EQ(halfSize, sb->minFreeSpace);
+
+    // Case 4: Out of space in the middle
+    sb->minFreeSpace = 0;
+    sb->producerPos = sb->storage + halfSize - 1;
+    EXPECT_EQ(nullptr, sb->reserveSpaceInternal(100, false));
+    EXPECT_EQ(1U, sb->minFreeSpace);
+
+    // Case 5: Exact space in the middle (should fail)
+    sb->minFreeSpace = 0;
+    sb->producerPos = sb->consumerPos - 100;
+    EXPECT_EQ(nullptr, sb->reserveSpaceInternal(100, false));
+    EXPECT_EQ(100U, sb->minFreeSpace);
+
+    // Case 6: Just over exact space
+    sb->minFreeSpace = 0;
+    sb->producerPos = sb->consumerPos - 101;
+    EXPECT_EQ(sb->producerPos, sb->reserveSpaceInternal(100, false));
+    EXPECT_EQ(101U, sb->minFreeSpace);
+
+    // Case 7: Need roll over, but still not just enough space
+    sb->minFreeSpace = 0;
+    sb->producerPos = sb->storage + bufferSize - 100;
+    sb->consumerPos = sb->storage + 100;
+    EXPECT_EQ(nullptr, sb->reserveSpaceInternal(100, false));
+    EXPECT_EQ(sb->storage, sb->producerPos);
+    EXPECT_EQ(100U, sb->minFreeSpace);
+
+    // Case 8: Need roll over, enough space
+    sb->minFreeSpace = 0;
+    sb->producerPos = sb->storage + bufferSize - 100;
+    sb->consumerPos = sb->storage + 101;
+    EXPECT_EQ(sb->storage, sb->reserveSpaceInternal(100, false));
+    EXPECT_EQ(sb->storage, sb->producerPos);
+    EXPECT_EQ(101U, sb->minFreeSpace);
+}
+
+TEST_F(FastLoggerTest, StagingBuffer_finishReservation) {
+    EXPECT_EQ(sb->storage, sb->producerPos);
+    EXPECT_EQ(bufferSize, sb->minFreeSpace);
+
+    sb->finishReservation(100);
+    EXPECT_EQ(bufferSize, sb->minFreeSpace + 100);
+    EXPECT_EQ(sb->storage + 100, sb->producerPos);
+
+    sb->finishReservation(102);
+    EXPECT_EQ(bufferSize, sb->minFreeSpace + 202);
+    EXPECT_EQ(sb->storage + 202, sb->producerPos);
+}
+
+TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
+    // This tests the asserts in terms of their higher level errors
+
+    // Case 1a: Ran out of space and didn't reserve (Artificial)
+    EXPECT_EQ(bufferSize, sb->minFreeSpace);
+    sb->minFreeSpace = 10;
+    EXPECT_DEATH(sb->finishReservation(100), "nbytes < minFreeSpace");
+    sb->minFreeSpace = bufferSize;
+
+    // Case 1b: Ran out of space and didn't reserve (through API)
+
+    // Get to half
+    sb->reserveSpaceInternal(halfSize);
+    sb->finishReservation(halfSize);
+    sb->consume(halfSize);
+
+    // Allocate and free the two other halves
+    sb->reserveSpaceInternal(halfSize - 1);
+    sb->finishReservation(halfSize - 1);
+    sb->reserveSpaceInternal(halfSize - 1);
+    sb->finishReservation(halfSize - 1);
+
+    // This should free the space for us to alloc
+    sb->consume(halfSize - 1);
+    EXPECT_DEATH(sb->finishReservation(100), "nbytes < minFreeSpace");
+
+    // This should finish it off.
+    sb->reserveSpaceInternal(100);
+    EXPECT_NO_FATAL_FAILURE(sb->finishReservation(100));
+
+    // Case 2: Don't fall of the end (indicates bug in library code)
+    sb->minFreeSpace = 2*bufferSize;
+    EXPECT_DEATH(sb->finishReservation(bufferSize), "BUFFER_SIZE");
+
+    // Case 3: The producer somehow passes the consumer location (library bug)
+    sb->producerPos = sb->storage + halfSize - 50;
+    sb->consumerPos = sb->storage + halfSize + 100;
+    sb->reserveSpaceInternal(100);
+
+    sb->minFreeSpace = 1000;
+    EXPECT_DEATH(sb->finishReservation(999), "nbytes < consumerPos");
+}
+
+TEST_F(FastLoggerTest, peek) {
+    uint64_t bytesAvailable = -1;
+
+    // Case 1: Empty Buffer
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(0U, bytesAvailable);
+
+    // Case 2: There's stuff (via API);
+    sb->reserveProducerSpace(1000);
+    sb->finishReservation(1000);
+    sb->reserveProducerSpace(150);
+
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(1000U, bytesAvailable);
+
+    sb->finishReservation(150);
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(1150U, bytesAvailable);
+
+    sb->consume(1150U);
+
+    // Case 3: Roll over, need double peeks.
+    delete sb;
+    sb = new PerfUtils::FastLogger::StagingBuffer();
+
+    sb->reserveProducerSpace(bufferSize - 100);
+    sb->finishReservation(bufferSize - 100);
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(bufferSize - 100, bytesAvailable);
+    sb->consume(halfSize + 10);
+
+    sb->reserveProducerSpace(halfSize);
+    sb->finishReservation(halfSize);
+
+    // At this point the internal buffer should look something like this
+    //    halfSize bytes to consume
+    //    10 bytes free space
+    //    halfSize - 10 - 100 bytes to consume
+    //    100 bytes to skip (unrecorded space)
+
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(halfSize - 110, bytesAvailable);
+    sb->consume(bytesAvailable - 1);
+
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(1U, bytesAvailable);
+    sb->consume(1);
+
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(halfSize, bytesAvailable);
+    sb->consume(halfSize);
+
+    // At this point we should have no data.
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(0U, bytesAvailable);
+
+    // Put a bit more to finish it off.
+    sb->reserveProducerSpace(10);
+    sb->finishReservation(10);
+    sb->peek(&bytesAvailable);
+    EXPECT_EQ(10U, bytesAvailable);
 }
 
 }; //namespace

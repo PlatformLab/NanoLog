@@ -22,6 +22,7 @@
 #include <assert.h>
 
 #include "Common.h"
+#include "Cycles.h"
 #include "BufferUtils.h"
 #include "LogCompressor.h"
 
@@ -40,24 +41,138 @@ namespace PerfUtils {
  */
 class FastLogger {
 public:
-    class StagingBuffer;
+    /**
+     * Implements a circular FIFO byte queue that is used to hold the dynamic
+     * information of a FastLogger log statement (producer) as it waits
+     * for compression and output via the LogCompressor thread (consumer).
+     */
+    class StagingBuffer {
+    public:
+        // Determines the byte size of the staging buffer. It is fairly large
+        // to ensure that in the best case scenario of 8x compression, we will
+        // end up with ~8MB of data which is optimal for amortizing disk seeks.
+        static const uint32_t BUFFER_SIZE = 1<<26;
+
+        /**
+         * Attempt to reserve contiguous space for the producer without
+         * making it visible to the consumer. The user should invoke
+         * finishReservation() to make this entry visible to the consumer
+         * and shall not invoke this function again until they have
+         * finishAlloc-ed().
+         *
+         * This function will block behind the consumer if there's
+         * not enough space.
+         *
+         * \param nbytes
+         *      Number of bytes to allocate
+         *
+         * \return
+         *      Pointer to at least nbytes of contiguous space
+         */
+        inline char*
+        reserveProducerSpace(size_t nbytes) {
+            // Fast in-line path
+            if (nbytes < minFreeSpace)
+                return producerPos;
+
+            // Slow allocation
+            return reserveSpaceInternal(nbytes);
+        }
+
+        /**
+         * Complement to reserveProducerSpace that makes nbytes from the
+         * producer space visible to the consumer.
+         */
+        inline void
+        finishReservation(size_t nbytes) {
+            assert(nbytes < minFreeSpace);
+            assert(producerPos + nbytes < storage + BUFFER_SIZE);
+            // Don't pass the read head with finish
+            assert(producerPos >= consumerPos
+                            || producerPos + nbytes < consumerPos);
+
+            minFreeSpace -= nbytes;
+            producerPos += nbytes;
+        }
+
+        char* peek(uint64_t *bytesAvailable);
+
+        /**
+         * Consumes the next RecordEntry and advances the internal pointers
+         * for peek().
+         */
+        inline void
+        consume(uint64_t nbytes) {
+            consumerPos += nbytes;
+        }
+
+        StagingBuffer()
+            : producerPos(storage)
+            , endOfRecordedSpace(storage + BUFFER_SIZE)
+            , minFreeSpace(BUFFER_SIZE)
+            , cacheLineSpacer()
+            , consumerPos(storage)
+            , storage()
+        {
+        }
+
+        ~StagingBuffer() {
+            // Flush out all log messages
+            uint64_t remainingData;
+            while (remainingData > 0) {
+                FastLogger::sync();
+                peek(&remainingData);
+            }
+
+            // Mark for deletion in the vector
+            {
+                std::lock_guard<std::mutex> guard(FastLogger::bufferMutex);
+
+                // Erase ourselves from the thread buffer pool.
+                for (size_t i = 0; i < FastLogger::threadBuffers.size(); ++i) {
+                    if (FastLogger::threadBuffers[i] == this) {
+                        FastLogger::threadBuffers[i] = nullptr;
+                    }
+                }
+            }
+        }
+
+    //TODO(syang0) PRIVATE
+    PRIVATE:
+        char* reserveSpaceInternal(size_t nbytes, bool blocking=true);
+
+        // Position within storage[] where the producer may place new data
+        char *producerPos;
+
+        // Marks the end of valid data for the consumer. Set by the producer
+        // on a roll-over
+        char *endOfRecordedSpace;
+
+        // Lower bound on the number of bytes the producer can allocate
+        // without rolling over the producerPos or stalling behind the consumer
+        uint64_t minFreeSpace;
+
+        // An extra cache-line to separate the variables that are primarily
+        // updated/read by the producer (above) from the ones by the
+        // consumer(below)
+        static const uint32_t BYTES_PER_CACHE_LINE = 64;
+        char cacheLineSpacer[BYTES_PER_CACHE_LINE];
+
+        // Position within the storage buffer where the consumer can start
+        // consuming bytes from. This value is only updated by the consumer.
+        char *consumerPos;
+
+        // Backing store used to implement the circular queue
+        char storage[BUFFER_SIZE];
+    };
+
 
     FastLogger();
     static void sync();
     static void exit();
 
-    /**
-     * Reserve space for a RecordEntry within a thread-local staging buffer.
-     * One shall invoke finishAlloc() when the RecordEntry's arguments are
-     * valid and before the next invocation to reserveAlloc().
-     * 
-     * \param argBytes
-     *      Number of bytes needed to store the arguments of the dynamic arguments
-     *
-     * \return          - A RecordEntry to use or NULL if not enough space.
-     */
-    static inline BufferUtils::RecordEntry*
-    reserveAlloc(size_t argBytes) {
+    static inline void
+    initialize() {
         if (stagingBuffer == NULL) {
             std::lock_guard<std::mutex> guard(bufferMutex);
 
@@ -69,275 +184,56 @@ public:
             if (compressor == NULL)
                 compressor = new LogCompressor();
         }
-
-        return stagingBuffer->reserveAlloc(argBytes);
     }
 
     /**
-     * Complementary to reserveAlloc, makes the bytes reserved visible to be
+     * Allocate space for the producer, but do not make it visible to
+     * the consumer. The user should invoke finishAlloc() to make the space
+     * visible and this function should not be invoked again until finishAlloc()
+     * is invoked.
+     *
+     * Note this will block of the buffer is full.
+     *
+     * \param nbytes
+     *      Amount of contiguous space to allocate
+     *
+     * \return
+     *      Pointer to the space
+     */
+    static inline char*
+    reserveAlloc(size_t nbytes)
+    {
+        initialize();
+        return stagingBuffer->reserveProducerSpace(nbytes);
+    }
+
+    /**
+     * Complement to reserveAlloc, makes the bytes reserved visible to be
      * read by the output head.
      *
-     * \param re - RecordEntry that was returned in the reserveAlloc. This is
-     *             only used for debugging purposes.
+     * \param nbytes
+     *      Number of bytes to make visible
      */
     static inline void
-    finishAlloc(BufferUtils::RecordEntry *re)
+    finishAlloc(size_t nbytes)
     {
-        stagingBuffer->finishAlloc(re);
+        stagingBuffer->finishReservation(nbytes);
     }
 
-    /**
-     * Implements a cache friendly circular FIFO queue that is used to hold
-     * the dynamic information of a FastLogger log statement (producer) as
-     * it waits for compression and output via the LogCompressor
-     * thread (consumer).
-     *
-     * The data in the StagingBuffer is roughly structured as
-     * ****************
-     * * Record Entry *
-     * *   Metadata   *
-     * ****************
-     * * Uncompressed *
-     * *   Arguments  *
-     * ****************
-     * * Record Entry *
-     * ....
-     *
-     * Note that Record Entries with their arguments cannot span a wrap
-     * around in the buffer, thus upon reserveAlloc, the entirety of the
-     * Entry must be allocated at once.
-     */
-    class StagingBuffer {
-    public:
-        // Determines the byte size of the staging buffer
-        static const uint32_t BUFFER_SIZE = BufferUtils::BUFFER_SIZE;
-
-        /**
-         * Attempt to reserve some contiguous space for a new record entry
-         * and its corresponding arguments in the staging buffer.
-         *
-         * Note that the user should invoke finishAlloc() to make this entry
-         * visible to the consumer and the user shall not invoke reserveAlloc()
-         * again until they have finishAlloc()ed.
-         *
-         * \return  - pointer to valid space; NULL if not enough space.
-         */
-        inline BufferUtils::RecordEntry*
-        reserveAlloc(size_t argBytes) {
-            // User should not be able to alloc twice in a row
-            assert(reservedSpace == 0);
-
-            // There's a subtle point here, all the checks for remaining
-            // space are strictly < or >, not <= or => because if we allow
-            // the record and print positions to overlap, we can't tell
-            // if the buffer either completely full or completely empty.
-            // Doing this check here ensures that == means completely empty.
-
-            uint64_t reqSpace = sizeof(BufferUtils::RecordEntry) + argBytes;
-            if (hintContiguousRecordSpace > reqSpace) {
-                reservedSpace = reqSpace;
-                return reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
-            }
-
-            // Hint failed, have to read the readHead
-            char *readPos = readHead;
-            const char *endOfBuffer = storage + BUFFER_SIZE;
-
-            if (recordHead >= readPos) {
-                hintContiguousRecordSpace = static_cast<uint32_t>(
-                                                      endOfBuffer - recordHead);
-                if (reqSpace < hintContiguousRecordSpace) {
-                    reservedSpace = reqSpace;
-                    return
-                        reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
-                }
-
-                // Is there enough space if we wrap around?
-                if (static_cast<uint32_t>(readPos - storage) > reqSpace) {
-                    // Clear the last bit of the buffer so that consumer knows
-                    // it's invalid and that it should wrap around
-                    uint64_t bytesToClear = hintContiguousRecordSpace;
-                    if (hintContiguousRecordSpace >
-                            sizeof(BufferUtils::RecordEntry)) {
-                        bytesToClear = sizeof(BufferUtils::RecordEntry);
-                    }
-                    bzero(recordHead, bytesToClear);
-
-                    // Complete wrap around
-                    hintContiguousRecordSpace = static_cast<uint32_t>(
-                                                             readPos - storage);
-                    reservedSpace = reqSpace;
-                    recordHead = storage;
-                    return
-                        reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
-                }
-
-                ++allocFailures;
-                return NULL;
-            } else {
-                hintContiguousRecordSpace = static_cast<uint32_t>(
-                                                          readPos - recordHead);
-                if (hintContiguousRecordSpace > reqSpace) {
-                    reservedSpace = reqSpace;
-                    return
-                        reinterpret_cast<BufferUtils::RecordEntry*>(recordHead);
-                }
-
-                ++allocFailures;
-                return NULL;
-            }
-        }
-
-        /**
-         * Complementary to reserveAlloc() that makes the space reserved
-         * visible to the consumer.
-         * 
-         * \param re - RecordEntry that was return in reserveAlloc(), this is
-         *              only used for assertion checks.
-         */
-        inline void
-        finishAlloc(BufferUtils::RecordEntry* re) {
-            assert(reservedSpace > 0);
-            assert(hintContiguousRecordSpace >= reservedSpace);
-            assert(recordHead == reinterpret_cast<char*>(re));
-            assert(re->entrySize == reservedSpace);
-
-            recordHead += reservedSpace;
-            hintContiguousRecordSpace -= reservedSpace;
-            reservedSpace = 0;
-        }
-
-        /**
-         * Attempt to peek at the next RecordEntry within the staging buffer.
-         * The consumer should invoke consumeNext() to advance peek to the
-         * next entry.
-         *
-         * \param allowRecursion  - Internal parameter to limit recursive calls
-         *
-         * \return      The next recordEntry, null if there isn't one.
-         */
-        BufferUtils::RecordEntry*
-        peek(bool allowRecursion=true)
-        {
-            static const char *endOfBuffer = storage + BUFFER_SIZE;
-            BufferUtils::RecordEntry *re = NULL;
-
-            if (cachedRecordHead >= readHead) {
-                uint32_t readableBytes = static_cast<uint32_t>(
-                                                cachedRecordHead - readHead);
-                if (readableBytes >= sizeof(BufferUtils::RecordEntry)) {
-
-                    re = reinterpret_cast<BufferUtils::RecordEntry*>(readHead);
-                    if (readableBytes < re->entrySize || re->fmtId == 0)
-                        return nullptr;
-
-                    return re;
-                }
-
-                // Will updating the recordHead help?
-                if (cachedRecordHead == recordHead)
-                    return NULL;
-
-                // Since we updated the recordHead, we don't know whether
-                // it's still ahead of the readHead, so we perform a recursive
-                // call.
-                cachedRecordHead = recordHead;
-                if (!allowRecursion)
-                    return NULL;
-
-                return peek(false);
-            } else {
-                uint32_t readableBytes = static_cast<uint32_t>(
-                                                        endOfBuffer - readHead);
-                if (readableBytes >= sizeof(BufferUtils::RecordEntry)) {
-                    re = reinterpret_cast<BufferUtils::RecordEntry*>(readHead);
-                    if (re->fmtId > 0) {
-                        // Having a record entry spanning a roll-over should
-                        // not be possible.
-                        assert (re->entrySize <= readableBytes);
-                        return re;
-                    }
-                }
-
-                // If any of the cases above fail, then a roll-over is needed
-                readHead = storage;
-                return peek(true);
-            }
-        }
-
-        /**
-         * Consumes the next RecordEntry and advances the internal pointers
-         * for peek().
-         */
-        void
-        consumeNext() {
-            BufferUtils::RecordEntry* re = peek();
-            if (re)
-                readHead += re->entrySize;
-        }
-
-        /**
-         * Return the number of failed allocations due to out of space
-         * 
-         * \return - number of failed allocations
-         */
-        uint64_t getNumberOfAllocFailures() {
-            return allocFailures;
-        }
-
-        StagingBuffer()
-            : recordHead(storage)
-            , hintContiguousRecordSpace(BUFFER_SIZE)
-            , reservedSpace(0)
-            , allocFailures(0)
-            , cacheLineSpacer()
-            , readHead(storage)
-            , cachedRecordHead(storage)
-            , storage()
-        {
-            bzero(storage, BUFFER_SIZE);
-        }
-
-    PRIVATE:
-        // Position within storage[] where the next log message can be placed
-        char *recordHead;
-
-        // Hints as to how much contiguous space one can allocate without
-        // rolling over the log head or stalling behind the consumer
-        uint64_t hintContiguousRecordSpace;
-
-        // Amount of contiguous-space reserved in the buffer via reserveAlloc()
-        uint64_t reservedSpace;
-
-        // Metric: number of reserveAlloc() failures
-        uint64_t allocFailures;
-
-        // An extra cache-line to separate the variables that are primarily
-        // updated/read by the producer (above) from the ones by the
-        // consumer(below)
-        static const uint32_t BYTES_PER_CACHE_LINE = 64;
-        char cacheLineSpacer[BYTES_PER_CACHE_LINE];
-
-        // Position within the storage buffer where the consumer can start
-        // consuming events from. This value is updated/read only be the
-        // consumer.
-        char *readHead;
-
-        // The consumer's cached version of the recordHead; it exists to
-        // prevent extraneous cache-coherence messages between the consumer
-        // and the producer as its only updated when the consumer runs out
-        // of space.
-        char *cachedRecordHead;
-
-        // Backing store used to implement the circular queue
-        char storage[BUFFER_SIZE];
-    };
-
+    //TODO(syang0) PROTECTED
 PROTECTED:
-    //TODO(syang0) This needs to be documented
+    // Stores uncompressed log statements as they await output; one per thread.
     static __thread StagingBuffer* stagingBuffer;
-    static PerfUtils::LogCompressor* compressor;
+
+    // Tracks the stagingBuffers allocated from thread creation. Null entries
+    // indicate that the owning thread has destructed.
     static std::vector<StagingBuffer*> threadBuffers;
+
+    // Singleton that iterates through the threadBuffers and outputs their
+    // log messages to a file in the background.
+    static PerfUtils::LogCompressor* compressor;
+
+    // Protects modification to the threadBuffers vector and log compressor
     static std::mutex bufferMutex;
 
     // Allow access to the thread buffers and mutex protecting them.

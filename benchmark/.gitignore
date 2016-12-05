@@ -1,3 +1,4 @@
+decompressor
 benchmark
 generated/
 
@@ -6,3 +7,7 @@ generated/
 *.i
 *.ii
 *.map
+
+# IDE files
+.idea
+nbproject

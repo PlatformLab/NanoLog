@@ -1,3 +1,17 @@
+# Copyright (c) 2016 Stanford University
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR(S) DISCLAIM ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL AUTHORS BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
 # This script encapsulates all the logic to parse printf-like format strings
 # and generate C++ code/files that perform the record/compression/decompression
 # routines for those log messages in the Fast Logger system.
@@ -10,7 +24,7 @@ import os.path
 # the supporting C++ library. This is done so that changes in namespaces don't
 # result in large sweeping changes of this file.
 RECORD_ENTRY = "BufferUtils::RecordEntry"
-NIBBLE_OBJ = "BufferUtils::Nibble"
+NIBBLE_OBJ = "BufferUtils::TwoNibbles"
 
 RECORD_HEADER_FN = "BufferUtils::recordMetadata"
 RECORD_PRIMITIVE_FN = "BufferUtils::recordPrimitive"
@@ -138,12 +152,12 @@ class FunctionGenerator(object):
             oFile.write("// Record code in an empty namespace(for debugging)\n")
             oFile.write("namespace {\n")
             for fmtId, code in enumerate(self.fmtId2Code[1:]):
-                oFile.write(code["recordFnDef"])
-                oFile.write("\n")
-                oFile.write(code["compressFnDef"])
-                oFile.write("\n")
-                oFile.write(code["decompressFnDef"])
-                oFile.write("\n")
+                # There seems to be a g++ bug with #pragma disabling Wunused-function
+                # that requires an inline infront of the recordFn to supress it.
+                oFile.write("inline " + code["recordFnDef"] + "\n")
+
+                oFile.write(code["compressFnDef"] + "\n")
+                oFile.write(code["decompressFnDef"] + "\n")
             oFile.write("} // end empty namespace\n\n")
 
             numFns = len(self.fmtId2Code)
@@ -157,11 +171,11 @@ class FunctionGenerator(object):
                 compressFnNameArray.append("\tcompressArgs%d" % i)
                 decompressFnNameArray.append("\tdecompressPrintArg%d" % i)
 
-            oFile.write("static void (*compressFnArray[%d])(%s *re, char** out)"
+            oFile.write("ssize_t (*compressFnArray[%d])(%s *re, char* out)"
                             " {\n%s\n};\n\n" % (numFns, RECORD_ENTRY, ",\n".
                                                     join(compressFnNameArray)))
 
-            oFile.write("static void (*decompressAndPrintFnArray[%d])("
+            oFile.write("void (*decompressAndPrintFnArray[%d])("
                         "std::ifstream &in) {\n%s\n};\n\n" %
                                 (numFns, ",\n".join(decompressFnNameArray)))
 
@@ -172,12 +186,12 @@ class FunctionGenerator(object):
                                                 self.fmtId2Code[i]["fmtString"])
 
             oFile.write("// Format Id to original Format String\n")
-            oFile.write("static const char* fmtId2Str[%d] = {\n" \
+            oFile.write("const char* fmtId2Str[%d] = {\n" \
                                                         % len(allFmtStrings))
             oFile.write(",\n".join(allFmtStrings))
-            oFile.write("\n};")
+            oFile.write("\n};\n\n")
 
-            oFile.write("// Pop -Wunused-function")
+            oFile.write("// Pop -Wunused-function\n")
             oFile.write("#pragma GCC diagnostic pop")
 
             oFile.write("\n\n#endif /* BUFFER_STUFFER */\n")
@@ -299,34 +313,45 @@ class FunctionGenerator(object):
         nibbleByteSizes = (len(primitiveArgIds) + 1)/2
 
         # Start Generating the record code
-        recordCode = recordDeclaration + " {\n" # start function
 
         if strlenDeclarationsString:
-            recordCode += "\tsize_t %s;\n" % strlenDeclarationsString
+            strlenDeclarationsString = "\tsize_t %s;\n" % strlenDeclarationsString
 
-        recordCode += "\tsize_t maxSizeOfArgs = %s + %s;\n" % \
-                                    (primitiveSizeSumString, strlenSumString)
+        recordPrimitivesString = "".join(["\t%s(buffer, arg%d);\n" % \
+                (RECORD_PRIMITIVE_FN, idx) for idx in primitiveArgIds])
 
-        recordCode += "\t%s *re = %s(maxSizeOfArgs);\n\n" % \
-                                                    (RECORD_ENTRY, ALLOC_FN)
-        recordCode += "\tif (re == nullptr)\n"
-        recordCode += "\t\treturn;\n\n"
 
-        recordCode += "\t%s(re, %d, maxSizeOfArgs, %d);\n" % \
-                                    (RECORD_HEADER_FN, fmtId, nibbleByteSizes)
+        recordCode = \
+"""
+%s {
+    %s;
+    size_t allocSize = %s + %s + sizeof(%s);
+    %s *re = reinterpret_cast<%s*>(%s(allocSize));
 
-        recordCode += "\tchar *buffer = re->argData;\n"
-        recordCode += "\n" if primitiveArgIds else ""
-        recordCode += "".join(["\t%s(buffer, arg%d);\n" % \
-                        (RECORD_PRIMITIVE_FN, idx) for idx in primitiveArgIds])
+    if (re == nullptr)
+        return;
 
-        recordCode += "\n" if primitiveArgIds else ""
-        recordCode += "".join(["\tmemcpy(buffer, arg%d, str%dLen); "
-                                "buffer += str%dLen;\n" % \
-                                    (idx, idx, idx) for idx in stringArgIds])
+    re->fmtId = %d;
+    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->entrySize = static_cast<uint32_t>(allocSize);
+    re->argMetaBytes = %d;
 
-        recordCode += "\t%s(re);\n" % FINISH_ALLOC_FN
-        recordCode += "}\n"   # end function
+    char *buffer = re->argData;
+
+    // Record the primitives
+    %s;
+
+    // Make the entry visible
+    %s(allocSize);
+}
+""" %  (recordDeclaration,
+        strlenDeclarationsString,
+        primitiveSizeSumString, strlenSumString, RECORD_ENTRY,
+        RECORD_ENTRY, RECORD_ENTRY, ALLOC_FN,
+        fmtId,
+        nibbleByteSizes,
+        recordPrimitivesString,
+        FINISH_ALLOC_FN)
 
 
         ###
@@ -336,41 +361,55 @@ class FunctionGenerator(object):
         # Generate code to compress the arguments from a RecordEntry to
         # an output array. Note that the record code should have
         # handled the metadata, so we don't have to worry about that here
-        compressionCode = "inline void\ncompressArgs%d(%s *re, char** out) {\n"\
-                                                        % (fmtId, RECORD_ENTRY)
+        compressionCode = \
+"""
+inline ssize_t
+compressArgs%d(%s *re, char* out) {
+    char *originalOutPtr = out;
+    %s *nib = reinterpret_cast<%s*>(out);
+    out += %d;
+
+    char *args = re->argData;
+
+""" % ( fmtId, RECORD_ENTRY,
+        NIBBLE_OBJ, NIBBLE_OBJ,
+        nibbleByteSizes)
+
+
+        # compressionCode = "inline void\ncompressArgs%d(%s *re, char** out) {\n"\
+        #                                                 % (fmtId, RECORD_ENTRY)
 
         #TODO(syang0) Pointers should have a different compression algorithm.
         # it should take the difference between the last pointer recorded
         # and this one so that it's even shorter.
 
-        # Step 1: Allocate the nibbles to store the primitives
-        if nibbleByteSizes:
-            compressionCode += "\t%s *nib = reinterpret_cast<%s*>(*out);\n" %\
-                                                        (NIBBLE_OBJ, NIBBLE_OBJ)
-            compressionCode += "\t*out += %d;\n" % nibbleByteSizes
+        # # Step 1: Allocate the nibbles to store the primitives
+        # if nibbleByteSizes:
+        #     compressionCode += "\t%s *nib = reinterpret_cast<%s*>(*out);\n" %\
+        #                                                 (NIBBLE_OBJ, NIBBLE_OBJ)
+        #     compressionCode += "\t*out += %d;\n" % nibbleByteSizes
 
         # Step 2a: Read back all the primitives
-        compressionCode += "\tchar* args = re->argData;\n"
         for idx in primitiveArgIds:
             type = argTypes[idx]
             compressionCode += "\t%s arg%d = *reinterpret_cast<%s*>(args); " \
-                            "args += sizeof(%s);\n" % (type, idx, type, type)
+                               "args += sizeof(%s);\n" % (type, idx, type, type)
 
         # Step 2b: pack all the primitives
         compressionCode += "\n"
         for i, idx in enumerate(primitiveArgIds):
             mem = "first" if (i%2 == 0) else "second"
             arrIndex = i/2
-            compressionCode += "\tnib[%d].%s = 0x07 & static_cast<uint8_t>(%s(out, arg%d));\n" \
-                                                % (arrIndex, mem, PACK_FN, idx)
+            compressionCode += "\tnib[%d].%s = 0x07 & static_cast<uint8_t>(%s(&out, arg%d));\n" % (arrIndex, mem, PACK_FN, idx)
 
         # Step 3: Figure out size of strings and just memcpy it
         if stringArgIds:
             compressionCode += "\n\tsize_t stringBytes = re->entrySize - (%s) - " \
                         "sizeof(%s);\n" % (primitiveSizeSumString, RECORD_ENTRY)
-            compressionCode += "\tmemcpy(*out, args, stringBytes);\n" \
-                            "\targs += stringBytes;\n\t*out += stringBytes;\n"
+            compressionCode += "\tmemcpy(out, args, stringBytes);\n" \
+                            "\targs += stringBytes;\n\tout += stringBytes;\n"
 
+        compressionCode += "\treturn out - originalOutPtr;\n"
         compressionCode += "}\n"
 
         ###

@@ -4,6 +4,7 @@ a.out
 *.a
 .idea
 
+generated
 decompressor
 compressedLog
 processedFiles

@@ -30,6 +30,8 @@
 //   other tests.
 // * Create a new entry for the test in the #tests table.
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -150,12 +152,137 @@ double functionDereference()
     for (int i = 0; i < count; ++i)
         indecies[i] = static_cast<char>(rand() % 50);
 
+    uint64_t discardMe = 0;
     uint64_t start = Cycles::rdtsc();
     for (int i = 0; i < count; ++i) {
-        PerfHelper::functionArray[indecies[i]]();
+        discardMe += PerfHelper::functionArray[indecies[i]]();
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(&discardMe);
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double switchCost() {
+    const int count = 1000000;
+    char indecies[count];
+
+    srand(0);
+    for (int i = 0; i < count; ++i)
+        indecies[i] = static_cast<char>(rand() % 50);
+
+    uint64_t discardMe = 0;
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        switch(indecies[i]) {
+            case 0: discardMe += 0; break;
+            case 1: discardMe += 1; break;
+            case 2: discardMe += 2; break;
+            case 3: discardMe += 3; break;
+            case 4: discardMe += 4; break;
+            case 5: discardMe += 5; break;
+            case 6: discardMe += 6; break;
+            case 7: discardMe += 7; break;
+            case 8: discardMe += 8; break;
+            case 9: discardMe += 9; break;
+            case 10: discardMe += 10; break;
+            case 11: discardMe += 11; break;
+            case 12: discardMe += 12; break;
+            case 13: discardMe += 13; break;
+            case 14: discardMe += 14; break;
+            case 15: discardMe += 15; break;
+            case 16: discardMe += 16; break;
+            case 17: discardMe += 17; break;
+            case 18: discardMe += 18; break;
+            case 19: discardMe += 19; break;
+            case 20: discardMe += 20; break;
+            case 21: discardMe += 21; break;
+            case 22: discardMe += 22; break;
+            case 23: discardMe += 23; break;
+            case 24: discardMe += 24; break;
+            case 25: discardMe += 25; break;
+            case 26: discardMe += 26; break;
+            case 27: discardMe += 27; break;
+            case 28: discardMe += 28; break;
+            case 29: discardMe += 29; break;
+            case 30: discardMe += 30; break;
+            case 31: discardMe += 31; break;
+            case 32: discardMe += 32; break;
+            case 33: discardMe += 33; break;
+            case 34: discardMe += 34; break;
+            case 35: discardMe += 35; break;
+            case 36: discardMe += 36; break;
+            case 37: discardMe += 37; break;
+            case 38: discardMe += 38; break;
+            case 39: discardMe += 39; break;
+            case 40: discardMe += 40; break;
+            case 41: discardMe += 41; break;
+            case 42: discardMe += 42; break;
+            case 43: discardMe += 43; break;
+            case 44: discardMe += 44; break;
+            case 45: discardMe += 45; break;
+            case 46: discardMe += 46; break;
+            case 47: discardMe += 47; break;
+            case 48: discardMe += 48; break;
+            case 49: discardMe += 49; break;
+        }
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(&discardMe);
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double arrayPush() {
+    const int count = 1000000;
+    char *baseBuffer = static_cast<char*>(malloc(count*4*sizeof(uint64_t)));
+    char *buffer = baseBuffer;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        *reinterpret_cast<uint64_t*>(buffer) = 1;
+        buffer += sizeof(uint64_t);
+
+        *reinterpret_cast<uint64_t*>(buffer ) = 2;
+        buffer += sizeof(uint64_t);
+
+        *reinterpret_cast<uint64_t*>(buffer) = 3;
+        buffer += sizeof(uint64_t);
+
+        *reinterpret_cast<uint64_t*>(buffer) = 4;
+        buffer += sizeof(uint64_t);
     }
     uint64_t stop = Cycles::rdtsc();
 
+    free(baseBuffer);
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double arrayStructCast()
+{
+    const int count = 1000000;
+    char *baseBuffer = static_cast<char*>(malloc(count*4*sizeof(uint64_t)));
+    char *buffer = baseBuffer;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        struct Quadnums {
+            uint64_t num1;
+            uint64_t num2;
+            uint64_t num3;
+            uint64_t num4;
+        };
+
+        struct Quadnums *nums = reinterpret_cast<struct Quadnums*>(buffer);
+        nums->num1 = 1;
+        nums->num2 = 2;
+        nums->num3 = 3;
+        nums->num4 = 4;
+        buffer += sizeof(struct Quadnums);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    free(baseBuffer);
     return Cycles::toSeconds(stop - start)/count;
 }
 
@@ -271,6 +398,34 @@ double memcpyCold1000()
     return memcpyShared(1000, true, true);
 }
 
+
+// Cost of notifying a condition variable
+double notify_all() {
+    int count = 1000000;
+    std::condition_variable cond;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        cond.notify_all();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double notify_one() {
+    int count = 1000000;
+    std::condition_variable cond;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        cond.notify_one();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 // Measure the cost of the Cylcles::toNanoseconds method.
 double perfCyclesToNanoseconds()
 {
@@ -327,6 +482,36 @@ double serialize() {
     return Cycles::toSeconds(stop - start)/count;
 }
 
+double cond_wait_for_millisecond() {
+    int count = 100;
+    std::mutex mutex;
+    std::condition_variable cond;
+    std::unique_lock<std::mutex> lock(mutex);
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        cond.wait_for(lock, std::chrono::milliseconds(1));
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double cond_wait_for_microsecond() {
+    int count = 10000;
+    std::mutex mutex;
+    std::condition_variable cond;
+    std::unique_lock<std::mutex> lock(mutex);
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        cond.wait_for(lock, std::chrono::microseconds(1));
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 // The following struct and table define each performance test in terms of
 // a string name and a function that implements the test.
 struct TestInfo {
@@ -341,6 +526,14 @@ struct TestInfo {
                                   // test output fits on a single line).
 };
 TestInfo tests[] = {
+    {"arrayPush", arrayPush,
+     "Push 4 uint64_t's into a byte array via cast + pointer bump"},
+    {"arrayStructCast", arrayStructCast,
+     "Push 4 uint64_t's into a byte array via casting it into a struct"},
+    {"cond_wait_micro", cond_wait_for_microsecond,
+     "Condition Variable wait with 1 microsecond timeout"},
+    {"cond_wait_milli", cond_wait_for_millisecond,
+     "Condition Variable wait with 1 millisecond timeout"},
     {"cyclesToSeconds", perfCyclesToSeconds,
      "Convert a rdtsc result to (double) seconds"},
     {"cyclesToNanos", perfCyclesToNanoseconds,
@@ -353,6 +546,8 @@ TestInfo tests[] = {
      "Call a function that has not been inlined"},
     {"functionDereference", functionDereference,
      "Randomly dereference a function array of size 50"},
+    {"switchStatement", switchCost,
+     "Random switch statement of size 50"},
     {"mapCreate", mapCreate,
      "Create+delete entry in std::map"},
     {"mapLookup", mapLookup,
@@ -369,6 +564,10 @@ TestInfo tests[] = {
      "memcpy 100 bytes with cold dst and src"},
     {"memcpyCold1000", memcpyCold1000,
      "memcpy 1000 bytes with cold dst and src"},
+    {"notify_all", notify_all,
+     "condition_variable.notify_all()"},
+    {"notify_one", notify_one,
+     "condition_variable.notify_one()"},
     {"rdtsc", rdtscTest,
      "Read the fine-grain cycle counter"},
     {"serialize", serialize,

@@ -15,6 +15,12 @@
 
 #include <stdint.h>
 
+/**
+ * This file is the complement to PerfHelper.h, which contain various
+ * functions/variables needed to support the operations benchmarked by
+ * Perf.cc
+ */
+
 namespace PerfHelper {
 
 /// Flush the CPU data cache by reading and writing 100MB of new data.

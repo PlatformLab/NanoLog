@@ -52,25 +52,26 @@ public:
     // Controls in what mode the file will be opened in
     static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|O_DSYNC|O_DIRECT;
 
-    // Size of the output buffer
+    // Size of the buffer used to store compressed log messages before being
+    // flushed to a file.
     static const uint32_t BUFFER_SIZE = 1<<26;
 
     // File handle for the output file; should only be opened once at the
     // construction of the LogCompressor
     int outputFd;
 
-    // POSIX AIO structure used to communicate requests
+    // POSIX AIO structure used to communicate async IO requests
     struct aiocb aioCb;
 
     // Indicates there's an operation in aioCb that should be waited on
     bool hasOustandingOperation;
 
-    // Background thread that polls the various staging buffer, compresses
-    // the staged records, and outputs it to a file.
+    // Background thread that polls the various staging buffers, compresses
+    // the staged log messages, and outputs it to a file.
     std::thread workerThread;
 
-    // Flag indicating whether the LogCompressor thread should be running
-    bool run;
+    // Flag signaling that the LogCompressor thread should stop running
+    bool shouldExit;
 
     // Mutex to protect the condition variables
     std::mutex mutex;
@@ -94,15 +95,12 @@ public:
     // messages while POSIX AIO outputs it to a file.
     char *posixBuffer;
 
-    // Metric: Number of times when the LogCompressor was able to consume all
-    // the log messages within a staging buffer (i.e. catch up)
-    uint32_t numBuffersProcessed;
-
     // Metric: Number of times an AIO write was completed.
     uint32_t numAioWritesCompleted;
 
-    // Metric: Amount of time spent scanning the buffers for work.
-    uint64_t cyclesSearchingForWork;
+    // Metric: Amount of time spent scanning the buffers for work and
+    // compressing events found.
+    uint64_t cyclesScanningAndCompressing;
 
     // Metric: Amount of time spent on fsync() and writes. Note that if posix
     // AIO is used, the only the amount of time it takes to submit the job is

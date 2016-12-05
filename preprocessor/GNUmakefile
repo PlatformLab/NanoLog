@@ -1,40 +1,32 @@
 ########
-## This file serves as an example for how users of the FastLogger system
-## should layout their maikefile rules. The "Library Compilation" section
-## shall be copied verbatim while the "User Section" can be customized
-## with the exception that compiling C++ source files into object
-## files shall be performed with the macro run-cxx, the final executable
-## is links FastLogger.a, pthread, and lrt, and all the macro USER_OBJS
-## is used.
-##
-## Note that run-cxx will add additional warnings to the user compilation
-## flags to detect misuses of the FastLogger API.
+## This make file is adapted from the benchmark GNUmakefile.
+## It compiles a test suite of tricky syntax with the preprocessor
 #######
 
 ####
 # User Section
 ####
-USER_SRCS=Benchmark.cc
+USER_SRCS=simpleTest.cc
 
-# MUST use macro to identify user *.o files
+# Macro MUST used to identify user *.o files
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
 # -O3 should always be passed for high performance
 CXXFLAGS= -std=c++0x -O3
 CXX=g++
 
-all: benchmark
+all: test
 
 # run-cxx will compile the user C++ source file into an object file using
 # the FastLogger system. See documentation in the Library Compilation section.
 %.o: %.cc
 	$(call run-cxx, $@, $<, $(CXXFLAGS))
 
-benchmark: $(USER_OBJS) libFastLogger.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lFastLogger -pthread -lrt
+test: $(USER_OBJS) libFastLogger.a
+	$(CXX) $(CXXFLAGS) $(USER_OBJS) -L. -lFastLogger -pthread -lrt
 
 clean:
-	@rm -f *.o benchmark
+	@rm -f *.o a.out
 
 ####
 ## Library Options
@@ -95,5 +87,5 @@ decompressor: generated/BufferStuffer.h $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecomp
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
 
 clean-all: clean
-	@rm -f libFastLogger.a $(RUNTIME_OBJS) decompressor
+	@rm -f libFastLogger.a $(RUNTIME_OBJS) *.pyc decompressor
 	@rm -rf generated

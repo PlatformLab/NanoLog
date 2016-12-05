@@ -31,18 +31,23 @@ int main(int argc, char** argv) {
     uint64_t start, stop;
     double time;
 
+    // Optional optimization: pre-allocates thread-local data structures
+    // needed by FastLogger. This should be invoked once per new
+    // thread that will use the FastLogger system.
+    PerfUtils::FastLogger::initialize();
+
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
         FAST_LOG("Simple log message with no parameters");
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
-    printf("The total time spent invoking FAST_LOG with no parameters %d "
+    printf("The total time spent invoking FAST_LOG with no parameters %lu "
             "times took %0.2lf seconds (%0.2lf ns/message average)\r\n",
             RECORDS, time, (time/RECORDS)*1e9);
 
-    // Flush all pending log messages to disk
     start = PerfUtils::Cycles::rdtsc();
+    // Flush all pending log messages to disk
     PerfUtils::FastLogger::sync();
     stop = PerfUtils::Cycles::rdtsc();
 

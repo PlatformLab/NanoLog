@@ -19,10 +19,10 @@ libPerfUtils.a: $(SRCS) $(INCLUDES)
 	ar -cvq libPerfUtils.a $(OBJECTS)
 
 $(OBJECTS) : %.o :%.cc
-	g++ $(CXX_ARGS) -c $< -o $@
+	g++ $(CXX_ARGS) -ItestHelper -I./ -c $< -o $@
 
 test: $(TESTS) $(OBJECTS) $(INCLUDES) libgtest.a
-	g++ $(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) $(GTEST_DIR)/src/gtest_main.cc libgtest.a -DEXPOSE_PRIVATES -o test
+	g++ $(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) $(GTEST_DIR)/src/gtest_main.cc libgtest.a -o test
 
 Perf : $(OBJECTS) $(INCLUDES) $(PERF) $(PERF_DEPS)
 	g++ $(CXX_ARGS) $(PERF) $(OBJECTS) -o Perf
@@ -39,4 +39,4 @@ clean:
 	rm -f Perf test benchmark compressedLog *.o *.gch *.log
 
 clean-all: clean
-	rm -f libPerfUtils.a
+	rm -f libPerfUtils.a libgtest.a
