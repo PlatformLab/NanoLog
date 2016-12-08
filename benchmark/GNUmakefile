@@ -2,10 +2,11 @@
 ## This file serves as an example for how users of the FastLogger system
 ## should layout their maikefile rules. The "Library Compilation" section
 ## shall be copied verbatim while the "User Section" can be customized
-## with the exception that compiling C++ source files into object
-## files shall be performed with the macro run-cxx, the final executable
-## is links FastLogger.a, pthread, and lrt, and all the macro USER_OBJS
-## is used.
+## with the following exceptions:
+##   1) User C++ files MUST be compiled into .o files with run-cxx
+##			before being linked into the main executable/library
+##   2) The Macro USER_OBJS MUST be used to identify .o files from above
+##   3) The final executable links FastLogger.a, pthread, and lrt
 ##
 ## Note that run-cxx will add additional warnings to the user compilation
 ## flags to detect misuses of the FastLogger API.
@@ -20,7 +21,7 @@ USER_SRCS=Benchmark.cc
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
 # -O3 should always be passed for high performance
-CXXFLAGS= -std=c++0x -O3
+CXXFLAGS= -std=c++11 -O3 -g
 CXX=g++
 
 all: benchmark
@@ -40,7 +41,7 @@ clean:
 ## Library Options
 ####
 
-# Specifies the path to the FastLogger's Runtime Library
+# Specifies the path to the FastLogger's Runtime Library directory
 RUNTIME_DIR=../runtime
 
 # Specifies the path to the FastLogger's Preprocessor directory
@@ -63,11 +64,11 @@ define run-cxx
 	rm -f $(2).i $(2).ii generated/BufferStuffer.h
 endef
 
-RUNTIME_CXX_FLAGS= -std=c++0x -O3 -DNDEBUG -g
+RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/FastLogger.cc \
-		$(RUNTIME_DIR)/LogCompressor.cc $(RUNTIME_DIR)/Util.cc
+		 $(RUNTIME_DIR)/Util.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \

@@ -1,4 +1,4 @@
-SRCS=Cycles.cc Util.cc FastLogger.cc LogCompressor.cc
+SRCS=Cycles.cc Util.cc FastLogger.cc
 INCLUDES=Cycles.h Util.h Packer.h Common.h FastLogger.h BufferUtils.h
 BENCHMARKS=Benchmark.cc
 PERF=Perf.cc PerfHelper.cc
@@ -11,11 +11,10 @@ OBJECTS:=$(SRCS:.cc=.o)
 CXX_ARGS=-std=c++11 -pthread -lrt -g -O3
 
 
-
 all: test Perf
 
 libPerfUtils.a: $(SRCS) $(INCLUDES)
-	g++  -O3 -c  -std=c++0x  $(SRCS)
+	g++  -O3 -c  -std=c++11  $(SRCS)
 	ar -cvq libPerfUtils.a $(OBJECTS)
 
 $(OBJECTS) : %.o :%.cc

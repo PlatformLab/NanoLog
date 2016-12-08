@@ -59,7 +59,7 @@ RUNTIME_CXX_FLAGS= -std=c++0x -O3 -DNDEBUG -g
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/FastLogger.cc \
-		$(RUNTIME_DIR)/LogCompressor.cc $(RUNTIME_DIR)/Util.cc
+																							$(RUNTIME_DIR)/Util.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \

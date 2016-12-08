@@ -36,7 +36,7 @@ namespace {
 void __syang0__fl__1(const char* fmtStr) {
     ;
     size_t allocSize = 0 + 0 + sizeof(BufferUtils::RecordEntry);
-    BufferUtils::RecordEntry *re = reinterpret_cast<BufferUtils::RecordEntry*>(PerfUtils::FastLogger::reserveAlloc(allocSize));
+    BufferUtils::RecordEntry *re = reinterpret_cast<BufferUtils::RecordEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
 
     if (re == nullptr)
         return;
@@ -52,7 +52,7 @@ void __syang0__fl__1(const char* fmtStr) {
     ;
 
     // Make the entry visible
-    PerfUtils::FastLogger::finishAlloc(allocSize);
+    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
 }
 
 

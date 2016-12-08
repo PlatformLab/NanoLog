@@ -29,8 +29,8 @@ NIBBLE_OBJ = "BufferUtils::TwoNibbles"
 RECORD_HEADER_FN = "BufferUtils::recordMetadata"
 RECORD_PRIMITIVE_FN = "BufferUtils::recordPrimitive"
 
-ALLOC_FN = "PerfUtils::FastLogger::reserveAlloc"
-FINISH_ALLOC_FN = "PerfUtils::FastLogger::finishAlloc"
+ALLOC_FN = "PerfUtils::FastLogger::__internal_reserveAlloc"
+FINISH_ALLOC_FN = "PerfUtils::FastLogger::__internal_finishAlloc"
 
 PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"

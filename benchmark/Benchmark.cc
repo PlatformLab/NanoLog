@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     // Optional optimization: pre-allocates thread-local data structures
     // needed by FastLogger. This should be invoked once per new
     // thread that will use the FastLogger system.
-    PerfUtils::FastLogger::initialize();
+    PerfUtils::FastLogger::preallocate();
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
@@ -55,8 +55,7 @@ int main(int argc, char** argv) {
     printf("Flushing the log statements to disk took an additional %0.2lf secs\r\n",
             time);
 
-    // Stop the FastLogger background thread. This should only be invoked
-    // on exit of the application.
-    PerfUtils::FastLogger::exit();
+    // Prints various statistics gathered by the FastLogger system to stdout
+    PerfUtils::FastLogger::printStats();
 }
 

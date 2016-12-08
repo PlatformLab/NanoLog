@@ -212,5 +212,4 @@ int main()
             count, time, (time/count)*1e9);
 
     PerfUtils::FastLogger::sync();
-    PerfUtils::FastLogger::exit();
 }
