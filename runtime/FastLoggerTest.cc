@@ -33,11 +33,11 @@ class FastLoggerTest : public ::testing::Test {
   PerfUtils::FastLogger::StagingBuffer *sb;
 
   FastLoggerTest()
-    : bufferSize(PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE)
+    : bufferSize(PerfUtils::FastLogger::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
     , sb(new PerfUtils::FastLogger::StagingBuffer())
   {
-      static_assert(1024 <= PerfUtils::FastLogger::StagingBuffer::BUFFER_SIZE,
+      static_assert(1024 <= PerfUtils::FastLogger::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
   }
 
@@ -150,7 +150,6 @@ TEST_F(FastLoggerTest, StagingBuffer_finishReservation) {
 }
 
 TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
-    // This tests the asserts in terms of their higher level errors
 
     // Case 1a: Ran out of space and didn't reserve (Artificial)
     EXPECT_EQ(bufferSize, sb->minFreeSpace);
@@ -192,7 +191,7 @@ TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
     EXPECT_DEATH(sb->finishReservation(999), "nbytes < consumerPos");
 }
 
-TEST_F(FastLoggerTest, peek) {
+TEST_F(FastLoggerTest, StagingBuffer_peek) {
     uint64_t bytesAvailable = -1;
 
     // Case 1: Empty Buffer
