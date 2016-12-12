@@ -33,7 +33,7 @@ int main(int argc, char** argv) {
     uint32_t bufferSize = 1<<26;
 
     if (argc < 3) {
-        printf("Usage: ./decompressor <logFile> <linesToPrint>");
+        printf("Usage: ./decompressor <logFile> <# messages to print>");
         exit(1);
     }
 
@@ -44,14 +44,16 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    int linesToPrint = std::stoi(argv[2]);
+    printf("Opening file %s\r\n", argv[1]);
+
+    int msgsToPrint = std::stoi(argv[2]);
     std::ifstream in(argv[1], std::ifstream::binary);
 
     int linesPrinted = 0;
     uint32_t lastFmtId = 0;
     uint64_t lastTimestamp = 0;
     while (!in.eof()) {
-        if (linesToPrint > 0 && linesPrinted >= linesToPrint)
+        if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
             break;
 
         EntryType nextType = BufferUtils::peekEntryType(in);
@@ -74,13 +76,13 @@ int main(int argc, char** argv) {
             while(in.peek() == 0 && in.good())
                 in.get();
         } else {
-            printf ("Entry type read in metadata does not match anything "
+            printf("Entry type read in metadata does not match anything "
                             "(%d); exiting...\r\n", nextType);
             exit(-1);
         }
     }
 
-    printf("\r\n\r\nDecompression Complete after printing %d lines\r\n",
+    printf("\r\n\r\nDecompression Complete after printing %d log messages\r\n",
             linesPrinted);
 
     return 0;

@@ -378,6 +378,7 @@ def parseFiles(functionGenerator, inputFiles):
 
                 if not firstFilename:
                     firstFilename = ppFileName
+                    fg.clearLogFunctionsForCompilationUnit(firstFilename)
 
                 i = i + 1
                 flags = line[i:].strip()

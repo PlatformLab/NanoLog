@@ -310,8 +310,8 @@ TEST_F(PackerTest, unpack_pointer) {
     ifstream in;
     in.open(testFile);
 
-    EXPECT_EQ(ptr0, unpackPointer<void*>(in, 8));
-    EXPECT_EQ(ptr1, unpackPointer<void*>(in, 6));
+    EXPECT_EQ(ptr0, unpack<void*>(in, 8));
+    EXPECT_EQ(ptr1, unpack<void*>(in, 6));
     EXPECT_EQ(-1, in.get());
     EXPECT_TRUE(in.eof());
 }
