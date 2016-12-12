@@ -226,7 +226,8 @@ pack(char **buffer, T val) {
  */
 
 template<typename T>
-inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type
+inline typename std::enable_if<!std::is_floating_point<T>::value &&
+                                !std::is_pointer<T>::value, T>::type
 unpack(std::ifstream &in, uint8_t packResult)
 {
     T packed = 0;
@@ -244,8 +245,8 @@ unpack(std::ifstream &in, uint8_t packResult)
     return -packed;
 }
 template<typename T>
-inline T*
-unpackPointer(std::ifstream &in, uint8_t packResult) {
+inline typename std::enable_if<std::is_pointer<T>::value, T>::type
+unpack(std::ifstream &in, uint8_t packResult) {
     return (T*)(unpack<uint64_t>(in, packResult));
 }
 

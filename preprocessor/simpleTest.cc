@@ -32,24 +32,62 @@ evilTestCase(fast_log* log) {
     ////////
     // Basic Tests
     ////////
-    FAST_LOG("1) Simple times\r\n");
+    FAST_LOG("Simple times\r\n");
 
-    FAST_LOG("2) More simplicity");
+    FAST_LOG("More simplicity");
 
-    FAST_LOG("3) How about a number? %d\n", 1900);
+    FAST_LOG("How about a number? %d\n", 1900);
 
-    FAST_LOG("4) How about a second number? %d\n", 1901);
+    FAST_LOG("How about a second number? %d\n", 1901);
 
-    FAST_LOG("5) How about a double? %lf\n", 0.11);
+    FAST_LOG("How about a double? %lf\n", 0.11);
 
-    FAST_LOG("6) How about a nice little string? %s\n", "Stephen Rocks!");
+    FAST_LOG("How about a nice little string? %s\n", "Stephen Rocks!");
 
-    FAST_LOG("7) And another string? %s\n", "yolo swag!\nblah\r\n");
+    FAST_LOG("A middle \"%s\" string?\n", "Stephen Rocks!");
 
-    FAST_LOG("8)One that should be \"end\"? %s\n", "end\0 FAIL!!!");
+    FAST_LOG("And another string? %s\n", "yolo swag!\nblah\r\n");
+
+    FAST_LOG("One that should be \"end\"? %s\n", "end\0 FAIL!!!");
 
     int cnt = 2;
-    FAST_LOG("9) Hello world number %d of %d (%0.2lf%%)! This is %s!\n", cnt, 10, 1.0*cnt/10, "Stephen");
+    FAST_LOG("Hello world number %d of %d (%0.2lf%%)! This is %s!\n", cnt, 10, 1.0*cnt/10, "Stephen");
+
+
+    uint8_t small =10;
+    uint16_t medium = 33;
+    uint32_t large = 99991;
+    uint64_t ultra_large = -1;
+
+    float Float = 121.121;
+    double Double = 212.212;
+
+    FAST_LOG("Let's try out all the types!\n"
+                "Pointer = %p\n"
+                "uint8_t = %u\n"
+                "uint16_t = %u\n"
+                "uint32_t = %u\n"
+                "uint64_t = %lu\n"
+                "float = %f\n"
+                "double = %lf\n"
+                "hexadecimal = %x\n"
+                "Just a normal character = %c\r\n\r\n",
+            &small, small, medium, large, ultra_large, Float, Double,
+            0xFF, 'a'
+            );
+
+    int8_t smallNeg = -10;
+    int16_t mediumNeg= -33;
+    int32_t largeNeg = -99991;
+    int64_t ultra_large_neg = -1;
+    FAST_LOG("how about some negative numbers?\n"
+        "int8_t %d\n"
+        "int16_t %d\n"
+        "int32_t %d\n"
+        "int64_t %ld\n"
+        "int %d\r\n\r\n",
+        smallNeg, mediumNeg, largeNeg, ultra_large_neg, -12356
+        );
 
     ////////
     // Name Collision Tests
@@ -70,7 +108,8 @@ evilTestCase(fast_log* log) {
             "FAST_LOG()");
 
     int i = 0;
-    ++i; FAST_LOG("13) Yup\n" "ie"); ++i;
+    ++i; FAST_LOG("\r\n13) Yup\n" "ie\r\n"); ++i;
+    FAST_LOG("13.5) This should be =2: %d\r\n", i);
 
 
     ////////
@@ -83,11 +122,11 @@ evilTestCase(fast_log* log) {
     FAST_LOG("14) He"
         "ll"
         // "o"
-        "o %d",
+        "o %d\r\n",
         5);
 
     int id = 0;
-    FAST_LOG("15) This should not be incremented twice (=1):%d", ++id);
+    FAST_LOG("15) This should not be incremented twice (=1):%d\r\n", ++id);
 
     /* This */ FAST_LOG( /* is */ "16) Hello /* uncool */");
 
@@ -201,7 +240,7 @@ int main()
     int count = 10;
     uint64_t start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < count; ++i) {
-        FAST_LOG("Simple Test");
+        FAST_LOG("Simple test!\r\n");
     }
 
     uint64_t stop = PerfUtils::Cycles::rdtsc();

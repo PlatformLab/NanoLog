@@ -60,13 +60,12 @@ class FunctionGenerator(object):
     # to restore the state of the previous FunctionGenerator.
     def __init__(self, mappingFile=None):
 
-        # Every format string that is passed to the FunctionGenerator is
-        # assigned an integer id. The assignments are dense and the same
-        # format string (by value) will result in the same id.
+        # Maps instances of a printf-like format string to a unique integer id.
+        # This module manages the assignment of strings to ids.
         self.fmtStr2Id = { }
 
-        # List of format integer ids that become deallocated due to the format
-        # string no longer existing in the C++ source files.
+        # List of format string integer ids that have become de-allocated,
+        # which can occur if a source file is modified and recompiled
         self.unusedIds = []
 
         # Map of format id to the various metadata associated with with
@@ -137,7 +136,7 @@ class FunctionGenerator(object):
             oFile.write("#include \"FastLogger.h\"\n")
             oFile.write("#include \"Packer.h\"\n\n")
 
-            oFile.write("#include <fstream>     // for decompression\n")
+            oFile.write("#include <fstream>\n")
             oFile.write("#include <string>\n\n")
 
             # Some of the functions/variables output below are for debugging
@@ -206,9 +205,9 @@ class FunctionGenerator(object):
         if not compilationUnit:
             return
 
-        for fmtId, code in self.fmtId2Code.iteritems():
+        for fmtId, code in enumerate(self.fmtId2Code):
             if code["compilationUnit"] == compilationUnit:
-                self.fmtStr2Id.pop(value["fmtString"], None)
+                self.fmtStr2Id.pop(code["fmtString"], None)
                 self.fmtId2Code[fmtId] = None
                 self.unusedIds.append(fmtId)
 
@@ -246,11 +245,6 @@ class FunctionGenerator(object):
     def generateLogFunctions(self, fmtString, compilationName ="default",
                                 filename="unknownFile", linenum=-1):
 
-        argTypes = parseTypesInFmtString(fmtString)
-        parameterDeclarations = ["%s arg%d" % (type, idx)
-                                    for idx, type in enumerate(argTypes)]
-        parameterDeclarationString = ", ".join(parameterDeclarations)
-
         # TODO(syang0) currently there is a bug here whereby different
         # compilation units with the same format string will conflict.
         # This is not fixed at the moment since we may switch to an
@@ -264,94 +258,96 @@ class FunctionGenerator(object):
             fmtId = self.fmtStr2Id[fmtString]
             prevCodeExists = True
         elif self.unusedIds:
-            fmtId = self.usedIds.pop()
+            fmtId = self.unusedIds.pop()
             self.fmtStr2Id[fmtString] = fmtId
         else:
             fmtId = len(self.fmtStr2Id) + 1
             self.fmtStr2Id[fmtString] = fmtId
 
-        recordFnName = generateFunctionNameFromFmtId(fmtId)
-        if parameterDeclarationString:
-            recordDeclaration = "void %s(const char* fmtStr, %s)" % (
-                                    recordFnName, parameterDeclarationString)
-        else:
-            recordDeclaration = "void %s(const char* fmtStr)" % recordFnName
-        recordInvocation = "%s" % (recordFnName)
 
+        argTypes = parseTypesInFmtString(fmtString)
+        parameterDeclarationString = "".join([", %s arg%d" % (type, idx)
+                                         for idx, type in enumerate(argTypes)])
+
+        recordFnName = generateFunctionNameFromFmtId(fmtId)
+        recordDeclaration = "void %s(const char* fmtStr %s)" % (
+                                    recordFnName, parameterDeclarationString)
+
+        # Keep track of instance metrics
         if parameterDeclarationString in self.argLists2Cnt:
             self.argLists2Cnt[parameterDeclarationString] += 1
         else:
             self.argLists2Cnt[parameterDeclarationString] = 1
 
         if prevCodeExists:
-            return (recordDeclaration, recordInvocation)
+            return (recordDeclaration, recordFnName)
 
         ###
         # Generate Record function
         ###
 
-        # Create Parameter/Argument Lists
+        # Create lists identifying which argument indexes are/are not strings
         primitiveArgIds = [idx for idx, type in enumerate(argTypes)
                                                     if not isStringType(type)]
         stringArgIds = [idx for idx, type in enumerate(argTypes)
                                                         if isStringType(type)]
 
-        strlenDeclarations = ["str%dLen = strlen(arg%d) + 1" %
-                                            (idx, idx) for idx in stringArgIds]
-        strlenVariables = ["str%dLen" % (idx) for idx in stringArgIds]
-
-        primitiveSizes = ["sizeof(arg%d)" % idx for idx in primitiveArgIds]
-
         # Create more usable strings for each list
-        strlenDeclarationsString = ", ".join(strlenDeclarations)
-        primitiveSizeSumString = " + ".join(primitiveSizes) \
-                                                    if primitiveSizes else "0"
-        strlenSumString = " + ".join(strlenVariables) \
-                                                    if strlenVariables else "0"
+        strlenDeclarations = ["size_t str{0}Len = strlen(arg{0}) + 1;"
+                                  .format(idx) for idx in stringArgIds]
+
+        # Note: For these two sums, it must end in a '+' character
+        primitiveSizeSumString = "".join(["sizeof(arg%d) + " % idx
+                                          for idx in primitiveArgIds])
+
+        strlenSumString = "".join(["str%dLen + " % (idx)
+                                      for idx in stringArgIds])
 
         # Bytes needed to store the primitive byte lengths
         nibbleByteSizes = (len(primitiveArgIds) + 1)/2
 
-        # Start Generating the record code
-
-        if strlenDeclarationsString:
-            strlenDeclarationsString = "\tsize_t %s;\n" % strlenDeclarationsString
-
         recordPrimitivesString = "".join(["\t%s(buffer, arg%d);\n" % \
                 (RECORD_PRIMITIVE_FN, idx) for idx in primitiveArgIds])
 
+        recordStringsString = "".join(["\tmemcpy(buffer, arg{0}, str{0}Len); "
+               "buffer += str{0}Len;\n".format(idx) for idx in stringArgIds])
 
+        # Start Generating the record code
         recordCode = \
 """
-%s {
-    %s;
-    size_t allocSize = %s + %s + sizeof(%s);
-    %s *re = reinterpret_cast<%s*>(%s(allocSize));
+{function_declaration} {{
+    {strlen_declaration};
+    size_t allocSize = {primitive_size_sum} {strlen_sum} sizeof({entry});
+    {entry} *re = reinterpret_cast<{entry}*>({alloc_fn}(allocSize));
 
-    if (re == nullptr)
-        return;
-
-    re->fmtId = %d;
+    re->fmtId = {fmtId};
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = %d;
+    re->argMetaBytes = {nibble_size};
 
     char *buffer = re->argData;
 
     // Record the primitives
-    %s;
+    {recordPrimitivesString}
+
+    // Record the strings (if any) at the end of the entry
+    {recordStringsString}
 
     // Make the entry visible
-    %s(allocSize);
-}
-""" %  (recordDeclaration,
-        strlenDeclarationsString,
-        primitiveSizeSumString, strlenSumString, RECORD_ENTRY,
-        RECORD_ENTRY, RECORD_ENTRY, ALLOC_FN,
-        fmtId,
-        nibbleByteSizes,
-        recordPrimitivesString,
-        FINISH_ALLOC_FN)
+    {finishAlloc_fn}(allocSize);
+}}
+""".format(function_declaration = recordDeclaration,
+               strlen_declaration = "; size_t ".join(strlenDeclarations),
+               primitive_size_sum = primitiveSizeSumString,
+               strlen_sum = strlenSumString,
+               entry = RECORD_ENTRY,
+               alloc_fn = ALLOC_FN,
+               fmtId = fmtId,
+               nibble_size = nibbleByteSizes,
+               recordPrimitivesString = recordPrimitivesString,
+               recordStringsString = recordStringsString,
+               finishAlloc_fn = FINISH_ALLOC_FN)
+
 
 
         ###
@@ -359,104 +355,116 @@ class FunctionGenerator(object):
         ###
 
         # Generate code to compress the arguments from a RecordEntry to
-        # an output array. Note that the record code should have
+        # an output array. Note that the compression runtime code should have
         # handled the metadata, so we don't have to worry about that here
+
+        readBackPrimitivesStr = ""
+        for idx in primitiveArgIds:
+            type = argTypes[idx]
+            readBackPrimitivesStr += \
+                "\t{type} arg{id} = *reinterpret_cast<{type}*>(args); " \
+                "args +=sizeof({type});\n".format(type=type, id=idx)
+
+        packPrimitivesStr = ""
+        for i, idx in enumerate(primitiveArgIds):
+            mem = "first" if (i % 2 == 0) else "second"
+            arrIndex = i / 2
+            packPrimitivesStr += \
+                "\tnib[%d].%s = 0x0f & static_cast<uint8_t>(%s(&out, arg%d));\n" \
+                    % (arrIndex, mem, PACK_FN, idx)
+
+
+
         compressionCode = \
 """
 inline ssize_t
 compressArgs%d(%s *re, char* out) {
     char *originalOutPtr = out;
+
+    // Allocate nibbles
     %s *nib = reinterpret_cast<%s*>(out);
     out += %d;
 
     char *args = re->argData;
 
+    // Read back all the primitives
+    %s
+
+    // Pack all the primitives
+    %s
+
+    // memcpy all the strings without compression
+    size_t stringBytes = re->entrySize - (%s 0) - sizeof(%s);
+    if (stringBytes > 0) {
+        memcpy(out, args, stringBytes);
+        out += stringBytes;
+    }
+
+    return out - originalOutPtr;
+}
 """ % ( fmtId, RECORD_ENTRY,
         NIBBLE_OBJ, NIBBLE_OBJ,
-        nibbleByteSizes)
-
-
-        # compressionCode = "inline void\ncompressArgs%d(%s *re, char** out) {\n"\
-        #                                                 % (fmtId, RECORD_ENTRY)
-
-        #TODO(syang0) Pointers should have a different compression algorithm.
-        # it should take the difference between the last pointer recorded
-        # and this one so that it's even shorter.
-
-        # # Step 1: Allocate the nibbles to store the primitives
-        # if nibbleByteSizes:
-        #     compressionCode += "\t%s *nib = reinterpret_cast<%s*>(*out);\n" %\
-        #                                                 (NIBBLE_OBJ, NIBBLE_OBJ)
-        #     compressionCode += "\t*out += %d;\n" % nibbleByteSizes
-
-        # Step 2a: Read back all the primitives
-        for idx in primitiveArgIds:
-            type = argTypes[idx]
-            compressionCode += "\t%s arg%d = *reinterpret_cast<%s*>(args); " \
-                               "args += sizeof(%s);\n" % (type, idx, type, type)
-
-        # Step 2b: pack all the primitives
-        compressionCode += "\n"
-        for i, idx in enumerate(primitiveArgIds):
-            mem = "first" if (i%2 == 0) else "second"
-            arrIndex = i/2
-            compressionCode += "\tnib[%d].%s = 0x07 & static_cast<uint8_t>(%s(&out, arg%d));\n" % (arrIndex, mem, PACK_FN, idx)
-
-        # Step 3: Figure out size of strings and just memcpy it
-        if stringArgIds:
-            compressionCode += "\n\tsize_t stringBytes = re->entrySize - (%s) - " \
-                        "sizeof(%s);\n" % (primitiveSizeSumString, RECORD_ENTRY)
-            compressionCode += "\tmemcpy(out, args, stringBytes);\n" \
-                            "\targs += stringBytes;\n\tout += stringBytes;\n"
-
-        compressionCode += "\treturn out - originalOutPtr;\n"
-        compressionCode += "}\n"
+        nibbleByteSizes,
+        readBackPrimitivesStr,
+        packPrimitivesStr,
+        primitiveSizeSumString, RECORD_ENTRY)
 
         ###
         # Generate Decompression
         ###
-        decompressionCode = "inline void\ndecompressPrintArg%d" \
-                                            "(std::ifstream &in) {\n" % fmtId
 
-        # Step 1: Read back all the nibbles
-        decompressionCode += "\t%s nib[%d];\n" % (NIBBLE_OBJ, nibbleByteSizes)
-        decompressionCode += "\tin.read(reinterpret_cast<char*>(&nib)," \
-                                                " %d);\n\n" % nibbleByteSizes
-
-        # Step 2: Read back all the primitives
+        # Unpack all the primitives with their nibbles
+        primitiveUnpack = ""
         for i, idx in enumerate(primitiveArgIds):
             type = argTypes[idx]
-            mem = "first" if (i%2 == 0) else "second"
-            arrIndex = i/2
-            decompressionCode += "\t%s arg%d = %s<%s>(in, nib[%d].%s);\n" \
-                                % (type, idx, UNPACK_FN, type, arrIndex, mem)
+            member = "first" if (i%2 == 0) else "second"
 
-        # Step 3: Find all da strings
-        decompressionCode += "\n"
+            primitiveUnpack += "\t%s arg%d = %s<%s>(in, nib[%d].%s);\n" % (
+                                        type, idx, UNPACK_FN, type, i/2, member)
+
+        # Read back all the strings
+        readbackStringStr = ""
         for idx in stringArgIds:
             type = argTypes[idx]
             strType = "std::wstring" if "w_char" in type else "std::string"
 
-            decompressionCode += "\t%s arg%d_str;\n" % (strType, idx)
-            decompressionCode += "\tstd::getline(in, arg%d_str, \'\\0\');\n" \
-                                        % (idx)
-            decompressionCode += "\t%s arg%d = arg%d_str.c_str();\n" \
-                                        % (type, idx, idx)
+            readbackStringStr += \
+            """
+                {strType} arg{idx}_str;
+                std::getline(in, arg{idx}_str, '\\0');
+                {type} arg{idx} = arg{idx}_str.c_str();
+            """.format(strType=strType, idx=idx, type=type)
 
-        decompressionCode += "\n\tconst char *fmtString = \"%s\";\n" % fmtString
-        decompressionCode += "\tconst char *filename = \"%s\";\n" % filename
-        decompressionCode += "\tconst int linenum = %d;\n" % linenum
 
-        # Step 4: Final Printout
-        if argTypes:
-            decompressionCode += "\n\tprintf(\"%s\", %s);\n" % (
-                fmtString,
-                ", ".join(
-                    ["arg%d" % idx for idx, type in enumerate(argTypes)]))
-        else:
-            decompressionCode += "\n\tprintf(\"%s\");\n" % fmtString
+        decompressionCode = \
+"""
+inline void
+decompressPrintArg%d (std::ifstream &in) {
+    %s nib[%d];
+    in.read(reinterpret_cast<char*>(&nib), %d);
 
-        decompressionCode += "}\n"
+    // Unpack all the primitives
+%s
+
+    // Find all the strings
+%s
+
+    const char *fmtString = "%s";
+    const char *filename = "%s";
+    const int linenum = %d;
+
+    printf("%s" %s);
+}
+""" % ( fmtId,
+        NIBBLE_OBJ, nibbleByteSizes,
+        nibbleByteSizes,
+        primitiveUnpack,
+        readbackStringStr,
+        fmtString,
+        filename,
+        linenum,
+        fmtString, "".join([", arg%d" % idx for idx,
+                                                type in enumerate(argTypes)]))
 
 
         # All the code has been generated,  save them in our data structure
@@ -476,7 +484,7 @@ compressArgs%d(%s *re, char* out) {
             assert(fmtId < len(self.fmtId2Code))
             self.fmtId2Code[fmtId] = code
 
-        return (recordDeclaration, recordInvocation)
+        return (recordDeclaration, recordFnName)
 
 
 # Helper function to deterministically generate a managled record function
