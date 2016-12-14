@@ -25,15 +25,17 @@
 using namespace BufferUtils;
 
 /**
- * Simple program to decompress log files produced by the FastLogging System.
+ * Simple program to decompress log files produced by the FastLogger System.
  * Note that this executable must be compiled with the same BufferStuffer.h
  * as the LogCompressor that generated the compressedLog for this to work.
  */
 int main(int argc, char** argv) {
     uint32_t bufferSize = 1<<26;
 
-    if (argc < 3) {
-        printf("Usage: ./decompressor <logFile> <# messages to print>");
+    if (argc < 2) {
+        printf("Decompresses log files produced by the FastLogger System\r\n"
+                "into a human readable format.\r\n\r\n");
+        printf("\tUsage: %s <logFile> [# messages to print]", argv[0]);
         exit(1);
     }
 
@@ -44,10 +46,34 @@ int main(int argc, char** argv) {
         exit(-1);
     }
 
-    printf("Opening file %s\r\n", argv[1]);
+    int msgsToPrint = 0;
+    if (argc > 2) {
+        try {
+            msgsToPrint = std::stoi(argv[2]);
+        } catch (const std::invalid_argument& e) {
+            printf("Invalid # of message to print, please enter a number:"
+                    " %s\r\n",  argv[2]);
+            exit(-1);
+        } catch (const std::out_of_range& e) {
+            printf("# of messages to print is too large: %s\r\n", argv[2]);
+            printf("If you intend to print all message, "
+                    "exclude the # messages to print parameter.\r\n");
+            exit(-1);
+        }
 
-    int msgsToPrint = std::stoi(argv[2]);
+        if (msgsToPrint < 0) {
+            printf("# of messages to print must be positive: %s\r\n", argv[2]);
+            exit(-1);
+        }
+    }
+
     std::ifstream in(argv[1], std::ifstream::binary);
+    if (!in.is_open()) {
+        printf("Unable to open file: %s\r\n", argv[1]);
+        exit(-1);
+    }
+
+    printf("Opening file %s\r\n", argv[1]);
 
     int linesPrinted = 0;
     uint32_t lastFmtId = 0;

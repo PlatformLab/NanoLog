@@ -31,6 +31,10 @@ int main(int argc, char** argv) {
     uint64_t start, stop;
     double time;
 
+    // Optional: Set the output location for the FastLogger system. By default
+    // the log will be output to /tmp/compressedLog
+    PerfUtils::FastLogger::setLogFile("/tmp/logFile");
+
     // Optional optimization: pre-allocates thread-local data structures
     // needed by FastLogger. This should be invoked once per new
     // thread that will use the FastLogger system.
@@ -38,7 +42,7 @@ int main(int argc, char** argv) {
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
-        FAST_LOG("Simple log message with no parameters");
+        FAST_LOG("Simple log message with no parameters\r\n");
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);

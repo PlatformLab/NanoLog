@@ -19,6 +19,9 @@
 // compiling unit test files (anything that includes TestUtil.h)
 // everything becomes public.
 
+#ifndef COMMON_H
+#define COMMON_H
+
 #ifdef EXPOSE_PRIVATES
 #define PRIVATE public
 #define PROTECTED public
@@ -27,4 +30,6 @@
 #define PRIVATE private
 #define PROTECTED protected
 #define PUBLIC public
+#endif
+
 #endif
