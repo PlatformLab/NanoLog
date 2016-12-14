@@ -176,6 +176,9 @@ serialReadPmc(int ecx)
     abort(); \
 } while (0)
 
+// Number of bytes in a cache-line in our x86 machines.
+static const uint32_t BYTES_PER_CACHE_LINE = 64;
+
 } // end Util
 
 } // end PerfUtils

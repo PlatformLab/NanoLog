@@ -23,7 +23,7 @@ import os.path
 # Various globals mapping symbolic names to the object/function names in
 # the supporting C++ library. This is done so that changes in namespaces don't
 # result in large sweeping changes of this file.
-RECORD_ENTRY = "BufferUtils::RecordEntry"
+RECORD_ENTRY = "BufferUtils::UncompressedLogEntry"
 NIBBLE_OBJ = "BufferUtils::TwoNibbles"
 
 RECORD_HEADER_FN = "BufferUtils::recordMetadata"

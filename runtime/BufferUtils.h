@@ -20,6 +20,7 @@
 
 #include "Cycles.h"
 #include "Packer.h"
+#include "Util.h"
 
 #ifndef BUFFERUTILS_H
 #define BUFFERUTILS_H
@@ -38,16 +39,18 @@
 namespace BufferUtils {
 
     /**
-     * Header to a record entry within the Staging Buffer. After this header
-     * comes the uncompressed arguments related to the original log message.
+     * Marks the beginning of a log entry within the StagingBuffer waiting
+     * for compression. Every instance of this header in the StagingBuffer
+     * corresponds to a user invocation of the log function in the FastLogger
+     * system and thus every field is uncompressed to lower the compute time
+     * for that invocation.
      */
-    struct RecordEntry {
-        // Stores the format ID assigned to the log message by the preprocessor
-        // component that uniquely identifies the original format string and
-        // its code location. A value of 0 indicates an invalid entry.
+    struct UncompressedLogEntry {
+        // Uniquely identifies a log message by its format string and file
+        // location, assigned at compile time by the preprocessor.
         uint32_t fmtId;
 
-        // Stores the rdtsc() value at the time of the log message invocation
+        // Stores the rdtsc() value at the time of the log function invocation
         uint64_t timestamp;
 
         // Number of bytes for this header and the various arguments after it
@@ -57,51 +60,75 @@ namespace BufferUtils {
         // TODO(syang0) remove this when you implement the better packer
         uint8_t argMetaBytes;
 
-        // After this header, comes the uncompressed arguments
+        // After this header are the uncompressed arguments required by
+        // the original format string
         char argData[];
     };
 
     /**
-     * 2-bit enum that differentiates entries in the compressed log
+     * 2-bit enum that differentiates entries in the compressed log. These
+     * two bits **MUST** be at the beginning of each entry in the log
+     * to facilitate decoding.
      */
     enum EntryType : uint8_t {
+        // Marks an invalid entry in the compressed log. This value is
+        // deliberately 0 since \0's are used to pad the output to 512B
+        // in the final output.
         INVALID = 0,
+
+        // Indicates a CompressedRecordEntry that can be decompressed
         LOG_MSG = 1,
+
+        // Indicates a struct CheckPoint
         CHECKPOINT = 2,
-        END_OF_FILE = 3
+
+        // Indicates the end of the file stream/buffer
+        END_OF_FILE
     };
 
     /**
-     * Compressed version of the RecordEntry that goes in the output
-     * buffer/file. Note the fmtId and timestamp fields are not longer
-     * present since they will be pack()-ed after this header.
+     * Marks the beginning of a compressed log message. After this comes
+     * the compressed arguments. The layout in the compressed file is as folows:
+     *      - (1 byte) CompresedRecordEntry (this)
+     *      - (1-4 bytes) pack()-ed FormatId
+     *      - (1-8 bytes) pack()-ed rtsc() timestmap
+     *      - (n bytes) Packer Nibbles
+     *      - (m bytes) pack()-ed arguments
+     *      - (o bytes) uncompressed strings
      */
-    struct CompressedMetadata {
-        // Identifies the entry type to detect validity
+    struct CompressedRecordEntry {
+        // Byte representation of an EntryType::LOG_MSG to identify this as
+        // a CompressedRecordEntry.
         uint8_t entryType:2;
 
-        // Number of bytes + 1 in the compressed FmtId after this entry.
-        // This value + 1 is to be passed into unpack()
+        //TODO(syang0) abstraction failure
+        // Value returned by pack(formatId), subtracted by 1.
+        // i.e. if pack() returned 2 this value is 1.
         uint8_t additionalFmtIdBytes:2;
 
-        // Number of bytes + 1 in the compressed timestamp. This value + 1
-        // is to be passed into unpack()
+        // Value returned by pack(timestamp), subtracted by 1.
         uint8_t additionalTimestampBytes:3;
-
-        // After this is the packed fmtId, packed timestamp, nibbles, and more
-        // packed arguments.
     } __attribute__((packed));
 
     /**
-     * Checkpoint data-structure to be inserted in the compressed log
-     * periodically that helps synchronize rtdsc() times with wall time.
+     * Synchronization data structure that correlates the machine's rdtsc()
+     * with a wall time.
      */
-    struct Checkpoint : CompressedMetadata {
-        uint64_t rdtsc;
+    struct Checkpoint {
+        // Byte representation of an EntryType::CHECKPOINT
+        uint64_t entryType:2;
+
+        // rdtsc() time that corresponds with the unixTime below
+        uint64_t rdtsc:62;
+
+        // std::time() that corresponds with the rdtsc() above
         time_t unixTime;
+
+        // Conversion factor between cycles returned by rdtsc() and 1 second
         double cyclesPerSecond;
     } __attribute__((packed));
 
+    //TODO(syang0) move implementation into preprocessor
     /**
      * The decompressed version of original record entry. At this point, the
      * sizes/bytes arguments are no longer needed since they're encoded in
@@ -116,21 +143,6 @@ namespace BufferUtils {
     };
 
     /**
-     * Copies a primitive to a character array and bumps the array pointer.
-     * This is used by the injected record code to save primitives to the
-     * staging buffer.
-     *
-     * \param buffer - Buffer to copy primitive to
-     * \param val - value of primitive
-     */
-    template<typename T>
-    static inline void
-    recordPrimitive(char* &buffer, T val) {
-        *(reinterpret_cast<T*>(buffer)) = val;
-        buffer += sizeof(T);
-    }
-
-    /**
      * Convenience function to extract the information from a RecordEntry
      * in the staging buffer and compress it into the output buffer.
      *
@@ -139,20 +151,26 @@ namespace BufferUtils {
      *      1-4 bytes of formatId
      *      1-8 bytes of rtdsc()
      *
-     * \param re - RecordEntry to compress
-     * \param out - output buffer to compress to
-     * \param lastTimestamp - the last timestamp that was compressed into the
-     *                        output buffer. This is used to pack the timestamp
-     *                        more compactly.
-     * \param lastFmtId     - the last format id that was compressed into the
-     *                        output buffer. This is used to pack the format id
-     *                        more compactly
+     * \param re
+     *          RecordEntry to compress
+     * \param[in/out] out
+     *          Output byte buffer to compress the entry into
+     * \param lastTimestamp
+     *          The last timestamp that was compressed into the output buffer.
+     *          This is used to pack the timestamp more compactly.
+     * \param lastFmtId
+     *          The last format id that was compressed into the output buffer.
+     *          This is used to pack the format id more compactly
+     *
+     * \return
+     *          Number of bytes written to out
      */
     inline size_t
-    compressMetadata(RecordEntry *re, char** out, uint64_t lastTimestamp,
-                        uint32_t lastFmtId) {
-        CompressedMetadata *mo = reinterpret_cast<CompressedMetadata*>(*out);
-        *out += sizeof(CompressedMetadata);
+    compressMetadata(UncompressedLogEntry *re, char** out,
+                        uint64_t lastTimestamp,  uint32_t lastFmtId) {
+        CompressedRecordEntry *mo = reinterpret_cast<CompressedRecordEntry*>(
+                                                                          *out);
+        *out += sizeof(CompressedRecordEntry);
 
         mo->entryType = EntryType::LOG_MSG;
 
@@ -162,28 +180,32 @@ namespace BufferUtils {
         mo->additionalTimestampBytes = 0x07 & static_cast<uint8_t>(
                     BufferUtils::pack(out, re->timestamp - lastTimestamp) - 1);
 
-        return sizeof(CompressedMetadata)
+        return sizeof(CompressedRecordEntry)
                     + mo->additionalFmtIdBytes + 1
                     + mo->additionalTimestampBytes + 1;
     }
 
+    //TODO(syang0) abstract into the generated code
     /**
-     * Read in and decompress the metadata from a compress log. It uses some
-     * data from the log message that came before it to perform the
-     * decompression. (If first, pass in 0).
+     * Read in and decompress the metadata from a UncompressedLogEntry.
      *
-     * \param in - file stream to read from
-     * \param lastFmtId - last format id that was decompressed
-     * \param lastTimestamp - last time stamp that was decompressed
-     * \return - the decompressed metadata
+     * \param in
+     *              File stream to read from
+     * \param lastFmtId
+     *              Last format id that was decompressed (abstraction leakage)
+     * \param lastTimestamp
+     *              Last time stamp that was decompressed (abstraction leakage)
+     *
+     * \return
+     *              the decompressed metadata
      */
     inline DecompressedMetadata
     decompressMetadata(std::ifstream &in, uint32_t lastFmtId,
             uint64_t lastTimestamp)
     {
         DecompressedMetadata dm;
-        CompressedMetadata cm;
-        in.read(reinterpret_cast<char*>(&cm), sizeof(CompressedMetadata));
+        CompressedRecordEntry cm;
+        in.read(reinterpret_cast<char*>(&cm), sizeof(CompressedRecordEntry));
         assert(cm.entryType == EntryType::LOG_MSG);
 
         dm.fmtId =
@@ -200,18 +222,20 @@ namespace BufferUtils {
     }
 
     /**
-     * Peek in an input file stream to see if there is potentially a valid
-     * entry that can be read
+     * Peek in an input file stream and identify the next entry (if there is
+     * one) that can be read back.
      *
-     * \param in - file stream to read from
+     * \param in
+     *              File stream to peek into
      *
-     * \return - an EntryType specifying what it is.
+     * \return
+     *              An EntryType specifying what comes next
      */
     inline EntryType
     peekEntryType(std::ifstream &in) {
         // CompressedMetadata only takes a byte, so we can peek it and determine
         // the entry type.
-        static_assert(sizeof(CompressedMetadata) == 1,
+        static_assert(sizeof(CompressedRecordEntry) == 1,
                 "CompressedMetadata should only be 1 byte "
                 "so we can peek() it at decompression");
 
@@ -221,7 +245,7 @@ namespace BufferUtils {
         if (type < 0 || type > 255)
             return EntryType::INVALID;
 
-        CompressedMetadata *cm = reinterpret_cast<CompressedMetadata*>(&type);
+        CompressedRecordEntry *cm = reinterpret_cast<CompressedRecordEntry*>(&type);
         return EntryType(cm->entryType);
     }
 
@@ -230,10 +254,14 @@ namespace BufferUtils {
      * expensive operation in terms of storage, so it should be used
      * sparingly.
      *
-     * \param out - output array to insert the checkpoint into
-     * \param outLimit - end of the output array
+     * \param out[in/out]
+     *              Output array to insert the checkpoint into
+     * \param outLimit
+     *              Pointer to the end of out (i.e. first invalid byte to
+     *              write to)
      *
-     * \return - true if operation succeed, false if there's not enough space
+     * \return
+     *              True if operation succeed, false if there's not enough space
      */
     static inline bool
     insertCheckpoint(char** out, char *outLimit) {
@@ -244,7 +272,7 @@ namespace BufferUtils {
         *out += sizeof(Checkpoint);
 
         ck->entryType = EntryType::CHECKPOINT;
-        ck->rdtsc = PerfUtils::Cycles::rdtsc();
+        ck->rdtsc = 0x3FFFFFFFFFFFFFFF & PerfUtils::Cycles::rdtsc();
         ck->unixTime = std::time(nullptr);
         ck->cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
 
@@ -252,10 +280,12 @@ namespace BufferUtils {
     }
 
     /**
-     * Extracts a checkpoint from the log.
+     * Extracts a checkpoint from a file stream
      *
-     * \param in - compressed log to read from
-     * \return - the extracted Checkpoint
+     * \param in
+     *          File stream to read from
+     * \return
+     *          The extracted Checkpoint
      */
     inline Checkpoint
     readCheckpoint(std::ifstream &in) {

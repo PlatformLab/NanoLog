@@ -188,8 +188,6 @@ pack(char **buffer, int64_t val)
 template<typename T>
 inline int
 pack(char **buffer, T* pointer) {
-    // TODO(syang0) Implement and benchmark an alterative where we take
-    // differences in pointer values and pack that.
     return pack<uint64_t>(buffer, reinterpret_cast<uint64_t>(pointer));
 }
 

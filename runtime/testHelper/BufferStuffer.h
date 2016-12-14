@@ -35,8 +35,8 @@ namespace {
 
 void __syang0__fl__1(const char* fmtStr) {
     ;
-    size_t allocSize = 0 + 0 + sizeof(BufferUtils::RecordEntry);
-    BufferUtils::RecordEntry *re = reinterpret_cast<BufferUtils::RecordEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    size_t allocSize = 0 + 0 + sizeof(BufferUtils::UncompressedLogEntry);
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
 
     if (re == nullptr)
         return;
@@ -57,7 +57,7 @@ void __syang0__fl__1(const char* fmtStr) {
 
 
 inline ssize_t
-compressArgs1(BufferUtils::RecordEntry *re, char* out) {
+compressArgs1(BufferUtils::UncompressedLogEntry *re, char* out) {
     char *originalOutPtr = out;
     BufferUtils::TwoNibbles *nib = reinterpret_cast<BufferUtils::TwoNibbles*>(out);
     out += 0;
@@ -84,7 +84,7 @@ decompressPrintArg1(std::ifstream &in) {
 
 } // end empty namespace
 
-ssize_t (*compressFnArray[2])(BufferUtils::RecordEntry *re, char* out) {
+ssize_t (*compressFnArray[2])(BufferUtils::UncompressedLogEntry *re, char* out) {
 	nullptr,
 	compressArgs1
 };

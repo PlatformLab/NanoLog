@@ -49,11 +49,11 @@ public:
     //TODO(syang0) Where should I put these? These technically aren't
     // supposed to for the user to toggle...
 
-    // Toggles whether the compressed log file will be outputted via POSIX AIO
+    // Toggles whether the compressed log file will be output via POSIX AIO
     // or via regular blocking file writes (for debugging)
     static const bool USE_AIO = true;
 
-    // Controls in what mode the file will be opened in
+    // Controls in what mode the file will be opened
     static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|
                                                             O_DSYNC|O_DIRECT;
 
@@ -70,6 +70,7 @@ public:
     // User API
     static void printStats();
     static void preallocate();
+    static void setLogFile(const char* filename);
     static void sync();
 
 
@@ -110,6 +111,37 @@ public:
         stagingBuffer->finishReservation(nbytes);
     }
 
+    // This class is intended to be instantiated as a C++ thread_local to
+    // synchronize the destruction of the thread local stagingBuffer with
+    // thread death.
+    //
+    // The reason why this class exists rather than wrapping the stagingBuffer
+    // in a unique_ptr or declaring the stagingBuffer itself to be thread_local
+    // is because of performance. Dereferencing the former costs 10 ns and the
+    // latter allocates large amounts of resources for every thread that is
+    // created; even ones which don't use the FastLogger system (wasteful).
+    class StagingBufferDestroyer {
+    public:
+        // TODO(syang0) I wonder if it'll be better if stagingBuffer was
+        // actually a thread_local wrapper with dereference operators
+        // implemented.
+
+        explicit StagingBufferDestroyer() {
+        }
+
+        // Weird C++ hack; C++ thread_local are instantiated upon first use
+        // thus the StagingBuffer has to invoke this function in order
+        // to instantiate this object.
+        void stagingBufferCreated() { }
+
+        virtual ~StagingBufferDestroyer() {
+            if (stagingBuffer != nullptr) {
+                delete stagingBuffer;
+                stagingBuffer = NULL;
+            }
+        }
+    };
+
 PRIVATE:
     //Forward Declaration
     class StagingBuffer;
@@ -120,13 +152,18 @@ PRIVATE:
     // Storage for staging uncompressed log statements for compression
     static __thread StagingBuffer* stagingBuffer;
 
+    // Destroys the __thread StagingBuffer upon its own destruction, which
+    // is synchronized with thread death
+    static thread_local StagingBufferDestroyer sbc;
+
     // Singleton FastLogger that manages the thread-local structures and
     // background output thread.
     static FastLogger fastLogger;
 
     void compressionThreadMain();
-    void waitForAIO();
     void printStatsInternal();
+    void setLogFile_internal(const char* filename);
+    void waitForAIO();
 
     void deallocateStagingBuffer(StagingBuffer *sb);
 
@@ -164,8 +201,8 @@ PRIVATE:
     // Flag signaling the compressionThread to stop running
     bool compressionThreadShouldExit;
 
-    // Level trigger for the background thread to make a complete pass through
-    // all the staging buffers before sleeping.
+    // Indicates that a sync request has been made but is not completed
+    // by the background thread yet.
     bool syncRequested;
 
     // Protects the condition variables below
@@ -187,11 +224,14 @@ PRIVATE:
 
     // Used to stage the compressed log messages before passing it on to the
     // POSIX AIO library.
-    char *outputBuffer;
 
-    // Double buffer for outputBuffer that is used to hold compressed log
-    // messages while POSIX AIO outputs it to a file.
-    char *posixBuffer;
+    // Dynamically allocated buffer to stage compressed log message before
+    // handing it over to the POSIX AIO library for output.
+    char *compressingBuffer;
+
+    // Dynamically allocated double buffer that is swapped with the
+    // compressingBuffer when the latter is passed to the POSIX AIO library.
+    char *outputDoubleBuffer;
 
     // Metric: Amount of time spent compressing the dynamic log data
     uint64_t cyclesCompressing;
@@ -220,11 +260,12 @@ PRIVATE:
     // Metric: Number of times an AIO write was completed.
     uint32_t numAioWritesCompleted;
 
-        /**
+    /**
      * Implements a circular FIFO producer/consumer byte queue that is used
      * to hold the dynamic information of a FastLogger log statement (producer)
      * as it waits for compression via the FastLogger background thread
-     * (consumer)
+     * (consumer). There exists a StagingBuffer for every thread that uses
+     * the FastLogger system.
      */
     class StagingBuffer {
     public:
@@ -233,10 +274,12 @@ PRIVATE:
          * making it visible to the consumer. The user should invoke
          * finishReservation() to make this entry visible to the consumer
          * and shall not invoke this function again until they have
-         * finishAlloc-ed().
+         * finishAlloc-ed(). This mechanism is in place to allow the producer
+         * to fully initialize the data contents before exposing it to the
+         * consumer.
          *
-         * This function will block behind the consumer if there's
-         * not enough space.
+         * This function will block behind the consumer if there's not
+         * enough space.
          *
          * \param nbytes
          *      Number of bytes to allocate
@@ -255,8 +298,8 @@ PRIVATE:
         }
 
         /**
-         * Complement to reserveProducerSpace that makes nbytes from the
-         * producer space visible to the consumer.
+         * Complement to reserveProducerSpace that makes nbytes starting from
+         * the return of reserveProducerSpace visible to the consumer.
          */
         inline void
         finishReservation(size_t nbytes) {
@@ -289,12 +332,13 @@ PRIVATE:
             , consumerPos(storage)
             , storage()
         {
-//            printf("Staging Buffer Created!\r\n");
+            // Empty function, but causes the C++ runtime to instantiate the
+            // sbc thread_local (see documentation in function).
+            sbc.stagingBufferCreated();
         }
 
         ~StagingBuffer() {
-            //TODO(syang0) This isn't actually run when a thread dies!!!!
-//            printf("Staging Buffer Destructed!\r\n");
+            fflush(stdout);
 
             // Flush out all log messages
             uint64_t remainingData;
@@ -308,7 +352,6 @@ PRIVATE:
             fastLogger.deallocateStagingBuffer(this);
         }
 
-    //TODO(syang0) PRIVATE
     PRIVATE:
         char* reserveSpaceInternal(size_t nbytes, bool blocking=true);
 
@@ -326,11 +369,10 @@ PRIVATE:
         // An extra cache-line to separate the variables that are primarily
         // updated/read by the producer (above) from the ones by the
         // consumer(below)
-        static const uint32_t BYTES_PER_CACHE_LINE = 64;
-        char cacheLineSpacer[BYTES_PER_CACHE_LINE];
+        char cacheLineSpacer[PerfUtils::Util::BYTES_PER_CACHE_LINE];
 
-        // Position within the storage buffer where the consumer can start
-        // consuming bytes from. This value is only updated by the consumer.
+        // Position within the storage buffer where the consumer will consume
+        // the next bytes from. This value is only updated by the consumer.
         char *consumerPos;
 
         // Backing store used to implement the circular queue
