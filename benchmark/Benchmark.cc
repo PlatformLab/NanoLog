@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
-        FAST_LOG("Simple log message with no parameters\r\n");
+        FAST_LOG("Simple log message with 0 parameters\r\n");
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);

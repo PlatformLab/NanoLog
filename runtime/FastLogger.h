@@ -34,6 +34,7 @@
 
 #include "Cycles.h"         /* Cycles::rdtsc() */
 #include "BufferUtils.h"
+#include "Cycles.h"
 
 namespace PerfUtils {
 
@@ -111,43 +112,10 @@ public:
         stagingBuffer->finishReservation(nbytes);
     }
 
-    // This class is intended to be instantiated as a C++ thread_local to
-    // synchronize the destruction of the thread local stagingBuffer with
-    // thread death.
-    //
-    // The reason why this class exists rather than wrapping the stagingBuffer
-    // in a unique_ptr or declaring the stagingBuffer itself to be thread_local
-    // is because of performance. Dereferencing the former costs 10 ns and the
-    // latter allocates large amounts of resources for every thread that is
-    // created; even ones which don't use the FastLogger system (wasteful).
-    class StagingBufferDestroyer {
-    public:
-        // TODO(syang0) I wonder if it'll be better if stagingBuffer was
-        // actually a thread_local wrapper with dereference operators
-        // implemented.
-
-        explicit StagingBufferDestroyer() {
-        }
-
-        // Weird C++ hack; C++ thread_local are instantiated upon first use
-        // thus the StagingBuffer has to invoke this function in order
-        // to instantiate this object.
-        void stagingBufferCreated() { }
-
-        virtual ~StagingBufferDestroyer() {
-            if (stagingBuffer != nullptr) {
-                delete stagingBuffer;
-                stagingBuffer = NULL;
-            }
-        }
-    };
-
 PRIVATE:
-    //Forward Declaration
+    // Forward Declarations
     class StagingBuffer;
-
-    FastLogger();
-    ~FastLogger();
+    class StagingBufferDestroyer;
 
     // Storage for staging uncompressed log statements for compression
     static __thread StagingBuffer* stagingBuffer;
@@ -159,13 +127,14 @@ PRIVATE:
     // Singleton FastLogger that manages the thread-local structures and
     // background output thread.
     static FastLogger fastLogger;
+    
+    FastLogger();
+    ~FastLogger();
 
     void compressionThreadMain();
     void printStatsInternal();
     void setLogFile_internal(const char* filename);
     void waitForAIO();
-
-    void deallocateStagingBuffer(StagingBuffer *sb);
 
     /**
      * Allocates thread-local structures if they weren't already allocated.
@@ -184,8 +153,7 @@ PRIVATE:
         }
     }
 
-    // Tracks the thread-local stagingBuffers globally; A nullptr entry
-    // indicates that the owning thread has been destructed
+    // Globally the thread-local stagingBuffers
     std::vector<StagingBuffer*> threadBuffers;
 
     // Protects reads and writes to threadBuffers
@@ -233,6 +201,13 @@ PRIVATE:
     // compressingBuffer when the latter is passed to the POSIX AIO library.
     char *outputDoubleBuffer;
 
+    // Marks the rdtsc() when the current compression thread first started
+    // running. A value of 0 indicates the compression thread is not running.
+    uint64_t cycleAtThreadStart;
+
+    // Metric: Number of cycles compression thread is alive
+    uint64_t cyclesAwake;
+
     // Metric: Amount of time spent compressing the dynamic log data
     uint64_t cyclesCompressing;
 
@@ -271,13 +246,12 @@ PRIVATE:
     public:
         /**
          * Attempt to reserve contiguous space for the producer without
-         * making it visible to the consumer. The user should invoke
-         * finishReservation() to make this entry visible to the consumer
-         * and shall not invoke this function again until they have
-         * finishAlloc-ed(). This mechanism is in place to allow the producer
-         * to fully initialize the data contents before exposing it to the
-         * consumer.
+         * making it visible to the consumer. The caller should invoke
+         * finishReservation() before invoking reserveProducerSpace()
+         * again to make the bytes reserved visible to the consumer.
          *
+         * This mechanism is in place to allow the producer to initialize
+         * the contents of the reservation before exposing it to the consumer.
          * This function will block behind the consumer if there's not
          * enough space.
          *
@@ -300,6 +274,9 @@ PRIVATE:
         /**
          * Complement to reserveProducerSpace that makes nbytes starting from
          * the return of reserveProducerSpace visible to the consumer.
+         *
+         * \param nbytes
+         *      Number of bytes to expose to the consumer
          */
         inline void
         finishReservation(size_t nbytes) {
@@ -313,20 +290,39 @@ PRIVATE:
         char* peek(uint64_t *bytesAvailable);
 
         /**
-         * Consumes the next RecordEntry and advances the internal pointers
-         * for peek().
+         * Consumes the next nbytes in the StagingBuffer and frees it back
+         * for the producer to reuse. nbytes must be less than what is
+         * returned by peek().
+         *
+         * \param nbytes
+         *      Number of bytes to return back to the producer
          */
         inline void
         consume(uint64_t nbytes) {
             consumerPos += nbytes;
         }
 
+        /**
+         * Returns true if it's safe for the compression thread to delete
+         * the StagingBuffer and remove it from the global vector.
+         *
+         * \return
+         *      true if its safe to delete the StagingBuffer
+         */
+        bool
+        checkCanDelete()
+        {
+            return shouldDeallocate && consumerPos == producerPos;
+        }
+
         StagingBuffer()
             : producerPos(storage)
             , endOfRecordedSpace(storage + STAGING_BUFFER_SIZE)
             , minFreeSpace(STAGING_BUFFER_SIZE)
+            , cyclesProducerBlocked(0)
             , cacheLineSpacer()
             , consumerPos(storage)
+            , shouldDeallocate(false)
             , storage()
         {
             // Empty function, but causes the C++ runtime to instantiate the
@@ -335,20 +331,7 @@ PRIVATE:
         }
 
         ~StagingBuffer() {
-            fflush(stdout);
-
-            // Flush out all log messages
-            uint64_t remainingData;
-            peek(&remainingData);
-            
-            while (remainingData > 0) {
-                FastLogger::sync();
-                peek(&remainingData);
-            }
-
-            fastLogger.deallocateStagingBuffer(this);
         }
-
     PRIVATE:
         char* reserveSpaceInternal(size_t nbytes, bool blocking=true);
 
@@ -363,6 +346,8 @@ PRIVATE:
         // without rolling over the producerPos or stalling behind the consumer
         uint64_t minFreeSpace;
 
+        uint64_t cyclesProducerBlocked;
+
         // An extra cache-line to separate the variables that are primarily
         // updated/read by the producer (above) from the ones by the
         // consumer(below)
@@ -372,11 +357,49 @@ PRIVATE:
         // the next bytes from. This value is only updated by the consumer.
         char *consumerPos;
 
+        // Indicates that the thread owning this StagingBuffer has been
+        // destructed (i.e. no more messages will be logged to it) and thus
+        // should be cleaned up once the buffer has been emptied by the
+        // compression thread.
+        bool shouldDeallocate;
+
         // Backing store used to implement the circular queue
         char storage[STAGING_BUFFER_SIZE];
+
+
+        friend StagingBufferDestroyer;
     };
 
-    friend StagingBuffer;
+    // This class is intended to be instantiated as a C++ thread_local to
+    // synchronize marking the thread local stagingBuffer for deletion with
+    // thread death.
+    //
+    // The reason why this class exists rather than wrapping the stagingBuffer
+    // in a unique_ptr or declaring the stagingBuffer itself to be thread_local
+    // is because of performance. Dereferencing the former costs 10 ns and the
+    // latter allocates large amounts of resources for every thread that is
+    // created, which is wasteful for threads that do not use the FastLogger.
+    class StagingBufferDestroyer {
+    public:
+        // TODO(syang0) I wonder if it'll be better if stagingBuffer was
+        // actually a thread_local wrapper with dereference operators
+        // implemented.
+
+        explicit StagingBufferDestroyer() {
+        }
+
+        // Weird C++ hack; C++ thread_local are instantiated upon first use
+        // thus the StagingBuffer has to invoke this function in order
+        // to instantiate this object.
+        void stagingBufferCreated() { }
+
+        virtual ~StagingBufferDestroyer() {
+            if (stagingBuffer != nullptr) {
+                stagingBuffer->shouldDeallocate = true;
+                stagingBuffer = nullptr;
+            }
+        }
+    };
 
 };  // FastLogger
 }; // namespace PerfUtils

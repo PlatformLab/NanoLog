@@ -20,8 +20,8 @@ USER_SRCS=Benchmark.cc
 # MUST use macro to identify user *.o files
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
-# -O3 should always be passed for high performance
-CXXFLAGS= -std=c++11 -O3 -g
+# -DNDEBUG and -O3 should always be passed for high performance
+CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
 CXX=g++
 
 all: benchmark
@@ -90,10 +90,10 @@ $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc generated/BufferStuffer.h
 
 libFastLogger.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS)
 	ar -cq libFastLogger.a $(RUNTIME_OBJS)
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
 
 decompressor: generated/BufferStuffer.h $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
 
 clean-all: clean
 	@rm -f libFastLogger.a $(RUNTIME_OBJS) decompressor
