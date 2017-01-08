@@ -305,9 +305,6 @@ PRIVATE:
         finishReservation(size_t nbytes) {
             assert(nbytes < minFreeSpace);
             assert(producerPos + nbytes < storage + STAGING_BUFFER_SIZE);
-            // Don't pass the read head with finish
-            assert(producerPos >= consumerPos
-                            || producerPos + nbytes < consumerPos);
 
             minFreeSpace -= nbytes;
             producerPos += nbytes;
