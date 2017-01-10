@@ -24,6 +24,7 @@
 #include "../runtime/Cycles.h"
 
 #include "folder/Sample.h"
+#include "SimpleTestObject.h"
 
 // forward decl
 struct fast_log;
@@ -32,29 +33,30 @@ evilTestCase(fast_log* log) {
     ////////
     // Basic Tests
     ////////
-    FAST_LOG("Simple times\r\n");
+    FAST_LOG("Simple times");
 
     FAST_LOG("More simplicity");
 
-    FAST_LOG("How about a number? %d\n", 1900);
+    FAST_LOG("How about a number? %d", 1900);
 
-    FAST_LOG("How about a second number? %d\n", 1901);
+    FAST_LOG("How about a second number? %d", 1901);
 
-    FAST_LOG("How about a double? %lf\n", 0.11);
+    FAST_LOG("How about a double? %lf", 0.11);
 
-    FAST_LOG("How about a nice little string? %s\n", "Stephen Rocks!");
+    FAST_LOG("How about a nice little string? %s", "Stephen Rocks!");
 
-    FAST_LOG("A middle \"%s\" string?\n", "Stephen Rocks!");
+    FAST_LOG("A middle \"%s\" string?", "Stephen Rocks!");
 
-    FAST_LOG("And another string? %s\n", "yolo swag!\nblah\r\n");
+    FAST_LOG("And another string? %s", "yolo swag! blah.");
 
-    FAST_LOG("One that should be \"end\"? %s\n", "end\0 FAIL!!!");
+    FAST_LOG("One that should be \"end\"? %s", "end\0 FAIL!!!");
 
     int cnt = 2;
-    FAST_LOG("Hello world number %d of %d (%0.2lf%%)! This is %s!\n", cnt, 10, 1.0*cnt/10, "Stephen");
+    FAST_LOG("Hello world number %d of %d (%0.2lf%%)! This is %s!", cnt, 10, 1.0*cnt/10, "Stephen");
 
 
-    uint8_t small =10;
+    void *pointer = (void*)0x7ffe075cbe7d;
+    uint8_t small = 10;
     uint16_t medium = 33;
     uint32_t large = 99991;
     uint64_t ultra_large = -1;
@@ -71,8 +73,8 @@ evilTestCase(fast_log* log) {
                 "float = %f\n"
                 "double = %lf\n"
                 "hexadecimal = %x\n"
-                "Just a normal character = %c\r\n\r\n",
-            &small, small, medium, large, ultra_large, Float, Double,
+                "Just a normal character = %c",
+            pointer, small, medium, large, ultra_large, Float, Double,
             0xFF, 'a'
             );
 
@@ -85,9 +87,11 @@ evilTestCase(fast_log* log) {
         "int16_t %d\n"
         "int32_t %d\n"
         "int64_t %ld\n"
-        "int %d\r\n\r\n",
+        "int %d",
         smallNeg, mediumNeg, largeNeg, ultra_large_neg, -12356
         );
+
+    FAST_LOG("How about variable width + precision? %*.*lf %*d %10s", 9, 2, 12345.12345, 10, 123, "end");
 
     ////////
     // Name Collision Tests
@@ -108,8 +112,8 @@ evilTestCase(fast_log* log) {
             "FAST_LOG()");
 
     int i = 0;
-    ++i; FAST_LOG("\r\n13) Yup\n" "ie\r\n"); ++i;
-    FAST_LOG("13.5) This should be =2: %d\r\n", i);
+    ++i; FAST_LOG("13) Yup\n" "ie"); ++i;
+    FAST_LOG("13.5) This should be =2: %d", i);
 
 
     ////////
@@ -122,11 +126,13 @@ evilTestCase(fast_log* log) {
     FAST_LOG("14) He"
         "ll"
         // "o"
-        "o %d\r\n",
-        5);
+        "o %d",
+        6);
 
     int id = 0;
-    FAST_LOG("15) This should not be incremented twice (=1):%d\r\n", ++id);
+    FAST_LOG("15) This should not be incremented twice (=1):%d", ++id);
+
+    id++; FAST_LOG("15) This should be incremented once more (=2):%d", id++); ++id;
 
     /* This */ FAST_LOG( /* is */ "16) Hello /* uncool */");
 
@@ -153,7 +159,7 @@ evilTestCase(fast_log* log) {
     ////////
     // Preprocessor substitutions
     ////////
-     LOG("ssneaky #define LOG");
+     LOG("sneaky #define LOG");
      hiddenInHeaderFilePrint();
 
 
@@ -209,7 +215,7 @@ ST_LOG("The worse");
     ;
 
 
-    FAST_LOG("1) Simple times\r\n");
+    FAST_LOG("1) Simple times");
 }
 
 ////////
@@ -235,12 +241,13 @@ void gah()
 
 int main()
 {
+    PerfUtils::FastLogger::setLogFile("./compressedLog");
     evilTestCase(NULL);
 
     int count = 10;
     uint64_t start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < count; ++i) {
-        FAST_LOG("Simple test!\r\n");
+        FAST_LOG("Loop test!");
     }
 
     uint64_t stop = PerfUtils::Cycles::rdtsc();
@@ -250,5 +257,16 @@ int main()
             "(%0.2lf ns/event avg)\r\n",
             count, time, (time/count)*1e9);
 
+    SimpleTest st(10);
+    st.logSomething();
+    st.wholeBunchOfLogStatements();
+    st.logStatementsInHeader();
+    st.logSomething();
+    st.logSomething();
+
     PerfUtils::FastLogger::sync();
+
+    printf("\r\nNote: This app is used in the integration tests, but"
+        "is not the test runner. \r\nTo run the actual test, invoke "
+        "\"make run-test\"\r\n\r\n");
 }

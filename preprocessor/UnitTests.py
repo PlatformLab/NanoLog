@@ -12,14 +12,14 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+import filecmp
 import unittest
 import os
 from parser import *
 
 from FunctionGenerator import *
 
-
-class  PreprocesorTestCase(unittest.TestCase):
+class PreprocesorTestCase(unittest.TestCase):
     #def setUp(self):
     #    self.foo = UnitTests()
     #
@@ -28,66 +28,238 @@ class  PreprocesorTestCase(unittest.TestCase):
     #    self.foo.dispose()
     #    self.foo = None
 
+    def test_extractCString(self):
+
+        self.assertEqual("This is a simple line",
+                         extractCString(""" "This is a simple line" """))
+
+        string = " Here's a more complicated one\r\n on 2 lines"
+        self.assertEqual(string, extractCString("\"%s\"" % string))
+
+        string = " \\\"Escaped quotes!\\\" Noooo!!!"
+        self.assertEqual(string, extractCString("\"%s\"" % string))
+
+        string = "\\\\n Escaped new line"
+        self.assertEqual(string, extractCString("\"%s\"" % string))
+
+        string = "Multi line one \r\n that \n has \\\" an escaped quote"
+        self.assertEqual(string, extractCString("\"%s\"" % string))
+
+        string = "Format specifiers and special characters %s %d '#(*&(*79234'"
+        self.assertEqual(string, extractCString("\"%s\"" % string))
+
+        # Now work with C string concat, notice the style changed
+        string = "    \" This is the real string \"\r\n \"and it's separated \""
+        self.assertEqual(" This is the real string and it's separated ",
+                         extractCString(string))
+
+        string = "\r\n\r\n\r\n \"Weird\"\r\n\r\n "
+        self.assertEqual("Weird", extractCString(string))
+
+        string = """
+"This is a string"
+
+    " that's a bit" " more"
+            " representative\r\n"
+
+"""
+        self.assertEqual(
+            """This is a string that's a bit more representative\r\n""",
+            extractCString(string))
+
+        # Empty string
+        string = "\"\""
+        self.assertEqual("", extractCString(string))
+
+        # Finally, error cases where the string is malformed
+        string = "\""
+        self.assertIsNone(extractCString(string))
+
+        string = "\" One good string\" But another bad"
+        self.assertIsNone(extractCString(string))
+
+        string = "\" One\"   \" and a half good strings"
+        self.assertIsNone(extractCString(string))
+
+        string = " \"Test\" extraneous chars"
+        self.assertIsNone(extractCString(string))
+
+        string = "\r\n\r\n\r\n \"Extra quote there =>\"\r\n\r\n \""
+        self.assertIsNone(extractCString(string))
+
     def test_parseArgumentStartingAt_quotes(self):
-        lines = ["LOG((++i), \"Hello\")"]
+        lines = ["LOG((++i), \"\\\"Hello\\\"\")"]
 
         arg = parseArgumentStartingAt(lines, FilePosition(0, 4))
-        self.assertEqual(arg, Argument("(++i)",
-                                        FilePosition(0, 4), FilePosition(0, 9)))
+        self.assertEqual(Argument("(++i)",
+                                FilePosition(0, 4), FilePosition(0, 9)),
+                         arg)
 
         arg = parseArgumentStartingAt(lines, FilePosition(0, 10))
-        self.assertEqual(arg, Argument(" \"Hello\"",
-                                      FilePosition(0, 10), FilePosition(0, 18)))
+        self.assertEqual(Argument(' "\\"Hello\\""',
+                                FilePosition(0, 10), FilePosition(0, 22)),
+                         arg)
 
+        # Misaligned quotes
+        self.assertIsNone(parseArgumentStartingAt(["LOG(\"Test);"],
+                                                  FilePosition(0, 4)))
 
-    def test_markAndSeparateOnSemicolon_basic(self):
-        lines = ["LOG(Test, 5);++i; ++i"]
-        self.assertTrue(
-                markAndSeparateOnSemicolon(lines, (0, 0), "test.txt", 55))
+        self.assertIsNone(parseArgumentStartingAt(["LOG(\"\"Test\");"],
+                                                  FilePosition(0, 4)))
 
-        # Important things are that it only splits the first semicolon
-        # and the offset of the next statement matches the previous
-        self.assertEqual(lines, ['LOG(Test, 5);\r\n',
-                                 '# 55 "test.txt"\r\n',
-                                 '             ++i; ++i']);
+        # Escaped, but misaligned quote
+        arg = parseArgumentStartingAt(["LOG(\\\"Test);"], FilePosition(0, 4))
+        self.assertEqual("\\\"Test", arg.source)
+        self.assertEqual(FilePosition(0, 10), arg.endPos)
 
-        # lastly, test multiple lines with offset configuration
-        lines = [   "Unimportant();\n\n",
-                    "Skipped() ;    NotSkipped(); ImportantStuff();\r\n",
-                    "YoloSwag();\r\n"
-                    ]
-        self.assertTrue(
-                markAndSeparateOnSemicolon(lines, (1, 17), "test.txt", 55))
-        self.assertEqual(lines,
-                        ['Unimportant();\n\n',
-                         'Skipped() ;    NotSkipped();\r\n',
-                         '# 55 "test.txt"\r\n',
-                         '                             ImportantStuff();\r\n',
-                         'YoloSwag();\r\n'
-                         ])
+    def test_parseArgumentStartingAt_brackets(self):
+        startPos = FilePosition(0, 4)
 
-    def test_markAndSeparateOnSemicolon_noSplits(self):
-        # Unchanged due to missing semicolon on specified line
-        lines = ["blah balh no Semi\r\n"
-                    "Semi;\r\n"]
-        self.assertFalse(
-                markAndSeparateOnSemicolon(lines, (0, 0), "test.txt", 56))
-        self.assertEqual(lines, ["blah balh no Semi\r\n"
-                                 "Semi;\r\n"])
+        # Okay
+        arg = parseArgumentStartingAt(["LOG({});"], startPos)
+        self.assertEqual("{}", arg.source)
 
-        # Unimportant characters found after semicolon so no splits
-        lines = ["blah blah blah;     \t\r\n  "]
-        self.assertFalse(
-                markAndSeparateOnSemicolon(lines, (0, 0), "test.txt", 56))
-        self.assertEquals(lines, ["blah blah blah;     \t\r\n  "])
+        arg = parseArgumentStartingAt(["LOG({((([[9]])))}, {});"], startPos)
+        self.assertEqual("{((([[9]])))}", arg.source)
 
+        # Malformed
+        self.assertIsNone(parseArgumentStartingAt(["LOG({);"], startPos))
+        self.assertIsNone(parseArgumentStartingAt(["LOG({{);"], startPos))
+        self.assertIsNone(parseArgumentStartingAt(["LOG({}});"], startPos))
+        self.assertIsNone(parseArgumentStartingAt(["LOG(});"], startPos))
+
+        self.assertIsNone(parseArgumentStartingAt(["LOG(();"], startPos))
+        self.assertIsNone(parseArgumentStartingAt(["LOG([]]);"], startPos))
+        self.assertIsNone(parseArgumentStartingAt(["LOG(4"], startPos))
+
+        # Okay because they're misaligned, but in quotes
+        lines = ["LOG(Hello + \"{{{[[[[)]({\");"]
+        arg = parseArgumentStartingAt(lines, FilePosition(0, 4))
+        self.assertEqual('Hello + \"{{{[[[[)]({\"', arg.source)
+        self.assertEqual(FilePosition(0, 25), arg.endPos)
+
+    def test_parseLogStatement_nestedAndMultilined(self):
+        lines = """FAST_LOG("Format \\\"string\\\" %d %d %s %0.2lf",
+            calculate(a, b, c) * 22/3,
+            arrayDereference[indexArray[(3+5)/var]],
+{"constructor", {"nested", 4}}.getId( alpha ),
+            0923.4918 * 22 - 1)
+               ;
+        """
+        lines = lines.strip().split("\n")
+
+        stmt = parseLogStatement(lines, FilePosition(0, 0))
+        self.assertEqual(FilePosition(0, 8), stmt['openParenPos'])
+        self.assertEqual(FilePosition(4, 30), stmt['closeParenPos'])
+        self.assertEqual(FilePosition(5, 15), stmt['semiColonPos'])
+
+        args = stmt['arguments']
+        self.assertEqual(5, len(args))
+
+        self.assertEqual("\"Format \\\"string\\\" %d %d %s %0.2lf\"",
+                            args[0].source)
+        self.assertEqual(FilePosition(0, 9), args[0].startPos)
+        self.assertEqual(FilePosition(0, 44), args[0].endPos)
+
+        self.assertEqual("            calculate(a, b, c) * 22/3",
+                            args[1].source)
+        self.assertEqual(FilePosition(0, 45), args[1].startPos)
+        self.assertEqual(FilePosition(1, 37), args[1].endPos)
+
+        self.assertEqual("            arrayDereference[indexArray[(3+5)/var]]",
+                         args[2].source)
+        self.assertEqual(FilePosition(1, 38), args[2].startPos)
+        self.assertEqual(FilePosition(2, 51), args[2].endPos)
+
+        self.assertEqual("{\"constructor\", {\"nested\", 4}}.getId( alpha )",
+                         args[3].source)
+        self.assertEqual(FilePosition(2, 52), args[3].startPos)
+        self.assertEqual(FilePosition(3, 45), args[3].endPos)
+
+        self.assertEqual("            0923.4918 * 22 - 1", args[4].source)
+        self.assertEqual(FilePosition(3, 46), args[4].startPos)
+        self.assertEqual(FilePosition(4, 30), args[4].endPos)
+
+    def test_parseLogStatement_terribleFormatting(self):
+        # Nested invocations and terrible formatting
+        lines = """FAST_LOG("Format String %d %0.2lf %s", calculate(a, b),
+                100.09/
+                    variable[22]
+        ,   "const string" "that's actually"
+        "split"
+        )       ;
+        """
+
+        lines = lines.strip().split("\n")
+
+        stmt = parseLogStatement(lines, FilePosition(0, 0))
+        self.assertEqual(FilePosition(0, 8), stmt['openParenPos'])
+        self.assertEqual(FilePosition(5, 8), stmt['closeParenPos'])
+        self.assertEqual(FilePosition(5, 16), stmt['semiColonPos'])
+
+        args = stmt['arguments']
+        self.assertEqual(4, len(args))
+
+        self.assertEqual("\"Format String %d %0.2lf %s\"", args[0].source)
+        self.assertEqual(FilePosition(0, 37), args[0].endPos)
+
+        arg = parseArgumentStartingAt(lines, FilePosition(0, 33))
+        self.assertEqual(" calculate(a, b)", args[1].source)
+        self.assertEqual(FilePosition(0, 54), args[1].endPos)
+
+        arg = parseArgumentStartingAt(lines, FilePosition(0, 50))
+        self.assertEqual('100.09/                    variable[22]',
+                            args[2].source.strip())
+        self.assertEqual(FilePosition(3, 8), args[2].endPos)
+
+        arg = parseArgumentStartingAt(lines, FilePosition(3, 9))
+        self.assertEqual('"const string" "that\'s actually"        "split"',
+                            args[3].source.strip())
+        self.assertEqual(FilePosition(5, 8), args[3].endPos)
+
+    def test_parseLogStatement_missingSemicolonOrParen(self):
+        with self.assertRaisesRegexp(ValueError, "Expected ';'"):
+            parseLogStatement(["FAST_LOG(\"1\") }"], FilePosition(0, 0))
+
+        with self.assertRaisesRegexp(ValueError, "Expected ';'"):
+            parseLogStatement(["FAST_LOG(\"1\")"], FilePosition(0, 0))
+
+        with self.assertRaisesRegexp(ValueError, "Cannot find end"):
+            parseLogStatement(["FAST_LOG(\"1\""], FilePosition(0, 0))
+
+    def test_peekNextMeaningfulChar(self):
+        lines = ["Hello ",
+                 "    \t\t\n 5",
+                 ""]
+
+        peek = peekNextMeaningfulChar(lines, FilePosition(0, 0))
+        self.assertEqual('H', peek[0])
+        self.assertEqual(FilePosition(0, 0), peek[1])
+
+        peek = peekNextMeaningfulChar(lines, FilePosition(0, 5))
+        self.assertEqual('5', peek[0])
+        self.assertEqual(FilePosition(1, 8), peek[1])
+
+        # Invalid file position
+        peek = peekNextMeaningfulChar(lines, FilePosition(1, 9))
+        self.assertIsNone(peek)
+
+        peek = peekNextMeaningfulChar(lines, FilePosition(5, 0))
+        self.assertIsNone(peek)
+
+    ###### NOTE #######
+    # parser.py:processFile is left for an integration test since it an entire
+    # C++ source file and outputs generated code.
+    ####################
+
+class FunctionGeneratorTestCase(unittest.TestCase):
     def test_parseTypesInFmtString_noReplacements(self):
-        fmtString =  """~S!@#$^&*()_+1234567890qwertyu
-                            iopasdfghjkl;zxcv  bnm,\\\\r\\n
-                            %%ud \%lf osdif<>":L:];
-                    """
+        fmtString = """~S!@#$^&*()_+1234567890qwertyu
+                              iopasdfghjkl;zxcv  bnm,\\\\r\\n
+                              %%ud \%lf osdif<>":L:];
+                      """
 
-        # No replacements should be performed becuase all % are escaped
+        # No replacements should be performed because all % are escaped
         self.assertEqual(parseTypesInFmtString(fmtString), [])
 
         fmtString = ""
@@ -96,256 +268,165 @@ class  PreprocesorTestCase(unittest.TestCase):
         fmtString = "Hello"
         self.assertEqual(parseTypesInFmtString(fmtString), [])
 
-        fmtString = "\% %%"
+        fmtString = "\% %%ud"
         self.assertEqual(parseTypesInFmtString(fmtString), [])
+
+        # Invalid types
+        fmtString = "%S %qosiwieud"
+        with self.assertRaisesRegexp(ValueError,
+                                     "Unrecognized Format Specifier"):
+            parseTypesInFmtString(fmtString)
+
+    def test_parseTypesInFmtString_escapes(self):
+        # Tricky
+        fmtString = "\\%s %%p %%%s \\\\%s"
+        self.assertEqual(parseTypesInFmtString(fmtString),
+                         ["const char*", "const char*"])
 
     def test_parseTypesInFmtString_charTypes(self):
         self.assertEqual(parseTypesInFmtString("%hhd %hhi"),
-                            ["signed char", "signed char"])
+                         ["signed char", "signed char"])
         self.assertEqual(parseTypesInFmtString(" %d"),
-                            ["int"])
+                         ["int"])
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaisesRegexp(ValueError, "not supported"):
             parseTypesInFmtString("%hhn")
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegexp(ValueError, "Unrecognized Format"):
             parseTypesInFmtString("%hhj")
 
     def test_parseTypesInFmtString_jzt(self):
         self.assertEqual(parseTypesInFmtString("%jd %ji"),
-                            ["intmax_t", "intmax_t"])
+                         ["intmax_t", "intmax_t"])
 
         self.assertEqual(parseTypesInFmtString("%ju %jo %jx %jX"),
-                            ["uintmax_t", "uintmax_t", "uintmax_t", "uintmax_t"])
+                         ["uintmax_t", "uintmax_t", "uintmax_t", "uintmax_t"])
 
         self.assertEqual(parseTypesInFmtString("%zu %zd %tu %td"),
-                            ["size_t", "size_t", 'ptrdiff_t', "ptrdiff_t"])
+                         ["size_t", "size_t", 'ptrdiff_t', "ptrdiff_t"])
 
-        self.assertEqual(parseTypesInFmtString("%jn %zn zn %tn"),
-                            ["intmax_t*", "size_t*", "ptrdiff_t*"])
+        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
+            parseTypesInFmtString("%jn %zn zn %tn")
 
         # Unexpected characters!
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegexp(ValueError,
+                                     "Unrecognized Format Specifier: \"%z"):
             parseTypesInFmtString("%z\r\n")
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegexp(ValueError,
+                                     "Unrecognized Format Specifier: \"%j"):
             parseTypesInFmtString("%j\r\n")
 
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegexp(ValueError,
+                                     "Unrecognized Format Specifier: \"%t"):
             parseTypesInFmtString("%t\r\n")
 
     def test_parseTypesInFmtString_doubleTypes(self):
-        self.assertEqual(parseTypesInFmtString("%12.0f %12.3F %e %55.3E %-10.5g %G %a %A"),
-                ["double", "double", "double", "double",
-                "double", "double", "double", "double" ])
+        self.assertEqual(parseTypesInFmtString(
+            "%12.0f %12.3F %e %55.3E %-10.5g %G %a %A"),
+            ["double", "double", "double", "double",
+             "double", "double", "double", "double"])
 
-        self.assertEqual(parseTypesInFmtString("%12.0Lf %12.3LF %Le %55.3LE %-10.5Lg %LG %La %LA"),
-                ["long double", "long double", "long double", "long double",
-                "long double", "long double", "long double", "long double"])
+        self.assertEqual(parseTypesInFmtString(
+            "%12.0Lf %12.3LF %Le %55.3LE %-10.5Lg %LG %La %LA"),
+            ["long double", "long double", "long double", "long double",
+             "long double", "long double", "long double", "long double"])
 
         # Check that random modifiers don't change the type
-        self.assertEqual(parseTypesInFmtString("%lf %llf"),["double", "double"])
+        self.assertEqual(parseTypesInFmtString("%lf %llf"),
+                         ["double", "double"])
 
         # Check for errors
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegexp(ValueError, "Invalid arguments for"):
             parseTypesInFmtString("%Lu")
 
     def test_parseTypesInFmtString_basicIntegerTypes(self):
         self.assertEqual(parseTypesInFmtString("%d %i"), ["int", "int"])
         self.assertEqual(parseTypesInFmtString("%u %o"),
-                            ["unsigned int", "unsigned int"])
+                         ["unsigned int", "unsigned int"])
         self.assertEqual(parseTypesInFmtString("%x %X"),
-                            ["unsigned int", "unsigned int"])
+                         ["unsigned int", "unsigned int"])
 
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                            ["int", "const char*", "void*"])
+                         ["int", "const char*", "void*"])
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
             parseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_cspn(self):
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-            ["int", "const char*", "void*"])
+                         ["int", "const char*", "void*"])
 
         self.assertEqual(parseTypesInFmtString("%ls %lc"),
-            ["const wchar_t*", "wint_t"])
+                         ["const wchar_t*", "wint_t"])
 
-        with self.assertRaises(SystemExit):
+        with self.assertRaisesRegexp(ValueError, "not supported"):
             parseTypesInFmtString("%n")
 
     def test_lengthModifiers(self):
         self.assertEqual(parseTypesInFmtString("%hhd %hd %ld %lld %jd %zd %td"),
-                            ["signed char", "short int", "long int",
-                            "long long int", "intmax_t", "size_t", "ptrdiff_t"])
+                         ["signed char", "short int", "long int",
+                          "long long int", "intmax_t", "size_t", "ptrdiff_t"])
 
         self.assertEqual(parseTypesInFmtString("%hhu %hu %lu %llu %ju %zu %tu"),
-                                ["unsigned char", "short unsigned int",
-                                 "long unsigned int", 'long long unsigned int',
-                                 "uintmax_t", "size_t", "ptrdiff_t"])
+                         ["unsigned char", "unsigned short int",
+                          "unsigned long int", 'unsigned long long int',
+                          "uintmax_t", "size_t", "ptrdiff_t"])
 
-        with self.assertRaises(SystemExit):
-            self.assertEqual(
-                    parseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn"),
-                                ["signed char*", "short int*", "long int*",
-                                 "long long int*", "intmax_t*", "size_t*",
-                                 "ptrdiff_t*"])
-
-class FunctionGeneratorTestCase(unittest.TestCase):
+        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
+            parseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn")
 
     def test_generateLogFunctions_empty(self):
         self.maxDiff = None
-        fg = FunctionGenerator("Input file")
+        fg = FunctionGenerator()
 
-        ret = fg.generateLogFunctions("Empty Print", "mar.cc", "mar.cc", 293)
+        ret = fg.generateLogFunctions("Empty Print", "gar.cc", "mar.cc", 293)
 
-        expectedFnName = generateFunctionNameFromFmtId(1);
-        expectedResult = ("void " + expectedFnName + "(const char* fmtStr)",
+        logId = generateLogIdStr("Empty Print", "mar.cc", 293)
+        expectedFnName = "__syang0__fl" + logId
+        expectedResult = ("void " + expectedFnName + "(const char* fmtStr )",
                                 expectedFnName)
         self.assertEqual(expectedResult, ret)
 
-        self.assertEqual(1, fg.fmtStr2Id["Empty Print"])
-        code = fg.fmtId2Code[1];
-
-        self.assertEqual("Empty Print", code["fmtString"])
+        code = fg.logId2Code[logId]
+        self.assertEqual("Empty Print", code['fmtString'])
         self.assertEqual("mar.cc", code["filename"])
         self.assertEqual(293, code["linenum"])
+        self.assertEqual("gar.cc", code["compilationUnit"])
 
-
-        expectedRecordCode = \
-"""void __syang0__fl__1(const char* fmtStr) {
-	int maxSizeOfArgs = 0 + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 1, maxSizeOfArgs, 0);
-	char *buffer = re->argData;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-"""
-        expectedCompressCode = \
-"""inline void
-compressArgs1(BufferUtils::RecordEntry *re, char** out) {
-	char* args = re->argData;
-
-}
-"""
-        expectedDecompressCode = \
-"""inline void
-decompressPrintArg1(std::ifstream &in) {
-\tBufferUtils::Nibble nib[0];
-\tin.read(reinterpret_cast<char*>(&nib), 0);
-
-
-
-\tconst char *fmtString = "Empty Print";
-\tconst char *filename = "mar.cc";
-\tconst int linenum = 293;
-
-\tprintf(fmtString);
-}
-"""
-        self.assertMultiLineEqual(expectedRecordCode, code["recordFnDef"])
-        self.assertMultiLineEqual(expectedCompressCode, code["compressFnDef"])
-        self.assertMultiLineEqual(expectedDecompressCode, code["decompressFnDef"])
+        # Note: I used to test for the generated code here, but it doesn't
+        # really make sense since it's checked in the integration code and in
+        # another test case later on.
 
     def test_generateLogFunctions(self):
         self.maxDiff = None
-        fg = FunctionGenerator("Input file")
-        args = [
-                Argument("someVariable", FilePosition(0,0), FilePosition(1,0)),
-                Argument("\"staticString\"", FilePosition(1,0), FilePosition(2,0)),
-                Argument("0.1lf\t\n", FilePosition(3,0), FilePosition(4,0)),
-                Argument("stringVar", FilePosition(4,0), FilePosition(5,0))
-            ]
+        fg = FunctionGenerator()
 
         fmtStr = "Hello World! %u %s %lf %s"
         ret = fg.generateLogFunctions(fmtStr, "testFile.cc", "testFile.cc", 100)
-        expectedFnName = generateFunctionNameFromFmtId(1);
-        expectedResult = ("void " + expectedFnName + "(const char* fmtStr, "
+        logId = generateLogIdStr(fmtStr, "testFile.cc", 100)
+        expectedFnName = "__syang0__fl" + logId
+
+        expectedResult = ("void " + expectedFnName + "(const char* fmtStr , "
                             "unsigned int arg0, const char* arg1, double arg2, "
                             "const char* arg3)",
                             expectedFnName)
 
         self.assertEqual(expectedResult, ret)
 
-        self.assertEqual(1, fg.fmtStr2Id[fmtStr])
-        code = fg.fmtId2Code[1];
+        self.assertEqual(2, len(fg.logId2Code))
+        code = fg.logId2Code[logId]
 
         self.assertEqual(fmtStr, code["fmtString"])
         self.assertEqual("testFile.cc", code["filename"])
         self.assertEqual(100, code["linenum"])
 
-        # Now check the generated functions
-        expectedRecordCode = \
-"""void %s(const char* fmtStr, unsigned int arg0, const char* arg1, double arg2, const char* arg3) {
-	int str1Len = strlen(arg1) + 1, str3Len = strlen(arg3) + 1;
-	int maxSizeOfArgs = sizeof(arg0) + sizeof(arg2) + str1Len + str3Len;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 1, maxSizeOfArgs, 1);
-	char *buffer = re->argData;
-
-	BufferUtils::recordPrimitive(buffer, arg0);
-	BufferUtils::recordPrimitive(buffer, arg2);
-
-	memcpy(buffer, arg1, str1Len); buffer += str1Len;
-	memcpy(buffer, arg3, str3Len); buffer += str3Len;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-""" % expectedFnName
-
-        expectedCompressCode = \
-"""inline void
-compressArgs1(BufferUtils::RecordEntry *re, char** out) {
-	BufferUtils::Nibble *nib = reinterpret_cast<BufferUtils::Nibble*>(*out);
-	*out += 1;
-	char* args = re->argData;
-	unsigned int arg0 = *reinterpret_cast<unsigned int*>(args); args += sizeof(unsigned int);
-	double arg2 = *reinterpret_cast<double*>(args); args += sizeof(double);
-
-	nib[0].first = BufferUtils::pack(out, arg0);
-	nib[0].second = BufferUtils::pack(out, arg2);
-
-	int stringBytes = re->entrySize - (sizeof(arg0) + sizeof(arg2)) - sizeof(BufferUtils::RecordEntry);
-	memcpy(*out, args, stringBytes);
-	args += stringBytes;
-	*out += stringBytes;
-}
-"""
-        expectedDecompressCode = \
-"""inline void
-decompressPrintArg1(std::ifstream &in) {
-	BufferUtils::Nibble nib[1];
-	in.read(reinterpret_cast<char*>(&nib), 1);
-
-	unsigned int arg0 = BufferUtils::unpack<unsigned int>(in, nib[0].first);
-	double arg2 = BufferUtils::unpack<double>(in, nib[0].second);
-
-	std::string arg1_str;
-	std::getline(in, arg1_str, '\\0');
-	const char* arg1 = arg1_str.c_str();
-	std::string arg3_str;
-	std::getline(in, arg3_str, '\\0');
-	const char* arg3 = arg3_str.c_str();
-
-	const char *fmtString = "Hello World! %u %s %lf %s";
-	const char *filename = "testFile.cc";
-	const int linenum = 100;
-
-	printf(fmtString, arg0, arg1, arg2, arg3);
-}
-"""
-        self.assertMultiLineEqual(expectedRecordCode, code["recordFnDef"])
-        self.assertMultiLineEqual(expectedCompressCode, code["compressFnDef"])
-        self.assertMultiLineEqual(expectedDecompressCode, code["decompressFnDef"])
+        # Note: I used to test for the generated code here, but it doesn't
+        # really make sense since it's checked in the integration code and in
+        # another test case later on.
 
     def test_generateLogFunctions_combinationAndOverwrite(self):
-        fg = FunctionGenerator("Input file")
+        fg = FunctionGenerator()
 
         # TODO(syang0) Currently we do not differenciate on files, only strings.
         # In the future, please add multi-file support that way the correct
@@ -360,59 +441,73 @@ decompressPrintArg1(std::ifstream &in) {
         # Same log + file, different location
         fg.generateLogFunctions("A", "mar.cc",  "mar.cc", 200)
 
-        # smae log, diff file + location
-        fg.generateLogFunctions("A", "s.cc", 100)
+        # same log, diff file + location
+        fg.generateLogFunctions("A", "s.cc", "s.cc", 100)
 
-        self.assertEqual(2, len(fg.fmtStr2Id))
-        self.assertEqual(3, len(fg.fmtId2Code))
+        # same log, diff compilation unit, but same originating file
+        fg.generateLogFunctions("A", "s.cc", "mar.cc", 293)
 
-        self.assertEqual(1 , fg.fmtStr2Id["A"])
-        self.assertEqual(2 , fg.fmtStr2Id["B"])
-        self.assertEqual(0, len(fg.unusedIds))
-
-        self.assertEqual("A", fg.fmtId2Code[1]["fmtString"])
-        self.assertEqual("B", fg.fmtId2Code[2]["fmtString"])
+        ids = fg.logId2Code.keys()
+        self.assertEqual(['__A__mar46cc__293__',
+                          '__A__s46cc__100__',
+                          '__B__mar46cc__293__',
+                          '__A__mar46cc__200__',
+                          '__INVALID__INVALID__INVALID__'], ids)
 
     def test_getRecordFunctionDefinitionsFor(self):
         self.maxDiff = None
 
         emptyRec = \
-"""void __syang0__fl__%d(const char* fmtStr) {
-	int maxSizeOfArgs = 0 + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, %d, maxSizeOfArgs, 0);
-	char *buffer = re->argData;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
 """
+inline void __syang0__fl{logId}(const char* fmtStr ) {{
+    extern const uint32_t __fmtId{logId};
+
+    ;
+    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+
+    re->fmtId = __fmtId{logId};
+    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->entrySize = static_cast<uint32_t>(allocSize);
+    re->argMetaBytes = 0;
+
+    char *buffer = re->argData;
+
+    // Record the non-string arguments
+    %s
+
+    // Record the strings (if any) at the end of the entry
+    %s
+
+    // Make the entry visible
+    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+}}
+""" % ("", "")
         fg = FunctionGenerator()
 
         fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
         fg.generateLogFunctions("B", "mar.cc", "mar.cc", 293)
         fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
-        fg.generateLogFunctions("D", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("D", "s.cc", "mar.cc", 100)
 
         self.assertEqual(3, len(fg.getRecordFunctionDefinitionsFor("mar.cc")))
         self.assertEqual(1, len(fg.getRecordFunctionDefinitionsFor("s.cc")))
         self.assertEqual(0, len(fg.getRecordFunctionDefinitionsFor("asdf.cc")))
 
-        funcs = fg.getRecordFunctionDefinitionsFor("mar.cc");\
-        self.assertMultiLineEqual(emptyRec % (1, 1), funcs[0])
-        self.assertMultiLineEqual(emptyRec % (2, 2), funcs[1])
-        self.assertMultiLineEqual(emptyRec % (3, 3), funcs[2])
+        funcs = fg.getRecordFunctionDefinitionsFor("mar.cc")
 
-        self.assertMultiLineEqual(emptyRec % (4, 4),
+        logId = generateLogIdStr("A", "mar.cc", 293)
+        self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[0])
+
+        logId = generateLogIdStr("C", "mar.cc", 200)
+        self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[1])
+
+        logId = generateLogIdStr("B", "mar.cc", 293)
+        self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[2])
+
+        logId = generateLogIdStr("D", "mar.cc", 100)
+        self.assertMultiLineEqual(emptyRec.format(logId=logId),
                                 fg.getRecordFunctionDefinitionsFor("s.cc")[0])
-
-    # TODO(syang0) this test only makes sense if implment diffenciating on
-    # different files
-#    def test_generateLogFunctions_clearLogFunctionsForFile(self):
-#        "goodbyte"
-
 
     def test_outputMappingFile(self):
         fg = FunctionGenerator()
@@ -422,35 +517,40 @@ decompressPrintArg1(std::ifstream &in) {
         fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
         fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
 
-        fg.unusedIds.append(10)
-
         # Test serialization and deserialization
-        fg.outputMappingFile("test.json");
-        fg2 = FunctionGenerator("test.json")
-
-        self.assertEqual(fg.fmtId2Code, fg2.fmtId2Code)
-        self.assertEqual(fg.unusedIds, fg2.unusedIds)
-        self.assertEqual(fg.fmtStr2Id, fg2.fmtStr2Id)
-        self.assertEqual(fg.argLists2Cnt, fg2.argLists2Cnt)
+        fg.outputMappingFile("test.json")
+        with open("test.json") as dataFile:
+            data = json.load(dataFile)
+            self.assertEqual(fg.argLists2Cnt, data.get('argLists2Cnt'))
+            self.assertEqual(fg.logId2Code, data.get('logId2Code'))
 
         os.remove("test.json")
 
-    def test_loadPartialyMappingFile(self):
-        mapping = {
-            "unusedIds":[1, 2, 3, 4, 5]
-        }
 
-        with open("test.json", 'w') as json_file:
-            json_file.write(json.dumps(mapping, sort_keys=True, indent=4,
-                                                        separators=(',', ': ')))
+    def test_outputMappingFile_withFolders(self):
+        fg = FunctionGenerator()
 
-        fg = FunctionGenerator("test.json")
-        self.assertEqual([], fg.fmtId2Code)
-        self.assertEqual([1, 2, 3, 4, 5], fg.unusedIds)
-        self.assertEqual({}, fg.fmtStr2Id)
-        self.assertEqual({}, fg.argLists2Cnt)
+        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
 
-        os.remove("test.json")
+        # Test what happens when the directory does not exist
+        try:
+            os.remove("testFolder/test.json")
+            os.removedirs("testFolder")
+        except:
+            pass
+
+        fg.outputMappingFile("testFolder/test.json")
+        with open("testFolder/test.json") as dataFile:
+            data = json.load(dataFile)
+            self.assertEqual(fg.argLists2Cnt, data.get('argLists2Cnt'))
+            self.assertEqual(fg.logId2Code, data.get('logId2Code'))
+
+
+        os.remove("testFolder/test.json")
+        os.removedirs("testFolder")
 
     def test_outputCompilationFiles(self):
         self.maxDiff = None
@@ -461,189 +561,25 @@ decompressPrintArg1(std::ifstream &in) {
         fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
         fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
 
-        fg.unusedIds.append(10)
+        fg.outputMappingFile("map1.map")
 
-        expectedContents = """#ifndef BUFFER_STUFFER
-#define BUFFER_STUFFER
+        # Also test the merging
+        fg2 = FunctionGenerator()
+        fg2.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
+        fg2.generateLogFunctions("A", "mar.cc", "mar.h", 1)
+        fg2.generateLogFunctions("E", "del.cc", "del.cc", 199)
 
-#include "FastLogger.h"
-#include "Packer.h"
+        fg2.outputMappingFile("map2.map")
 
-#include <fstream>     // for decompression
-#include <string>
+        # Merge the two map files
+        FunctionGenerator.outputCompilationFiles("test.h",
+                                                 ["map1.map", "map2.map"])
 
-// Record code in an empty namespace(for debugging)
-namespace {
-void __syang0__fl__1(const char* fmtStr) {
-	int maxSizeOfArgs = 0 + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
+        self.assertTrue(filecmp.cmp("test.h",
+                                "unitTestData/test_outputCompilationFiles.h"))
 
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 1, maxSizeOfArgs, 0);
-	char *buffer = re->argData;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-
-inline void
-compressArgs1(BufferUtils::RecordEntry *re, char** out) {
-	char* args = re->argData;
-
-}
-
-inline void
-decompressPrintArg1(std::ifstream &in) {
-	BufferUtils::Nibble nib[0];
-	in.read(reinterpret_cast<char*>(&nib), 0);
-
-
-
-	const char *fmtString = "A";
-	const char *filename = "mar.cc";
-	const int linenum = 293;
-
-	printf(fmtString);
-}
-
-void __syang0__fl__2(const char* fmtStr) {
-	int maxSizeOfArgs = 0 + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 2, maxSizeOfArgs, 0);
-	char *buffer = re->argData;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-
-inline void
-compressArgs2(BufferUtils::RecordEntry *re, char** out) {
-	char* args = re->argData;
-
-}
-
-inline void
-decompressPrintArg2(std::ifstream &in) {
-	BufferUtils::Nibble nib[0];
-	in.read(reinterpret_cast<char*>(&nib), 0);
-
-
-
-	const char *fmtString = "B";
-	const char *filename = "mar.cc";
-	const int linenum = 294;
-
-	printf(fmtString);
-}
-
-void __syang0__fl__3(const char* fmtStr) {
-	int maxSizeOfArgs = 0 + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 3, maxSizeOfArgs, 0);
-	char *buffer = re->argData;
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-
-inline void
-compressArgs3(BufferUtils::RecordEntry *re, char** out) {
-	char* args = re->argData;
-
-}
-
-inline void
-decompressPrintArg3(std::ifstream &in) {
-	BufferUtils::Nibble nib[0];
-	in.read(reinterpret_cast<char*>(&nib), 0);
-
-
-
-	const char *fmtString = "C";
-	const char *filename = "mar.cc";
-	const int linenum = 200;
-
-	printf(fmtString);
-}
-
-void __syang0__fl__4(const char* fmtStr, int arg0) {
-	int maxSizeOfArgs = sizeof(arg0) + 0;
-	BufferUtils::RecordEntry *re = PerfUtils::FastLogger::reserveAlloc(maxSizeOfArgs);
-
-	if (re == nullptr)
-		return;
-
-	BufferUtils::recordMetadata(re, 4, maxSizeOfArgs, 1);
-	char *buffer = re->argData;
-
-	BufferUtils::recordPrimitive(buffer, arg0);
-
-	PerfUtils::FastLogger::finishAlloc(re);
-}
-
-inline void
-compressArgs4(BufferUtils::RecordEntry *re, char** out) {
-	BufferUtils::Nibble *nib = reinterpret_cast<BufferUtils::Nibble*>(*out);
-	*out += 1;
-	char* args = re->argData;
-	int arg0 = *reinterpret_cast<int*>(args); args += sizeof(int);
-
-	nib[0].first = BufferUtils::pack(out, arg0);
-}
-
-inline void
-decompressPrintArg4(std::ifstream &in) {
-	BufferUtils::Nibble nib[1];
-	in.read(reinterpret_cast<char*>(&nib), 1);
-
-	int arg0 = BufferUtils::unpack<int>(in, nib[0].first);
-
-
-	const char *fmtString = "D %d";
-	const char *filename = "s.cc";
-	const int linenum = 100;
-
-	printf(fmtString, arg0);
-}
-
-} // end empty namespace
-
-static void (*compressFnArray[5])(BufferUtils::RecordEntry *re, char** out) {
-	nullptr,
-	compressArgs1,
-	compressArgs2,
-	compressArgs3,
-	compressArgs4
-};
-
-static void (*decompressAndPrintFnArray[5])(std::ifstream &in) {
-	nullptr,
-	decompressPrintArg1,
-	decompressPrintArg2,
-	decompressPrintArg3,
-	decompressPrintArg4
-};
-
-// Format Id to original Format String
-static const char* fmtId2Str[4] = {
-	"A",
-	"B",
-	"C",
-	"D %d"
-};
-
-#endif /* BUFFER_STUFFER */
-"""
-
-        fg.outputCompilationFiles("test.h")
-        with open("test.h", 'r') as headerFile:
-            contents = headerFile.read();
-            self.assertMultiLineEqual(expectedContents, contents)
-
+        os.remove("map1.map")
+        os.remove("map2.map")
         os.remove("test.h")
 
 if __name__ == '__main__':

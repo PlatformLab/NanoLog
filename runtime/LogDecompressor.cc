@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
             DecompressedMetadata dm =
                 BufferUtils::decompressMetadata(in, lastFmtId, lastTimestamp);
             //TODO(syang0) use cyclesPerSec given in checkpoint
-            printf("%d %0.2lf ns :\t", linesPrinted, 1.0e9*PerfUtils::Cycles::toSeconds(dm.timestamp - lastTimestamp));
+            printf("%4d) +%10.2lf ns: ", linesPrinted, 1.0e9*PerfUtils::Cycles::toSeconds(dm.timestamp - lastTimestamp));
 //            printf("+%0.2lf ns\t: ", 1.0e9*PerfUtils::Cycles::toSeconds(dm.timestamp - lastTimestamp));
 
             decompressAndPrintFnArray[dm.fmtId](in);

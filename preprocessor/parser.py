@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-# Copyright (c) 2016 Stanford University
+# Copyright (c) 2016-2017 Stanford University
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -15,41 +15,54 @@
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 """Fast Logger Preprocessor
+This script is the first component of a three part system (FastLogger) that
+enables fast, sub-microsecond error logging. The key to the FastLogger's speed
+is the extraction of static information from the log statements at compile time
+and the injection of code to log only the dynamic information at runtime into
+the user's sources. This injected code then interacts with the FastLogger
+Runtime to output a succinct, compressed log which can be later transformed
+into a human-readable format by the FastLogger Decompressor.
+
+This script performs the first step of log statement extraction and code
+injection and is intended to be used in to phases. In the first phase, all
+user sources are to be preprocessed by the GNU C/C++ preprocessor and then
+passed into this script in mapOutput mode. The outputs of this phase are a
+version of the user's source with injected code that can be directly compiled
+with g++ and an intermediate map file to be used in the second stage.
+
+In the second stage, all the intermediate map files (there should be one
+per compiled user source) should be passed into this script in combinedOutput
+mode. This will aggregate all the log metadata in the map files and produce
+a supporting C++ header file used in the Runtime and Decompression components.
 
 Usage:
-    parser.py [-h] --map=MAP [--output=OUTPUT] [FILES...]
+    parser.py [-h] --mapOutput=MAP PREPROCESSED_SRC
+    parser.py [-h] --combinedOutput=HEADER MAP_FILES...
 
 Options:
   -h --help             Show this help messages
 
-  --mapping=MAP         File for persisting the state of this script
-                        between invocations [default: mapping.map]
+  --mapOutput=MAP       Output destination for the intermediate metadata map
+                        file to be used in the combinedOutput mode. There should
+                        be one map file per preprocessed_src
 
-  --output=OUTPUT       Optional output destination for the generated
-                        C++ header that shall be used with the FastLogger
-                        Runtime system [default: BufferStuffer.h]
+  PREPROCESSED_SRC      GNU-preprocessed C/C++ file to process. The processed
+                        files will be outputted with an extra "i" extension
+                        (ex test.i ->test.ii), will contain injected code,
+                        and can be compiled directly with g++
 
-  FILES                 GNU-preprocessed C/C++ files to process. The processed
-                        files will be outputted with an "i" extension
-                        (ex test.i -> test.ii)
+  --combinedOutput=HEADER
+                        Output destination for the final C++ header file that
+                        aggregates all the map files for use with the
+                        other FastLogger components [default:BufferStuffer.h]
 
- This script is 1 of a 3 part system that enables fast, sub-millisecond logging.
- This component takes in GNU-preprocessed C/C++ files (FILES), identifies all
- the log statements and replaces them with more efficient logging code that
- interfaces with the FastLogger Runtime component. The Runtime would then
- output a file that can be decompressed by the Decompressor application.
-
- This script is to be used in two stages. In the first stage, all the user
- GNU-preprocessed C/C++ files as passed in for processing. An mapping
- file should be provided to persist the state of the script between invocations
- (useful for parallel and partial rebuilds). In the second stage, when all the
- user files are processed, the script can be invoked again with the -c option
- and the mapping file from the previous stage to generate the final files
- to be used in the FastLogger Runtime and the Decompressor application.
+  MAP_FILES             List of map files to combine into the final header;
+                        There should be one map file per preprocessed source
 """
 
 from docopt import docopt
 from collections import namedtuple
+import sys
 
 from FunctionGenerator import *
 
@@ -64,6 +77,13 @@ LOG_FUNCTION = "FAST_LOG"
 # Marks which argument of the record function is the static format string
 # and assumes the arguments come after this point.
 FORMAT_ARG_NUM = 0
+
+# A special C++ line at the end of FastLogger.h that marks where the parser
+# can start injecting inline function definitions. The key to it being at the
+# end of FastLogger.h is that it ensures all required #includes have been
+# included by this point in the file.
+INJECTION_MARKER = \
+    "static const int __internal_dummy_variable_marker_for_code_injection = 0;"
 
 # Since header files are in-lined after the GNU preprocessing step, library
 # files can be unintentionally processed. This list is a set of files that
@@ -80,19 +100,20 @@ ignored_files = set([
 FilePosition = namedtuple('FilePosition', ['lineNum', 'offset'])
 
 # Encapsulates a function invocation's argument as the original source text
-# and start/end file positions.
+# and start/end FilePositions.
 Argument = namedtuple('Argument', ['source', 'startPos', 'endPos'])
 
-
-# Given a C/C++ style string in source code, attempt to parse it back as a
-# regular string. The source passed in can be multi-line (due to C string
-# concatenation), but should not contain any extraneous characters outside the
-# quotations (such as commas separating invocation parameters).
+# Given a C/C++ style string in source code (i.e. in quotes), attempt to parse
+# it back as a regular string. The source passed in can be multi-line (due to C
+# string concatenation), but should not contain any extraneous characters
+# outside the quotations (such as commas separating invocation parameters).
 #
-# \param source - source string to parse
-# \return       - contents of the C/C++ string as a python string. None if
-#                 the lines did not encode a C/C++ style string.
+# \param source
+#         C/C++ style string to extract
 #
+# \return
+#         contents of the C/C++ string as a python string. None if
+#         the lines did not encode a C/C++ style string.
 def extractCString(source):
   returnString = ""
   isInQuotes = False
@@ -109,22 +130,29 @@ def extractCString(source):
         if not (c.isspace()):
           return None
 
+  if isInQuotes:
+    return None
+
   return returnString
 
 # Attempt to extract a single argument in a C++ function invocation given
 # the argument's start position (immediately after left parenthesis or comma)
 # within a file.
 #
-# \param lines          - all lines of the file
-# \param startPosition  - FilePosition denoting the start of the argument
+# \param lines
+#         all lines of the file
 #
-# \return an Argument named tuple
+# \param startPosition
+#         FilePosition denoting the start of the argument
+#
+# \return
+#         an Argument namedtuple. None if it was unable to find the argument
 #
 def parseArgumentStartingAt(lines, startPos):
 
   # The algorithm uses the heuristic of assuming that the argument ends
   # when it finds a terminating character (either a comma or right parenthesis)
-  # in a position where the relative parenthesis/curlyBraces/bracket depth is 0.
+  # in a position where the relative parenthesis/curly braces/bracket depth is 0
   # The latter constraint prevents false positives where function calls are used
   # to generate the parameter (i.e. log("number is %d", calculate(a, b)))
   parenDepth = 0
@@ -133,13 +161,11 @@ def parseArgumentStartingAt(lines, startPos):
   inQuotes = False
   argSrcStr = ""
 
-  lineNum = startPos.lineNum
   offset = startPos.offset
-
-  while True:
-    prevWasEscape = False
+  for lineNum in range(startPos.lineNum, len(lines)):
     line = lines[lineNum]
 
+    prevWasEscape = False
     for i in range(offset, len(line)):
       c = line[i]
       argSrcStr = argSrcStr + c
@@ -173,20 +199,23 @@ def parseArgumentStartingAt(lines, startPos):
               and parenDepth == 0 and bracketDepth == 0:
         # found it!
         endPos = FilePosition(lineNum, i)
-        return Argument(argSrcStr[:-1], startPos, endPos);
+        return Argument(argSrcStr[:-1], startPos, endPos)
 
     # Couldn't find it on this line, must be on the next
     offset = 0
-    lineNum = lineNum + 1
+
+  return None
 
 
 # Given the starting position of a LOG_FUNCTION, attempt to identify
 # all the syntactic components of the LOG_FUNCTION (such as arguments and
 # ending semicolon) and their positions in the file
 #
-# \param lines          - all the lines of the file
-# \param startPosition  - tuple containing the line number and offset where
-#                         the LOG_FUNCTION starts
+# \param lines
+#             all the lines of the file
+# \param startPosition
+#             tuple containing the line number and offset where
+#             the LOG_FUNCTION starts within lines
 #
 # \return a dictionary with the following values:
 #         'startPos'        - FilePosition of the LOG_FUNCTION
@@ -195,18 +224,21 @@ def parseArgumentStartingAt(lines, startPos):
 #         'semiColonPos'    - FilePosition of the function's semicolon
 #         'arguments'       - List of Arguments for the LOG_FUNCTION
 #
+# \throws ValueError
+#         When parts of the LOG_FUNCTION cannot be found
+#
 def parseLogStatement(lines, startPosition):
   lineNum, offset = startPosition
   assert lines[lineNum].find(LOG_FUNCTION, offset) == offset
 
   # Find the left parenthesis after the LOG_FUNCTION identifier
   offset += len(LOG_FUNCTION)
-  while(lines[lineNum].find("(", offset) == -1):
-    lineNum = lineNum + 1
-    offset = 0
+  char, openParenPos = peekNextMeaningfulChar(lines, FilePosition(lineNum, offset))
+  lineNum, offset = openParenPos
 
-  offset = lines[lineNum].find("(", offset)
-  openParenPos = FilePosition(lineNum, offset)
+  # This is an assert instead of a ValueError since the caller should ensure
+  # this is a valid start to a function invocation before calling us.
+  assert(char == "(")
 
   # Identify all the argument start and end positions
   args = []
@@ -214,15 +246,24 @@ def parseLogStatement(lines, startPosition):
     offset = offset + 1
     startPos = FilePosition(lineNum, offset)
     arg = parseArgumentStartingAt(lines, startPos)
+    if not arg:
+      raise ValueError("Cannot find end of FAST_LOG invocation",
+                       lines[startPosition[0]:startPosition[0]+5])
     args.append(arg)
-
     lineNum, offset = arg.endPos
 
   closeParenPos = FilePosition(lineNum, offset)
 
-  # To finish this off, find the closing semicolon:
-  char, pos = peekNextMeaningfulChar(lines, FilePosition(lineNum, offset + 1))
-  assert (char == ";")
+  # To finish this off, find the closing semicolon
+  semiColonPeek =  peekNextMeaningfulChar(lines, FilePosition(lineNum, offset + 1))
+  if not semiColonPeek:
+    raise ValueError("Expected ';' after FAST_LOG statement",
+                     lines[startPosition[0]:closeParenPos.lineNum])
+
+  char, pos = semiColonPeek
+  if (char != ";"):
+    raise ValueError("Expected ';' after FAST_LOG statement",
+                   lines[startPosition[0]:pos[0]])
 
   logStatement = {
       'startPos': startPosition,
@@ -234,48 +275,6 @@ def parseLogStatement(lines, startPosition):
 
   return logStatement
 
-# Given the lines to a file and a FilePosition, find the next semicolon on
-# that line and if there is code after the semicolon, split the line while
-# preserving line spacing for the latter split, and insert a C preprocessor
-# directive to indicate that the next line is actually a part of
-# the previous one.
-#
-# Example:
-#       Input = "functionA(); functionB();"
-#       Output = "functionA();
-#                 # 10 "filename.cc"
-#                             functionB();"
-#
-# \param lines         - lines of the file in a list
-# \param startPosition - FilePosition of where to start looking for the next ";"
-# \param filename      - filename for the preprocessor directive
-# \param srcLine       - source line number for the preprocessor directive
-#
-# \return              - True if there was content after the ";" false otherwise
-#
-def markAndSeparateOnSemicolon(lines, startPosition, filename, srcLine):
-    lineNum, offset = startPosition
-
-    line = lines[lineNum]
-    semiColon = line.find(";", offset)
-    if semiColon == -1:
-        return False
-
-    cursor = semiColon + 1
-    while cursor < len(line):
-        c = line[cursor]
-        if c >= "!" and c <= "~" and c != ";":
-            # Something important after semi-colon found! Split the string!
-            lines[lineNum] = line[:semiColon + 1] + "\r\n"
-            newLine = " "*(semiColon + 1) + line[semiColon + 1:]
-            lines.insert(lineNum + 1, newLine)
-
-            marker = "# %d \"%s\"\r\n" % (srcLine, filename)
-            lines.insert(lineNum + 1, marker)
-            return True
-        cursor = cursor + 1
-    return False
-
 # Helper function to peekNextMeaningfulCharacter that determines whether
 # a character is a printable character (like a-z) vs. a control code
 #
@@ -284,9 +283,9 @@ def markAndSeparateOnSemicolon(lines, startPosition, filename, srcLine):
 #
 # \return - true if printable, false if not
 def isprintable(c, codec='utf8'):
-    try: c.decode(codec)
-    except UnicodeDecodeError: return False
-    else: return True
+  try: c.decode(codec)
+  except UnicodeDecodeError: return False
+  else: return True
 
 # Given a start FilePosition, find the next valid character that is
 # syntactically important for the C/C++ program and return both the character
@@ -298,104 +297,102 @@ def isprintable(c, codec='utf8'):
 #                       character exists (i.e. EOF)
 #
 def peekNextMeaningfulChar(lines, filePos):
-    lineNum, offset = filePos
+  lineNum, offset = filePos
 
-    while lineNum < len(lines):
-        line = lines[lineNum]
-        while offset < len(line):
-            c = line[offset]
-            if isprintable(c) and not c.isspace():
-                return (c, FilePosition(lineNum, offset))
-            offset = offset + 1
-        offset = 0
-        lineNum = lineNum + 1
+  while lineNum < len(lines):
+    line = lines[lineNum]
+    while offset < len(line):
+      c = line[offset]
+      if isprintable(c) and not c.isspace():
+        return (c, FilePosition(lineNum, offset))
+      offset = offset + 1
+    offset = 0
+    lineNum = lineNum + 1
 
-    return None
+  return None
 
-# Given a list of C/C++ source files that have been preprocessed by the GNU
+# Given a C/C++ source file that have been preprocessed by the GNU
 # preprocessor with the -E option, identify all the FastLogger log statements
 # and inject code in place of the statements to interface with the FastLogger
 # runtime system. The processed files will be outputted as <filename>i
 # (ex: test.i -> test.ii)
 #
-# \param FunctionGenerator used to generate interface code and maintain mappings
-# \param inputFiles - list of preprocessed C/C++ files to process
+# \param functionGenerator
+#           FunctionGenerator used to generate interface code
+#           and maintain mappings
 #
-def parseFiles(functionGenerator, inputFiles):
-  for inputFile in inputFiles:
-    outputFile = inputFile + "i"
+# \param inputFiles
+#           list of g++ preprocessed C/C++ files to analyze
+#
+def processFile(inputFile, mapOutputFilename):
+  functionGenerator = FunctionGenerator()
 
-    # Logical location in a file based on GNU Preprocessor directives
-    ppFileName = inputFile
-    ppLineNum = 0
-
-    with open(inputFile) as f, open(outputFile, 'w') as output:
+  with open(inputFile) as f, open(inputFile + "i", 'w') as output:
+    try:
       lines = f.readlines()
+      lineIndex = -1
 
-      # Scan for instances of the LOG_FUNCTION using a simple heuristic,
-      # which is to search for the LOG_FUNCTION outside of quotes. This
-      # works because at this point, the file should already be pre-processed
-      # by the C preprocessor so all the comments have been stripped and
-      # all #DEFINE's have been resolved.
       lastChar = '\0'
-      li = -1
 
+      # Logical location in a file based on GNU Preprocessor directives
+      ppFileName = inputFile
+      ppLineNum = 0
+
+      # Notes the first filename referenced by the pre-processor directives
+      # which should be the name of the file being compiled.
       firstFilename = None
-      while True:
-        li = li + 1
-        if li >= len(lines):
-            break
 
-        prevWasEscape = False
-        inQuotes = False
+      # Marks at which line the preprocessor can start safely injecting
+      # generated, inlined code. A value of None indicates that the FastLogger
+      # header was not #include-d yet
+      inlineCodeInjectionLineIndex = None
 
-        line = lines[li]
+      # Scan through the lines of the file parsing the preprocessor directives,
+      # identfying log statements, and replacing them with generated code.
+      while lineIndex < len(lines) - 1:
+        lineIndex = lineIndex + 1
+        line = lines[lineIndex]
 
         # Keep track of of the preprocessor line number so that we can
-        # put in our own line markers as we inject code into the file.
+        # put in our own line markers as we inject code into the file
+        # and report errors. This line number should correspond to the
+        # actual user source line number.
         ppLineNum = ppLineNum + 1
 
-        # Parse special preprocessor directives that start with a #
-        if line[0] == '#':
-            # This denotes that it is a line marker
-            if line[1] == ' ':
-                i = 2
-                lineNumStr = ""
-                while(line[i] != ' '):
-                    lineNumStr = lineNumStr + line[i]
-                    i = i + 1
+        # Parse special preprocessor directives that follows the format
+        # '# lineNumber "filename" flags'
+        directive = re.match("^# (\d+) \"(.*)\"(.*)", line)
+        if directive:
+            # -1 since the line num describes the line after it, not the
+            # current one, so we decrement it here before looping
+            ppLineNum = int(float(directive.group(1))) - 1
 
-                # -1 since the line num describes the line after it, not the
-                # current one, so we decrement it here before looping
-                ppLineNum = int(float(lineNumStr)) - 1
+            ppFileName = directive.group(2)
+            if not firstFilename:
+                firstFilename = ppFileName
 
-                # +2 to skip the space and the first "
-                i = i + 2
-                ppFileName = ""
-                while (line[i] != '\"'):
-                    ppFileName = ppFileName + line[i]
-                    i = i + 1
+            flags = directive.group(3).strip()
+            continue
 
-                if not firstFilename:
-                    firstFilename = ppFileName
-                    fg.clearLogFunctionsForCompilationUnit(firstFilename)
-
-                i = i + 1
-                flags = line[i:].strip()
-                continue
+        if INJECTION_MARKER in line:
+            inlineCodeInjectionLineIndex = lineIndex
+            continue
 
         if ppFileName in ignored_files:
             continue
 
-        # Holds log messages we will find along the way when parsing the
-        # following line.
-        i = -1
-        while True:
-          i = i + 1
-          if i >= len(line):
-              break
+        # Scan for instances of the LOG_FUNCTION using a simple heuristic,
+        # which is to search for the LOG_FUNCTION outside of quotes. This
+        # works because at this point, the file should already be pre-processed
+        # by the C/C++ preprocessor so all the comments have been stripped and
+        # all #define's have been resolved.
+        prevWasEscape = False
+        inQuotes = False
+        charOffset = -1
 
-          c = line[i]
+        while charOffset < len(line) - 1:
+          charOffset = charOffset + 1
+          c = line[charOffset]
 
           # If escape, we don't really care about the next char
           if c == "\\" or prevWasEscape:
@@ -408,7 +405,6 @@ def parseFiles(functionGenerator, inputFiles):
 
           # If we match the first character, cheat a little and scan forward
           if c == LOG_FUNCTION[0] and not inQuotes:
-
             # Check if we've found the log function via the following heuristics
             #  (a) the next n-1 characters spell out the rest of LOG_FUNCTION
             #  (b) the previous character was not an alpha numeric (i.e. not
@@ -416,49 +412,61 @@ def parseFiles(functionGenerator, inputFiles):
             #  (c) the next syntactical character after log function is a (
             found = True
             for ii in range(len(LOG_FUNCTION)):
-              if line[i + ii] != LOG_FUNCTION[ii]:
+              if line[charOffset + ii] != LOG_FUNCTION[ii]:
                 found = False
                 break
 
             if not found:
               continue
 
-            filePosAfter = FilePosition(li, i + len(LOG_FUNCTION))
             # Valid identifier characters are [a-zA-Z_][a-zA-Z0-9_]*
             if lastChar.isalnum() or lastChar == '_':
               continue
 
+            # Check that it's a function invocation via the existence of (
+            filePosAfter = FilePosition(lineIndex, charOffset + len(LOG_FUNCTION))
             mChar, mPos = peekNextMeaningfulChar(lines, filePosAfter)
             if mChar != "(":
               continue
 
             # Okay at this point we are pretty sure we have a genuine
-            # log statement, so parse it and start modifying the code!
-            logStatement = parseLogStatement(lines, (li, i))
+            # log statement, parse it and start modifying the code!
+            logStatement = parseLogStatement(lines, (lineIndex, charOffset))
             fmtArg = logStatement['arguments'][FORMAT_ARG_NUM]
-            args = logStatement['arguments'][FORMAT_ARG_NUM+1:]
             fmtString = extractCString(fmtArg.source)
 
-            if fmtString == None:
-              print("Non-constant String detected in %s line %d: %s" %
-                            (ppFileName, ppLineNum, lines[li][i:]))
-              assert(fmtString)
-              # TODO(syang0) Have better error reporting
+            # At this point, we should check that FastLogger was #include-d
+            # and that the format string was a static string
+            lastLogStatementLine = logStatement['semiColonPos'].lineNum
+            if not inlineCodeInjectionLineIndex:
+              raise ValueError("FAST_LOG statement occurred before "
+                                "#include-ing the FastLogger header!",
+                               lines[lineIndex:lastLogStatementLine + 1])
 
-            (recordDecl, recordFn) = functionGenerator.generateLogFunctions(
+            if not fmtString:
+              raise ValueError("The FastLogger system does not support "
+                                "non-constant format strings",
+                                lines[lineIndex:lastLogStatementLine + 1])
+
+            # Invoke the FunctionGenerator and if it throws a ValueError,
+            # tack on an extra argument to print out the log function itself
+            try:
+              (recordDecl, recordFn) = functionGenerator.generateLogFunctions(
                                                     fmtString, firstFilename,
                                                     ppFileName, ppLineNum)
-
+            except ValueError as e:
+              raise ValueError(e.args[0],
+                               lines[lineIndex:lastLogStatementLine + 1])
 
             # Now we're ready to inject the code. What's going to happen is
             # that the original LOG_FUNCTION will be ripped out and in its
-            # place, a function declaration and invocation for the record
-            # logic will be inserted. It will look something like this:
+            # place, a function invocation for the record logic will be
+            # inserted. It will look something like this:
             #
             #    input: "++i; LOG("Test, %d", 5); ++i;"
             #    output: "i++;
             #             # 1 "injectedCode.fake"
-            #             { __syang0__fl__(const char * fmtId, int arg0)
+            #             {
             #             __syang0__fl__(
             #             # 10 "original.cc"
             #                     "Test, %d", 5); }
@@ -467,75 +475,96 @@ def parseFiles(functionGenerator, inputFiles):
             #
             # Note that we try to preserve spacing and use line preprocessor
             # directives wherever we can so that if the compiler reports
-            # errors, then the erorrs can be consistent with the user's view
+            # errors, then the errors can be consistent with the user's view
             # of the source file.
 
             # First we separate the code that comes after the log statement's
-            # semicolon into its own line with the appropriate preprocessor
-            # directive to mark where it originally came from.
-            semiColonPPLineNum = \
-                        ppLineNum + (logStatement['semiColonPos'].lineNum - li)
-            if markAndSeparateOnSemicolon(lines, logStatement['semiColonPos'],
-                                            ppFileName, semiColonPPLineNum):
-                  line = lines[li]
+            # semicolon onto its own line while preserving the line spacing
+            # and symbolic reference to the original source file
+            #
+            # Example:
+            #       "functionA(); functionB();"
+            # becomes
+            #       "functionA();
+            #       # 10 "filename.cc"
+            #                     functionB();"
+            #
+            # Note that we're working from back to front so that our line
+            # indices don't shift as we insert new lines.
+            scLineNum, scOffset = logStatement['semiColonPos']
+            scLine = lines[scLineNum]
 
-            # Next, we're going to open a new curly brace in the injected code,
-            # so we add a closing curly brace right after the semi-colon
-            insertPos = logStatement['semiColonPos']
-            lines[insertPos.lineNum] = \
-                lines[insertPos.lineNum][:insertPos.offset + 1] + \
-                "}\r\n" + \
-                lines[insertPos.lineNum][insertPos.offset + 1:]
+            # Extrapolate the symbolic line number
+            scPPLineNum = ppLineNum + (scLineNum - lineIndex)
 
-            # Lastly, we get rid of the original LOG_FUNCTION and replace
-            # it with our generated definition and invocation in a new
-            # scope (which the previous curly brace closes off)
-            restOfLine = lines[li][(i + len(LOG_FUNCTION)):].rjust(len(line))
-            lines[li] = lines[li][:i] + "\r\n"
+            # Split the line
+            scHeadLine = scLine[:scOffset + 1] + "\r\n"
+            scMarker = "# %d \"%s\"\r\n" % (scPPLineNum, ppFileName)
+            scTailLine = " "*(scOffset + 1) + scLine[scOffset + 1:]
 
-            #TODO(syang0) turns out we can't __attribute__ non-var_args types...
-            # we'll have to find another way to check for type errors...
-            printfAttr = " __attribute__ ((format (printf, %d, %d))) " % \
-                                        (FORMAT_ARG_NUM + 1, FORMAT_ARG_NUM + 2)
+            lines[scLineNum] = scHeadLine
+            lines.insert(scLineNum + 1, scMarker)
+            lines.insert(scLineNum + 2, scTailLine)
 
-            # Note that this code has an open brace {
-            codeToInject = [
-              "# %d \"%s\"\r\n" % (1, "injectedCode.fake"),
-              "{ " + recordDecl + ";\r\n",
-              recordFn + "\r\n",
-              "# %d \"%s\"\r\n" % (ppLineNum, ppFileName),
-              restOfLine
-            ]
+            # update the line we're working with in case the we split it above
+            if scLineNum == lineIndex:
+              line = lines[lineIndex]
 
-            lines = lines[:li + 1] + codeToInject + lines[li + 1:]
+            # Next, we're going to replace the LOG_FUNCTION string from the
+            # first line with our generated function's name and insert
+            # the appropriate preprocessor directives to mark the boundaries
+            #
+            # Example:
+            #       "A(); LOG("Hello!);"
+            # Becomes
+            #       "A();
+            #        # 10 "injectedCode.fake"
+            #        { GENERATED_FUNC_NAME
+            #        # 10 "filename.cc"
+            #                ("Hello!");
+            #        }
+            #        # 10 "filename.cc"
+
+            # Close off the new scope
+            lines.insert(scLineNum + 1, "}\r\n")
+
+            offsetAfterLogFn = (charOffset + len(LOG_FUNCTION))
+            headOfLine = line[:charOffset]
+            tailOfLine = line[offsetAfterLogFn:].rjust(len(line))
+
+            lines[lineIndex] = \
+                          headOfLine \
+                            + "\r\n# %d \"injectedCode.fake\"\r\n" % ppLineNum \
+                            + "{ " + recordFn \
+                            + "\r\n# %d \"%s\"\r\n" % (ppLineNum, ppFileName) \
+                            + tailOfLine
 
           lastChar = c
+    except ValueError as e:
+        print "\r\n%s:%d: Error - %s\r\n\r\n%s\r\n" % (
+            ppFileName, ppLineNum, e.args[0], "".join(e.args[1]))
+        sys.exit(1)
 
-      # Last step, retrieve the generated code and insert it at the end
-      if firstFilename != ppFileName:
-        print "Error: Expected preprocessed file to end in the compilation " \
-              "unit %s but found %s instead" % (firstFilename, ppFileName)
+    # Last step, retrieve the generated code and insert it at the end
+    recFns = functionGenerator.getRecordFunctionDefinitionsFor(firstFilename)
+    codeToInject = "\r\n\r\n# 1 \"generatedCode.h\" 3\r\n" \
+                              + "\r\n".join(recFns)
+    lines.insert(inlineCodeInjectionLineIndex + 1, codeToInject)
 
-      lines.append("\r\n\r\n# 1 \"generatedCode.h\" 3\n")
-      recFns = functionGenerator.getRecordFunctionDefinitionsFor(firstFilename)
-      recFns = "\r\n".join(recFns)
-      lines += recFns
+    # Output all the lines
+    for line in lines:
+      output.write(line)
 
-      # Output all the lines
-      for line in lines:
-        output.write(line)
-
-      output.close()
+    output.close()
+    functionGenerator.outputMappingFile(mapOutputFilename)
 
 if __name__ == "__main__":
-  arguments = docopt(__doc__, version='LogStripper v1.0')
+  arguments = docopt(__doc__, version='FastLogger Preprocesor v1.0')
 
-  fg = FunctionGenerator(arguments['--map'])
-  if arguments['FILES']:
-    parseFiles(fg, arguments['FILES'])
-
-  if arguments['--output']:
-    fg.outputCompilationFiles(arguments['--output'])
-
-  if arguments['--map']:
-    fg.outputMappingFile(arguments['--map'])
+  if arguments['--mapOutput']:
+    processFile(inputFile=arguments['PREPROCESSED_SRC'],
+                mapOutputFilename=arguments['--mapOutput'])
+  else:
+    FunctionGenerator.outputCompilationFiles(
+                                  outputFileName=arguments['--combinedOutput'],
+                                  inputFiles=arguments['MAP_FILES'])

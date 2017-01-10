@@ -1,0 +1,90 @@
+Opening file ./compressedLog
+ Simple times
+ More simplicity
+ How about a number? 1900
+ How about a second number? 1901
+ How about a double? 0.110000
+ How about a nice little string? Stephen Rocks!
+ A middle "Stephen Rocks!" string?
+ And another string? yolo swag! blah.
+ One that should be "end"? end
+ Hello world number 2 of 10 (0.20%)! This is Stephen!
+ Let's try out all the types!
+Pointer = 0x7ffe075cbe7d
+uint8_t = 10
+uint16_t = 33
+uint32_t = 99991
+uint64_t = 18446744073709551615
+float = 121.121002
+double = 212.212000
+hexadecimal = ff
+Just a normal character = a
+ how about some negative numbers?
+int8_t -10
+int16_t -33
+int32_t -99991
+int64_t -1
+int -12356
+ How about variable width + precision?  12345.12        123        end
+ 10) FAST_LOG() "FAST_LOG("Hi ")"
+ 11) SDF
+ 12) NEWLinesSoEvil FAST_LOG()
+ 13) Yup
+ie
+ 13.5) This should be =2: 2
+ 14) Hello 5
+ 14) Hello 6
+ 15) This should not be incremented twice (=1):1
+ 15) This should be incremented once more (=2):2
+ 16) Hello /* uncool */
+ 17) This is rediculous
+ 18) OLO_SWAG
+ 11) SDF
+ sneaky #define LOG
+ Messages in the Header File
+ No Hello
+ I am so evil
+ non-const fmt String
+ NonConst: Lol
+ {{"(( False curlies and brackets! 1
+ Same line, bad form
+ Really bad
+ Ending on different lines
+ Make sure that the inserted code is before the ++i
+ The worse
+ TEST
+ 14) Hello 5
+ 13) Yup
+ie
+ Ending on different lines
+ 1) Simple times
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ Loop test!
+ SimpleTest::logSomething: Something = 1
+ SimpleTest::wholeBunchOfLogStatements: Here I am
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: I am in a loop!
+ SimpleTest::wholeBunchOfLogStatements: exiting...
+ In the header, I am 10
+ In the header, I am 10 x2
+ SimpleTest::logSomething: Something = 2
+ SimpleTest::logSomething: Something = 3
+
+
+Decompression Complete after printing 70 log messages

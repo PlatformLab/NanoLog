@@ -7,6 +7,8 @@
 ##			before being linked into the main executable/library
 ##   2) The Macro USER_OBJS MUST be used to identify .o files from above
 ##   3) The final executable links FastLogger.a, pthread, and lrt
+##   4) The RUNTIME_DIR and PREPROC_DIR shall identify the directories
+##			where the FastLogger's Runtime and Preproessor sources are
 ##
 ## Note that run-cxx will add additional warnings to the user compilation
 ## flags to detect misuses of the FastLogger API.
@@ -17,7 +19,7 @@
 ####
 USER_SRCS=Benchmark.cc
 
-# MUST use macro to identify user *.o files
+# [Required] MUST use macro to identify user *.o files
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
 # -DNDEBUG and -O3 should always be passed for high performance
@@ -26,7 +28,7 @@ CXX=g++
 
 all: benchmark
 
-# run-cxx will compile the user C++ source file into an object file using
+# [Required] run-cxx will compile the user C++ source file into an object file using
 # the FastLogger system. See documentation in the Library Compilation section.
 %.o: %.cc
 	$(call run-cxx, $@, $<, $(CXXFLAGS))
@@ -41,10 +43,10 @@ clean:
 ## Library Options
 ####
 
-# Specifies the path to the FastLogger's Runtime Library directory
+# [Required] Specifies the path to the FastLogger's Runtime Library directory
 RUNTIME_DIR=../runtime
 
-# Specifies the path to the FastLogger's Preprocessor directory
+# [Required] Specifies the path to the FastLogger's Preprocessor directory
 PREPROC_DIR=../preprocessor
 
 ####
@@ -58,10 +60,10 @@ PREPROC_DIR=../preprocessor
 # The optional third parameter $(3) is any additional options compiler options.
 define run-cxx
 	$(CXX) -E -I $(RUNTIME_DIR) $(2) -o $(2).i $(3)
-	mkdir -p generated
-	python $(PREPROC_DIR)/parser.py --map="generated/mapping.map" $(2).i
+	@mkdir -p generated
+	python $(PREPROC_DIR)/parser.py --mapOutput="generated/$(2).map" $(2).i
 	$(CXX) -I $(RUNTIME_DIR) -c -o $(1) $(2).ii $(3)
-	rm -f $(2).i $(2).ii generated/BufferStuffer.h
+	@rm -f $(2).i $(2).ii generated/BufferStuffer.h
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
@@ -83,7 +85,7 @@ endif
 
 generated/BufferStuffer.h: $(USER_OBJS)
 	mkdir -p generated
-	python $(PREPROC_DIR)/parser.py --map="generated/mapping.map" --output="$@"
+	python $(PREPROC_DIR)/parser.py --combinedOutput="$@" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
 
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc generated/BufferStuffer.h
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -pthread -lrt -Werror

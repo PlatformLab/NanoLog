@@ -13,29 +13,31 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
- /**
-  * Helper to test the parsing compnent of the FastLogger system.
-  */
+/**
+ * This file is a supplement to simpleTests.cc that is primarily used for
+ * testing parallel builds.
+ */
 
-#include <iostream>
 #include <string>
-#include <stdio.h>
-#include <stdint.h>
 
-// Tests whether the system can detect re #define's
-#define LOG FAST_LOG
+#include "../runtime/FastLogger.h"
+#include "../runtime/Cycles.h"
 
-// Tests whether header functions get parsed as well.
-static void
-hiddenInHeaderFilePrint()
-{
-    FAST_LOG("Messages in the Header"
-        " File"
-        );
-}
+#include "folder/Sample.h"
 
-// Helper to actually print out some messages
-static void
-FAST_LOG_REAL(int logLevel, uint32_t id, ...) {
-    printf("Fast Log! %u\n", id);
-}
+class SimpleTest {
+    int number;
+
+public:
+    SimpleTest(int number)
+        : number(number)
+    {}
+
+    void logSomething();
+    void wholeBunchOfLogStatements();
+    inline void logStatementsInHeader() {
+        /// These should be assigned different ids due to line number
+        FAST_LOG("In the header, I am %d", number);
+        FAST_LOG("In the header, I am %d x2", number);
+    }
+};

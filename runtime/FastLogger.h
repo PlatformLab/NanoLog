@@ -96,7 +96,7 @@ public:
     {
         if (stagingBuffer == nullptr)
             fastLogger.ensureStagingBufferAllocated();
-        
+
         return stagingBuffer->reserveProducerSpace(nbytes);
     }
 
@@ -127,7 +127,7 @@ PRIVATE:
     // Singleton FastLogger that manages the thread-local structures and
     // background output thread.
     static FastLogger fastLogger;
-    
+
     FastLogger();
     ~FastLogger();
 
@@ -403,6 +403,11 @@ PRIVATE:
 
 };  // FastLogger
 }; // namespace PerfUtils
+
+// MUST appear at the very end of the FastLogger.h file, right before the
+// last #endif. It serves a marker for the preprocessor for where it can
+// start injecting inlined, generated functions.
+static const int __internal_dummy_variable_marker_for_code_injection = 0;
 
 #endif /* FASTLOGGER_H */
 
