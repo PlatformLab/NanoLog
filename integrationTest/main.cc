@@ -20,8 +20,8 @@
 
 #include <string>
 
-#include "../runtime/FastLogger.h"
-#include "../runtime/Cycles.h"
+#include "FastLogger.h"
+#include "Cycles.h"
 
 #include "folder/Sample.h"
 #include "SimpleTestObject.h"

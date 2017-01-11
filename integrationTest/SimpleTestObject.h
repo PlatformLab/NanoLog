@@ -20,25 +20,24 @@
 
 #include <string>
 
-#include "../runtime/FastLogger.h"
-#include "../runtime/Cycles.h"
+#include "FastLogger.h"
+#include "Cycles.h"
 
-#include "SimpleTestObject.h"
+#include "folder/Sample.h"
 
-void
-SimpleTest::logSomething()
-{
-    static int cnt = 0;
-    FAST_LOG("SimpleTest::logSomething: Something = %d", ++cnt);
-}
+class SimpleTest {
+    int number;
 
-void
-SimpleTest::wholeBunchOfLogStatements() {
-    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: Here I am");
+public:
+    SimpleTest(int number)
+        : number(number)
+    {}
 
-    for (int i = 0; i < 10; ++i) {
-        FAST_LOG("SimpleTest::wholeBunchOfLogStatements: I am in a loop!");
+    void logSomething();
+    void wholeBunchOfLogStatements();
+    inline void logStatementsInHeader() {
+        /// These should be assigned different ids due to line number
+        FAST_LOG("In the header, I am %d", number);
+        FAST_LOG("In the header, I am %d x2", number);
     }
-
-    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: exiting...");
-}
+};

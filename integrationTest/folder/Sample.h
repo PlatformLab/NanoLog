@@ -13,31 +13,34 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/**
- * This file is a supplement to simpleTests.cc that is primarily used for
- * testing parallel builds.
- */
+ /**
+  * Helps tests the following components of the FastLogger system:
+  *   1) Detecting FAST_LOG redefinitions via #define (should handled
+  *      by C preprocessor) in a header file
+  *   2) Consistent assignment of format identifiers to a log statement
+  *      in the header file #include-d by multiple C++ files.
+  */
 
+#include <iostream>
 #include <string>
+#include <stdio.h>
+#include <stdint.h>
 
-#include "../runtime/FastLogger.h"
-#include "../runtime/Cycles.h"
+#include "FastLogger.h"
 
-#include "folder/Sample.h"
+#ifndef __Sample__h__
+#define __Sample__h__
 
-class SimpleTest {
-    int number;
+// Tests whether the system can detect re #define's
+#define LOG FAST_LOG
 
-public:
-    SimpleTest(int number)
-        : number(number)
-    {}
+// Tests whether header functions get parsed as well.
+static void
+hiddenInHeaderFilePrint()
+{
+    FAST_LOG("Messages in the Header"
+        " File"
+        );
+}
 
-    void logSomething();
-    void wholeBunchOfLogStatements();
-    inline void logStatementsInHeader() {
-        /// These should be assigned different ids due to line number
-        FAST_LOG("In the header, I am %d", number);
-        FAST_LOG("In the header, I am %d x2", number);
-    }
-};
+#endif // __Sample__h__

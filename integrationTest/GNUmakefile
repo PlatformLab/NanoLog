@@ -8,10 +8,10 @@
 ####
 
 # Specifies the path to the FastLogger's Runtime Library
-RUNTIME_DIR=../../runtime
+RUNTIME_DIR=../runtime
 
 # Specifies the path to the FastLogger's Preprocessor directory
-PREPROC_DIR=../../preprocessor
+PREPROC_DIR=../preprocessor
 
 ####
 # User Section

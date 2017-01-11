@@ -13,34 +13,32 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
- /**
-  * Helps tests the following components of the FastLogger system:
-  *   1) Detecting FAST_LOG redefinitions via #define (should handled
-  *      by C preprocessor) in a header file
-  *   2) Consistent assignment of format identifiers to a log statement
-  *      in the header file #include-d by multiple C++ files.
-  */
+/**
+ * This file is a supplement to simpleTests.cc that is primarily used for
+ * testing parallel builds.
+ */
 
-#include <iostream>
 #include <string>
-#include <stdio.h>
-#include <stdint.h>
 
-#include "../../../runtime/FastLogger.h"
+#include "FastLogger.h"
+#include "Cycles.h"
 
-#ifndef __Sample__h__
-#define __Sample__h__
+#include "SimpleTestObject.h"
 
-// Tests whether the system can detect re #define's
-#define LOG FAST_LOG
-
-// Tests whether header functions get parsed as well.
-static void
-hiddenInHeaderFilePrint()
+void
+SimpleTest::logSomething()
 {
-    FAST_LOG("Messages in the Header"
-        " File"
-        );
+    static int cnt = 0;
+    FAST_LOG("SimpleTest::logSomething: Something = %d", ++cnt);
 }
 
-#endif // __Sample__h__
+void
+SimpleTest::wholeBunchOfLogStatements() {
+    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: Here I am");
+
+    for (int i = 0; i < 10; ++i) {
+        FAST_LOG("SimpleTest::wholeBunchOfLogStatements: I am in a loop!");
+    }
+
+    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: exiting...");
+}
