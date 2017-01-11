@@ -91,7 +91,7 @@ $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc generated/BufferStuffer.h
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -pthread -lrt -Werror
 
 libFastLogger.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS)
-	ar -cq libFastLogger.a $(RUNTIME_OBJS)
+	ar -cr libFastLogger.a $(RUNTIME_OBJS)
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
 
 decompressor: generated/BufferStuffer.h $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
