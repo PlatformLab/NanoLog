@@ -247,6 +247,20 @@ class PreprocesorTestCase(unittest.TestCase):
         peek = peekNextMeaningfulChar(lines, FilePosition(5, 0))
         self.assertIsNone(peek)
 
+    def test_processFile_noInjectionIfNoCode(self):
+        src = """main() {}"""
+
+        with open("test", "w") as testFile:
+            testFile.write(src)
+
+        processFile("test", "test.map")
+        with open("testi", 'r') as iFile:
+            self.assertEqual(src, iFile.read())
+
+        os.remove("test")
+        os.remove("testi")
+        os.remove("test.map")
+
     ###### NOTE #######
     # parser.py:processFile is left for an integration test since it an entire
     # C++ source file and outputs generated code.

@@ -549,7 +549,12 @@ def processFile(inputFile, mapOutputFilename):
     recFns = functionGenerator.getRecordFunctionDefinitionsFor(firstFilename)
     codeToInject = "\r\n\r\n# 1 \"generatedCode.h\" 3\r\n" \
                               + "\r\n".join(recFns)
-    lines.insert(inlineCodeInjectionLineIndex + 1, codeToInject)
+
+    if recFns:
+      # Assert is okay here since this should have been caught the first time
+      # we found FAST_LOG without a #include
+      assert inlineCodeInjectionLineIndex
+      lines.insert(inlineCodeInjectionLineIndex + 1, codeToInject)
 
     # Output all the lines
     for line in lines:
