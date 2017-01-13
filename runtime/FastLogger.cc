@@ -606,10 +606,16 @@ FastLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
             // Not enough space at the end of the buffer; wrap around
             //TODO(syang0) I think a lock is needed here in case of reordering
             endOfRecordedSpace = producerPos;
-            producerPos = storage;
-        }
 
-        minFreeSpace = cachedReadPos - producerPos;
+            // Prevent the roll over if it overlaps the two positions because
+            // that would imply the buffer is completely empty when it's not.
+            if (cachedReadPos != storage) {
+                producerPos = storage;
+                minFreeSpace = cachedReadPos - producerPos;
+            }
+        } else {
+            minFreeSpace = cachedReadPos - producerPos;
+        }
 
         // Needed to prevent infinite loops in tests
         if (!blocking && minFreeSpace <= nbytes)

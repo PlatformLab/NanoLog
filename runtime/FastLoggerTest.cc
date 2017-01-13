@@ -136,6 +136,23 @@ TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal)
     EXPECT_EQ(101U, sb->minFreeSpace);
 }
 
+TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal_rollover_prevention)
+{
+    // Setup the situation where the consumer is at position 0 and the producer
+    // needs to roll over. When this situation occurs, the producer should
+    // NOT roll over, otherwise the two positions overlap, which we have defined
+    // to be a completely empty buffer, but that is not the case in actuality
+
+    sb->minFreeSpace = 0;
+    sb->consumerPos = sb->storage;
+    sb->producerPos = sb->storage + bufferSize;
+
+    // Because of where our testing exit block is, we need to execute
+    // reserveSpaceInternal 2x to get the looping behavior
+    EXPECT_EQ(nullptr, sb->reserveSpaceInternal(1, false));
+    EXPECT_EQ(nullptr, sb->reserveSpaceInternal(1, false));
+}
+
 TEST_F(FastLoggerTest, StagingBuffer_finishReservation) {
     EXPECT_EQ(sb->storage, sb->producerPos);
     EXPECT_EQ(bufferSize, sb->minFreeSpace);
@@ -186,9 +203,6 @@ TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
     sb->producerPos = sb->storage + halfSize - 50;
     sb->consumerPos = sb->storage + halfSize + 100;
     sb->reserveSpaceInternal(100);
-
-    sb->minFreeSpace = 1000;
-    EXPECT_DEATH(sb->finishReservation(999), "nbytes < consumerPos");
 }
 
 TEST_F(FastLoggerTest, StagingBuffer_peek) {
