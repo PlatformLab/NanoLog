@@ -1,3 +1,9 @@
+
+compressedLog
+decompressor
+generated/
+libFastLogger.a
+
 output.txt
 testApp
 *.o
