@@ -80,6 +80,104 @@ void discard(void* value) {
 // Test functions start here
 //----------------------------------------------------------------------
 
+double compressBinarySearch() {
+    const int count = 1000000;
+    uint64_t *buffer = static_cast<uint64_t*>(malloc(count*sizeof(uint64_t)));
+
+    srand(0);
+    for (int i = 0; i < count; i++) {
+        buffer[i] = 1UL << (rand()%64);
+    }
+
+    int sumOfBytes = 0;
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        int numBytes;
+        uint64_t val = buffer[i];
+        if (val < (1ULL << 32))
+        {
+            if (val < (1U << 24))
+            {
+                if (val < (1U << 16))
+                {
+                    if (val < (1U << 8))
+                        numBytes = 1;
+                    else
+                        numBytes = 2;
+                }
+                else numBytes = 3;
+            }
+            else numBytes = 4;
+        }
+        else
+        {
+            if (val < (1ULL << 56))
+            {
+                if (val < (1ULL << 48))
+                {
+                    if (val < (1ULL << 40))
+                        numBytes = 5;
+                    else
+                        numBytes = 6;
+                }
+                else numBytes = 7;
+            }
+            else numBytes = 8;
+        }
+
+        sumOfBytes += numBytes;
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&sumOfBytes);
+
+    free(buffer);
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double compressLinearSearch() {
+    const int count = 1000000;
+    uint64_t *buffer = static_cast<uint64_t*>(malloc(count*sizeof(uint64_t)));
+
+    srand(0);
+    for (int i = 0; i < count; i++) {
+        buffer[i] = 1UL << (rand()%64);
+    }
+
+    int sumOfBytes = 0;
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; ++i) {
+        int numBytes;
+        uint64_t val = buffer[i];
+
+        if (val < (1UL << 8)) {
+            numBytes = 1;
+        } else if (val < (1UL << 16)) {
+            numBytes = 2;
+        } else if (val < (1UL << 24)) {
+            numBytes = 3;
+        } else if (val < (1UL << 32)) {
+            numBytes = 4;
+        } else if (val < (1UL << 40)) {
+            numBytes = 5;
+        } else if (val < (1UL << 48)) {
+            numBytes = 6;
+        } else if (val < (1UL << 56)) {
+            numBytes = 7;
+        } else {
+            numBytes = 8;
+        }
+
+        sumOfBytes += numBytes;
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&sumOfBytes);
+
+    free(buffer);
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 // Measure the cost of a 32-bit divide. Divides don't take a constant
 // number of cycles. Values were chosen here semi-randomly to depict a
 // fairly expensive scenario. Someone with fancy ALU knowledge could
@@ -538,6 +636,10 @@ TestInfo tests[] = {
      "Convert a rdtsc result to (double) seconds"},
     {"cyclesToNanos", perfCyclesToNanoseconds,
      "Convert a rdtsc result to (uint64_t) nanoseconds"},
+    {"compressBinarySearch", compressBinarySearch,
+     "Compress 1M uint64_t's via binary searching if-statements"},
+    {"compressLinearSearch", compressLinearSearch,
+     "Compress 1M uint64_t's via linear searching for-loop"},
     {"div32", div32,
      "32-bit integer division instruction"},
     {"div64", div64,

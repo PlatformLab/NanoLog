@@ -86,35 +86,22 @@ pack(char **buffer, T val) {
 
     //TODO(syang0) Is this too costly vs. a simple for loop?
     int numBytes;
-    if (val < (1ULL << 32))
-    {
-        if (val < (1U << 24))
-        {
-            if (val < (1U << 16))
-            {
-                if (val < (1U << 8))
-                    numBytes = 1;
-                else
-                    numBytes = 2;
-            }
-            else numBytes = 3;
-        }
-        else numBytes = 4;
-    }
-    else
-    {
-        if (val < (1ULL << 56))
-        {
-            if (val < (1ULL << 48))
-            {
-                if (val < (1ULL << 40))
-                    numBytes = 5;
-                else
-                    numBytes = 6;
-            }
-            else numBytes = 7;
-        }
-        else numBytes = 8;
+    if (val < (1UL << 8)) {
+            numBytes = 1;
+    } else if (val < (1UL << 16)) {
+        numBytes = 2;
+    } else if (val < (1UL << 24)) {
+        numBytes = 3;
+    } else if (val < (1UL << 32)) {
+        numBytes = 4;
+    } else if (val < (1UL << 40)) {
+        numBytes = 5;
+    } else if (val < (1UL << 48)) {
+        numBytes = 6;
+    } else if (val < (1UL << 56)) {
+        numBytes = 7;
+    } else {
+        numBytes = 8;
     }
 
     // Although we store the entire value here, we take advantage of the fact
