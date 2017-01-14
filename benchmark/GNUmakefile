@@ -33,11 +33,12 @@ all: benchmark
 %.o: %.cc
 	$(call run-cxx, $@, $<, $(CXXFLAGS))
 
+# [Required] $(LIBRARY_LIBS) must be used
 benchmark: $(USER_OBJS) libFastLogger.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lFastLogger -pthread -lrt
+	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lFastLogger $(LIBRARY_LIBS)
 
 clean:
-	@rm -f *.o benchmark
+	@rm -f *.o benchmark /tmp/logFile
 
 ####
 ## Library Options
@@ -67,6 +68,7 @@ define run-cxx
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
+LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/FastLogger.cc \
@@ -83,19 +85,19 @@ ifeq ($(COMPILER),gnu)
 CXXWARNS += -Weffc++
 endif
 
-generated/BufferStuffer.h: $(USER_OBJS)
+generated/BufferStuffer.o: $(USER_OBJS)
 	mkdir -p generated
-	python $(PREPROC_DIR)/parser.py --combinedOutput="$@" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
+	python $(PREPROC_DIR)/parser.py --combinedOutput="generated/BufferStuffer.cc" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/BufferStuffer.cc -I $(RUNTIME_DIR) -Igenerated
 
-$(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc generated/BufferStuffer.h
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -pthread -lrt -Werror
+$(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
 
-libFastLogger.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS)
-	ar -cr libFastLogger.a $(RUNTIME_OBJS)
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
+libFastLogger.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/BufferStuffer.o decompressor
+	ar -cr libFastLogger.a $(RUNTIME_OBJS) generated/BufferStuffer.o
 
-decompressor: generated/BufferStuffer.h $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -lpthread -lrt -Werror
+decompressor: generated/BufferStuffer.o $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(LIBRARY_LIBS)
 
 clean-all: clean
 	@rm -f libFastLogger.a $(RUNTIME_OBJS) decompressor
