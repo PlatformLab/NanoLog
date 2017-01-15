@@ -396,9 +396,10 @@ FastLogger::compressionThreadMain()
             ssize_t bytesOver = bytesToWrite%512;
 
             if (bytesOver != 0) {
-                memset(out, 0, bytesOver);
-                bytesToWrite = bytesToWrite + 512 - bytesOver;
-                padBytesWritten += (512 - bytesOver);
+                ssize_t remaining = 512 - bytesOver;
+                memset(out, 0, remaining);
+                bytesToWrite = bytesToWrite + remaining;
+                padBytesWritten += remaining;
             }
         }
 
