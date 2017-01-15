@@ -50,10 +50,6 @@ public:
     //TODO(syang0) Where should I put these? These technically aren't
     // supposed to for the user to toggle...
 
-    // Toggles whether the compressed log file will be output via POSIX AIO
-    // or via regular blocking file writes (for debugging)
-    static const bool USE_AIO = true;
-
     // Controls in what mode the file will be opened
     static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|
                                                             O_DSYNC|O_DIRECT;
@@ -67,13 +63,11 @@ public:
     // messages. It should be at least 8MB large to amortize disk seeks.
     static const uint32_t OUTPUT_BUFFER_SIZE = 1<<24;
 
-
     // User API
     static void printStats();
     static void preallocate();
     static void setLogFile(const char* filename);
     static void sync();
-
 
     /// Internal API after this point
     /**

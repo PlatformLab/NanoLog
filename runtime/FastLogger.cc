@@ -148,12 +148,16 @@ FastLogger::printStats()
     double numEventsProcessedDouble = static_cast<double>(
                                                 fastLogger.eventsProcessed);
 
-    printf("Wrote %lu events (%0.2lf MB) in %0.3lf seconds "
+    printf("\r\nWrote %lu events (%0.2lf MB) in %0.3lf seconds "
             "(%0.3lf seconds spent compressing)\r\n",
             fastLogger.eventsProcessed,
             totalBytesWrittenDouble/1.0e6,
             workTime,
             compressTime);
+
+    printf("The StagingBuffer and OutputBuffer sizes were %d MB and %d MB"
+            " respectively\r\n",
+            STAGING_BUFFER_SIZE/1000000, OUTPUT_BUFFER_SIZE/1000000);
 
     printf("There were %u file flushes and the final sync time was %lf sec\r\n",
             fastLogger.numAioWritesCompleted, Cycles::toSeconds(stop - start));
@@ -171,14 +175,6 @@ FastLogger::printStats()
             "\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n",
                 (totalBytesWrittenDouble/1.0e6)/(workTime),
                 (workTime*1.0e9)/totalBytesWrittenDouble);
-
-    if (!FastLogger::USE_AIO) {
-        // Since we can't reliably measure raw output speeds with AIO,
-        // we don't print it.
-        printf("\t%0.2lf MB/s or %0.2lf ns/byte raw output\r\n",
-                (totalBytesWrittenDouble/1.0e6)/outputTime,
-                (outputTime)*1.0e9/totalBytesWrittenDouble);
-    }
 
     printf("\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
             (totalBytesWrittenDouble/1.0e6)/fastLogger.numAioWritesCompleted,
@@ -259,24 +255,25 @@ FastLogger::compressionThreadMain()
     // the number of cyclesAwake right before blocking/sleeping and then updated
     // to the latest rdtsc() when the thread re-awakens.
     uint64_t cyclesAwakeStart = Cycles::rdtsc();
-
     cycleAtThreadStart = cyclesAwakeStart;
+
+    // Write position within the compressingBuffer
+    char *out = compressingBuffer;
+    char *endOfBuffer = compressingBuffer + FastLogger::OUTPUT_BUFFER_SIZE;
+
+    // Indicates whether a compression operation failed or not due
+    // to insufficient space in the outputBuffer
+    bool outputBufferFull = false;
 
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
-        // Main buffer to put compressed log messages into
-        char *out = compressingBuffer;
-        char *endOfBuffer = compressingBuffer + FastLogger::OUTPUT_BUFFER_SIZE;
 
+        // Step 1: Find buffers with entries and compress them
         {
             uint64_t start = Cycles::rdtsc();
             std::unique_lock<std::mutex> lock(bufferMutex);
             size_t i = lastStagingBufferChecked;
-
-            // Indicates whether a compression operation failed or not due
-            // to insufficient space in the outputBuffer
-            bool outputBufferFull = false;
 
             // Indicates whether uncompressed log messages were found through
             // an iteration through all the staging buffers.
@@ -369,7 +366,7 @@ FastLogger::compressionThreadMain()
             cyclesScanningAndCompressing += Cycles::rdtsc() - start;
         }
 
-        // Nothing was compressed
+        // Check whether we should sleep or output data
         if (out == compressingBuffer) {
             std::unique_lock<std::mutex> lock(condMutex);
 
@@ -389,6 +386,44 @@ FastLogger::compressionThreadMain()
             continue;
         }
 
+        uint64_t start = Cycles::rdtsc();
+        if (hasOutstandingOperation) {
+            if (aio_error(&aioCb) == EINPROGRESS) {
+                const struct aiocb * const aiocb_list[] = { &aioCb };
+
+                cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
+                    if (outputBufferFull) {
+                        // If the output buffer is full and we're not done,
+                        // wait for completion
+                        int err = aio_suspend(aiocb_list, 1, NULL);
+                        cyclesAwakeStart = Cycles::rdtsc();
+                        if (err != 0)
+                            perror("LogCompressor's Posix AIO "
+                                    "suspend operation failed");
+                    } else {
+                        // Otherwise do our regular sleep
+                        std::unique_lock<std::mutex> lock(condMutex);
+                        workAdded.wait_for(lock, std::chrono::microseconds(1));
+                        cyclesAwakeStart = Cycles::rdtsc();
+
+                        if (aio_error(&aioCb) == EINPROGRESS)
+                            continue;
+                    }
+            }
+
+            int err = aio_error(&aioCb);
+            ssize_t ret = aio_return(&aioCb);
+
+            if (err != 0) {
+                fprintf(stderr, "LogCompressor's POSIX AIO failed"
+                        " with %d: %s\r\n", err, strerror(err));
+            } else if (ret < 0) {
+                perror("LogCompressor's Posix AIO Write failed");
+            }
+            ++numAioWritesCompleted;
+            hasOutstandingOperation = false;
+        }
+
         // Compressed items exist in the buffer, determine how many pad bytes
         // are needed if O_DIRECT is used and output.
         ssize_t bytesToWrite = out - compressingBuffer;
@@ -396,59 +431,30 @@ FastLogger::compressionThreadMain()
             ssize_t bytesOver = bytesToWrite%512;
 
             if (bytesOver != 0) {
-                ssize_t remaining = 512 - bytesOver;
-                memset(out, 0, remaining);
-                bytesToWrite = bytesToWrite + remaining;
-                padBytesWritten += remaining;
+                memset(out, 0, 512 - bytesOver);
+                bytesToWrite = bytesToWrite + 512 - bytesOver;
+                padBytesWritten += (512 - bytesOver);
             }
         }
 
-        uint64_t start = Cycles::rdtsc();
-        if (FastLogger::USE_AIO) {
-            if (hasOutstandingOperation) {
-                if (aio_error(&aioCb) == EINPROGRESS) {
-                    const struct aiocb * const aiocb_list[] = { &aioCb };
+        aioCb.aio_fildes = outputFd;
+        aioCb.aio_buf = compressingBuffer;
+        aioCb.aio_nbytes = bytesToWrite;
+        totalBytesWritten += bytesToWrite;
 
-                    cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
-                    int err = aio_suspend(aiocb_list, 1, NULL);
-                    cyclesAwakeStart = Cycles::rdtsc();
+        if (aio_write(&aioCb) == -1)
+            fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
 
-                    if (err != 0)
-                        perror("LogCompressor's Posix AIO "
-                                "suspend operation failed");
-                }
+        hasOutstandingOperation = true;
 
-                int err = aio_error(&aioCb);
-                ssize_t ret = aio_return(&aioCb);
+        // Swap buffers
+        char *tmp = compressingBuffer;
+        compressingBuffer = outputDoubleBuffer;
+        outputDoubleBuffer = tmp;
 
-                if (err != 0) {
-                    fprintf(stderr, "LogCompressor's POSIX AIO failed"
-                            " with %d: %s\r\n", err, strerror(err));
-                } else if (ret < 0) {
-                    perror("LogCompressor's Posix AIO Write failed");
-                }
-                ++numAioWritesCompleted;
-                hasOutstandingOperation = false;
-            }
-
-            aioCb.aio_fildes = outputFd;
-            aioCb.aio_buf = compressingBuffer;
-            aioCb.aio_nbytes = bytesToWrite;
-            totalBytesWritten += bytesToWrite;
-
-            if (aio_write(&aioCb) == -1)
-                fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
-
-            hasOutstandingOperation = true;
-
-            // Swap buffers
-            char *tmp = compressingBuffer;
-            compressingBuffer = outputDoubleBuffer;
-            outputDoubleBuffer = tmp;
-        } else {
-            if (bytesToWrite != write(outputFd, compressingBuffer, bytesToWrite))
-                perror("Error dumping log");
-        }
+        out = compressingBuffer;
+        endOfBuffer = compressingBuffer + FastLogger::OUTPUT_BUFFER_SIZE;
+        outputBufferFull = false;
 
         // TODO(syang0) Currently, the cyclesAioAndFsync metric is
         // incorrect if we use POSIX AIO since it only measures the
