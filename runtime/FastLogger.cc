@@ -124,7 +124,9 @@ FastLogger::~FastLogger()
 
 /**
  * User API: Print various statistics gathered by the FastLogger system to
- * stdout. This is primarily intended as a performance debugging aid.
+ * stdout. This is primarily intended as a performance debugging aid and may
+ * not be 100% consistent since it reads performance metrics without
+ * synchronization.
  */
 void
 FastLogger::printStats()
@@ -154,10 +156,6 @@ FastLogger::printStats()
             totalBytesWrittenDouble/1.0e6,
             workTime,
             compressTime);
-
-    printf("The StagingBuffer and OutputBuffer sizes were %d MB and %d MB"
-            " respectively\r\n",
-            STAGING_BUFFER_SIZE/1000000, OUTPUT_BUFFER_SIZE/1000000);
 
     printf("There were %u file flushes and the final sync time was %lf sec\r\n",
             fastLogger.numAioWritesCompleted, Cycles::toSeconds(stop - start));
@@ -193,6 +191,22 @@ FastLogger::printStats()
                     fastLogger.totalBytesRead,
                     fastLogger.totalBytesWritten,
                     fastLogger.padBytesWritten);
+}
+
+/**
+ * User API: Print the configuration parameters the FastLogger is currently
+ * using. This is primarily for keeping track of configurations during
+ * benchmarking
+ */
+void
+FastLogger::printConfig() {
+
+    printf("==== FastLogger Configuration ====\r\n");
+
+    printf("StagingBuffer size: %u MB\r\n", STAGING_BUFFER_SIZE/1000000);
+    printf("Output Buffer size: %u MB\r\n", OUTPUT_BUFFER_SIZE/1000000);
+    printf("Idle Poll Interval: %u µs\r\n", POLL_INTERVAL_NO_WORK_US);
+    printf("IO Poll Interval  : %u µs\r\n", POLL_INTERVAL_DURING_IO_US);
 }
 
 /**

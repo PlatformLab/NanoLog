@@ -77,6 +77,7 @@ public:
 
     // User API
     static void printStats();
+    static void printConfig();
     static void preallocate();
     static void setLogFile(const char* filename);
     static void sync();
