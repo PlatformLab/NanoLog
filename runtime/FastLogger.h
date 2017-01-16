@@ -63,6 +63,18 @@ public:
     // messages. It should be at least 8MB large to amortize disk seeks.
     static const uint32_t OUTPUT_BUFFER_SIZE = 1<<24;
 
+    // How often should the background compression thread wake up to check
+    // for more log messages in the StagingBuffers to compress and output.
+    // Due to overheads in the kernel, this number will a lower bound and
+    // the actual time spent sleeping may be significantly higher.
+    static const uint32_t POLL_INTERVAL_NO_WORK_US = 10;
+
+    // How often should the background compression thread wake up and
+    // check for more log messages when it's stalled waiting for an IO
+    // to complete. Due to overheads in the kernel, this number will
+    // be a lower bound and the actual time spent sleeping may be higher.
+    static const uint32_t POLL_INTERVAL_DURING_IO_US = 10;
+
     // User API
     static void printStats();
     static void preallocate();

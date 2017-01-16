@@ -380,7 +380,8 @@ FastLogger::compressionThreadMain()
             cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
 
             hintQueueEmptied.notify_one();
-            workAdded.wait_for(lock, std::chrono::microseconds(1));
+            workAdded.wait_for(lock, std::chrono::microseconds(
+                                                    POLL_INTERVAL_NO_WORK_US));
 
             cyclesAwakeStart = Cycles::rdtsc();
             continue;
@@ -403,7 +404,8 @@ FastLogger::compressionThreadMain()
                     } else {
                         // Otherwise do our regular sleep
                         std::unique_lock<std::mutex> lock(condMutex);
-                        workAdded.wait_for(lock, std::chrono::microseconds(1));
+                        workAdded.wait_for(lock, std::chrono::microseconds(
+                                                POLL_INTERVAL_DURING_IO_US));
                         cyclesAwakeStart = Cycles::rdtsc();
 
                         if (aio_error(&aioCb) == EINPROGRESS)
