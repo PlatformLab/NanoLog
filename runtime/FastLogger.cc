@@ -170,10 +170,17 @@ FastLogger::printStats()
             secondsThreadHasBeenAlive,
             100.0*secondsAwake/secondsThreadHasBeenAlive);
 
-    printf("On average, that's\r\n"
-            "\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n",
+    printf("On average, that's\r\n");
+
+    printf("\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n",
                 (totalBytesWrittenDouble/1.0e6)/(workTime),
                 (workTime*1.0e9)/totalBytesWrittenDouble);
+
+    // Since we sleep at 1µs intervals and check for completion at wake up,
+    // it's possible the IO finished before we woke-up, thus enlarging the time.
+    printf("\t%0.2lf MB/s or %0.2lf ns/byte disk throughput (min)\r\n",
+                (totalBytesWrittenDouble/1.0e6)/outputTime,
+                (outputTime*1.0e9)/totalBytesWrittenDouble);
 
     printf("\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
             (totalBytesWrittenDouble/1.0e6)/fastLogger.numAioWritesCompleted,
@@ -181,7 +188,7 @@ FastLogger::printStats()
 
     printf("\t%0.2lf ns/event in total\r\n"
             "\t%0.2lf ns/event compressing\r\n",
-            (outputTime + compressTime)*1.0e9/numEventsProcessedDouble,
+            (workTime)*1.0e9/numEventsProcessedDouble,
             compressTime*1.0e9/numEventsProcessedDouble);
 
     printf("The compression ratio was %0.2lf-%0.2lfx "
@@ -283,10 +290,9 @@ FastLogger::compressionThreadMain()
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
-
+        uint64_t start = Cycles::rdtsc();
         // Step 1: Find buffers with entries and compress them
         {
-            uint64_t start = Cycles::rdtsc();
             std::unique_lock<std::mutex> lock(bufferMutex);
             size_t i = lastStagingBufferChecked;
 
@@ -396,7 +402,6 @@ FastLogger::compressionThreadMain()
             continue;
         }
 
-        uint64_t start = Cycles::rdtsc();
         if (hasOutstandingOperation) {
             if (aio_error(&aioCb) == EINPROGRESS) {
                 const struct aiocb * const aiocb_list[] = { &aioCb };
@@ -417,8 +422,10 @@ FastLogger::compressionThreadMain()
                                                 POLL_INTERVAL_DURING_IO_US));
                         cyclesAwakeStart = Cycles::rdtsc();
 
-                        if (aio_error(&aioCb) == EINPROGRESS)
+                        if (aio_error(&aioCb) == EINPROGRESS) {
+                            cyclesAioAndFsync += (Cycles::rdtsc() - start);
                             continue;
+                        }
                     }
             }
 
