@@ -20,10 +20,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "snappy.h"
+
 #include "Cycles.h"         /* Cycles::rdtsc() */
 #include "Log.h"
 #include "NanoLog.h"
 #include "Config.h"
+
+#include "TimeTrace.h"
 
 // Define the static members of NanoLog here
 __thread NanoLog::StagingBuffer* NanoLog::stagingBuffer = nullptr;
@@ -42,6 +46,7 @@ NanoLog::NanoLog()
     , condMutex()
     , workAdded()
     , hintQueueEmptied()
+    , outputFile("/tmp/compressedLog")
     , outputFd(-1)
     , aioCb()
     , compressingBuffer(nullptr)
@@ -49,6 +54,7 @@ NanoLog::NanoLog()
     , currentLogLevel(NOTICE)
     , cycleAtThreadStart(0)
     , cyclesAwake(0)
+    , cyclesCompacting(0)
     , cyclesCompressing(0)
     , cyclesScanningAndCompressing(0)
     , cyclesAioAndFsync(0)
@@ -57,8 +63,11 @@ NanoLog::NanoLog()
     , padBytesWritten(0)
     , eventsProcessed(0)
     , numAioWritesCompleted(0)
+    , maxPeekSizeEncountered(0)
+    , totalNonZeroBytesPeeked(0)
+    , numNonZeroPeeks(0)
 {
-    outputFd = open("/tmp/compressedLog", NanoLogConfig::FILE_PARAMS, 0666);
+    outputFd = open(outputFile, NanoLogConfig::FILE_PARAMS, 0666);
     if (outputFd < 0) {
         fprintf(stderr, "NanoLog could not open the default file location "
                 "for the log file (\"%s\").\r\n Please check the permissions "
@@ -137,9 +146,11 @@ NanoLog::printStats()
 
     double outputTime =
             PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesAioAndFsync);
+    double compactTime =
+            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesCompacting);
     double compressTime =
             PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesCompressing);
-    double workTime = outputTime + compressTime;
+    double workTime = outputTime + compactTime + compressTime;
 
     double totalBytesWrittenDouble = static_cast<double>(
                                             nanoLogSingleton.totalBytesWritten);
@@ -147,14 +158,24 @@ NanoLog::printStats()
                                             nanoLogSingleton.totalBytesRead);
     double padBytesWrittenDouble = static_cast<double>(
                                             nanoLogSingleton.padBytesWritten);
-    double numEventsProcessedDouble = static_cast<double>(
-                                            nanoLogSingleton.eventsProcessed);
+
+    uint64_t eventsProcessed = nanoLogSingleton.eventsProcessed;
+
+    // If compaction is disabled, we can't get a count of how many events
+    // we've processed from the background thread (since it just memcpys the
+    // bytes from the StagingBuffers), thus we have to guestimate based on
+    // the benchmark configurations
+    if (BENCHMARK_DISABLE_COMPACTION)
+        eventsProcessed = ITERATIONS*BENCHMARK_THREADS;
+
+    double numEventsProcessedDouble = static_cast<double>(eventsProcessed);
 
     printf("\r\nWrote %lu events (%0.2lf MB) in %0.3lf seconds "
-            "(%0.3lf seconds spent compressing)\r\n",
-            nanoLogSingleton.eventsProcessed,
+            "(%0.6lf seconds spent processing, %0.6lf seconds compressing)\r\n",
+            eventsProcessed,
             totalBytesWrittenDouble/1.0e6,
             workTime,
+            compactTime,
             compressTime);
 
     printf("There were %u file flushes and the final sync time was %lf sec\r\n",
@@ -171,8 +192,12 @@ NanoLog::printStats()
             secondsThreadHasBeenAlive,
             100.0*secondsAwake/secondsThreadHasBeenAlive);
 
-    printf("On average, that's\r\n");
+    printf("The maximum peek size was %lu (avg: %lu)\r\n",
+                nanoLogSingleton.maxPeekSizeEncountered,
+                nanoLogSingleton.totalNonZeroBytesPeeked
+                                /std::max(nanoLogSingleton.numNonZeroPeeks, 1UL));
 
+    printf("On average, that's\r\n");
     printf("\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n",
                 (totalBytesWrittenDouble/1.0e6)/(workTime),
                 (workTime*1.0e9)/totalBytesWrittenDouble);
@@ -188,8 +213,10 @@ NanoLog::printStats()
             totalBytesWrittenDouble*1.0/numEventsProcessedDouble);
 
     printf("\t%0.2lf ns/event in total\r\n"
-            "\t%0.2lf ns/event compressing\r\n",
+            "\t%0.2lf ns/event processing\r\n"
+            "\t%0.2lf ns/event compressing with snappy\r\n",
             (workTime)*1.0e9/numEventsProcessedDouble,
+            compactTime*1.0e9/numEventsProcessedDouble,
             compressTime*1.0e9/numEventsProcessedDouble);
 
     printf("The compression ratio was %0.2lf-%0.2lfx "
@@ -209,19 +236,27 @@ NanoLog::printStats()
  */
 void
 NanoLog::printConfig() {
-
-    printf("==== NanoLog Configuration ====\r\n");
-
-    printf("StagingBuffer size: %u MB\r\n",
-                                    NanoLogConfig::STAGING_BUFFER_SIZE/1000000);
-    printf("Output Buffer size: %u MB\r\n",
-                                    NanoLogConfig::OUTPUT_BUFFER_SIZE/1000000);
-    printf("Release Threshold : %u MB\r\n",
-                                    NanoLogConfig::RELEASE_THRESHOLD/1000000);
+    printf("\r\n==== NanoLog Configuration ====\r\n");
+    printf("StagingBuffer size: %0.3lf KB\r\n",
+                                    NanoLogConfig::STAGING_BUFFER_SIZE/1000.0);
+    printf("Output Buffer size: %0.3lf MB\r\n",
+                                    NanoLogConfig::OUTPUT_BUFFER_SIZE/1000000.0);
+    printf("Release Threshold : %0.3lf KB\r\n",
+                                    NanoLogConfig::RELEASE_THRESHOLD/1000.0);
     printf("Idle Poll Interval: %u µs\r\n",
                                     NanoLogConfig::POLL_INTERVAL_NO_WORK_US);
     printf("IO Poll Interval  : %u µs\r\n",
                                     NanoLogConfig::POLL_INTERVAL_DURING_IO_US);
+    printf("Output            : %s\r\n", nanoLogSingleton.outputFile);
+
+    printf("Compaction        : ");
+    if (BENCHMARK_DISABLE_COMPACTION)
+        printf("disabled\r\n");
+    else
+        printf("enabled\r\n");
+
+    printf("\r\n==== Time Trace Log ====\r\n");
+    PerfUtils::TimeTrace::print();
 }
 
 /**
@@ -273,6 +308,9 @@ NanoLog::waitForAIO() {
 void
 NanoLog::compressionThreadMain()
 {
+    PerfUtils::TimeTrace::record("Compression Thread Started (warmup)");
+    PerfUtils::TimeTrace::record("Real Compression thread started");
+
     // Index of the last StagingBuffer checked for uncompressed log messages
     size_t lastStagingBufferChecked = 0;
 
@@ -293,6 +331,18 @@ NanoLog::compressionThreadMain()
     // zero-th index, but have not yet encoded that in he compressed output
     bool wrapAround = false;
 
+#ifdef USE_SNAPPY
+
+    char *snappyOutputBuffer = nullptr;
+    size_t bufferSize = snappy::MaxCompressedLength(
+                                            NanoLogConfig::OUTPUT_BUFFER_SIZE);
+    snappyOutputBuffer = static_cast<char*>(malloc(bufferSize));
+    if (!snappyOutputBuffer) {
+        printf("Could not allocate snappy buffer\r\n");
+        exit(1);
+    }
+#endif
+
 
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
@@ -311,6 +361,9 @@ NanoLog::compressionThreadMain()
 
             // Scan through the threadBuffers looking for log messages to
             // compress while the output buffer is not full.
+//            if (!threadBuffers.empty())
+//                PerfUtils::TimeTrace::record("Searching for work ");
+
             while (!compressionThreadShouldExit
                         && !outputBufferFull
                         && !threadBuffers.empty()) {
@@ -323,6 +376,13 @@ NanoLog::compressionThreadMain()
                     uint64_t start = PerfUtils::Cycles::rdtsc();
                     lock.unlock();
 
+                    if (maxPeekSizeEncountered < peekBytes)
+                        maxPeekSizeEncountered = peekBytes;
+
+                    totalNonZeroBytesPeeked += peekBytes;
+                    numNonZeroPeeks++;
+
+//                    PerfUtils::TimeTrace::record("Compression thread found work of size %u", (uint32_t)readableBytes);
                     // Encode the data in RELEASE_THRESHOLD chunks
                     uint32_t remaining = downCast<uint32_t>(peekBytes);
                     while (remaining > 0) {
@@ -348,7 +408,8 @@ NanoLog::compressionThreadMain()
                         totalBytesRead += bytesRead;
                         bytesConsumedThisIteration += bytesRead;
                     }
-                    cyclesCompressing += PerfUtils::Cycles::rdtsc() - start;
+                    cyclesCompacting += PerfUtils::Cycles::rdtsc() - start;
+//                    PerfUtils::TimeTrace::record("Compression complete");
                     lock.lock();
                 } else {
                     // If there's no work, check if we're supposed to delete
@@ -411,10 +472,13 @@ NanoLog::compressionThreadMain()
             if (aio_error(&aioCb) == EINPROGRESS) {
                 const struct aiocb * const aiocb_list[] = { &aioCb };
                 if (outputBufferFull) {
+                    PerfUtils::TimeTrace::record("Going to sleep due to full buffer");
+
                     // If the output buffer is full and we're not done,
                     // wait for completion
                     cyclesAwake += PerfUtils::Cycles::rdtsc() -cyclesAwakeStart;
                     int err = aio_suspend(aiocb_list, 1, NULL);
+                    PerfUtils::TimeTrace::record("Wakeup from full sleep");
                     cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
                     if (err != 0)
                         perror("LogCompressor's Posix AIO "
@@ -442,6 +506,7 @@ NanoLog::compressionThreadMain()
             // Finishing up the IO
             int err = aio_error(&aioCb);
             ssize_t ret = aio_return(&aioCb);
+            PerfUtils::TimeTrace::record("IO Complete");
 
             if (err != 0) {
                 fprintf(stderr, "LogCompressor's POSIX AIO failed"
@@ -453,7 +518,7 @@ NanoLog::compressionThreadMain()
             hasOutstandingOperation = false;
         }
 
-        // At this point, compressed items exist in the buffer and the double
+        // At this point, compact-ed items exist in the buffer and the double
         // buffer used for IO is now free. Pad the output (if necessary) and
         // output.
         ssize_t bytesToWrite = encoder.getEncodedBytes();
@@ -467,11 +532,30 @@ NanoLog::compressionThreadMain()
             }
         }
 
+#ifdef USE_SNAPPY
+        size_t outSize;
+        uint64_t compressionTimeStart = PerfUtils::Cycles::rdtsc();
+        snappy::RawCompress(compressingBuffer, bytesToWrite,
+                                    snappyOutputBuffer, &outSize);
+
+        // These two lines fake the compression
+//        outSize = bytesToWrite;
+//        memcpy(snappyOutputBuffer, compressingBuffer, bytesToWrite);
+
+        uint64_t compressionTimeStop = PerfUtils::Cycles::rdtsc();
+        cyclesCompressing += compressionTimeStop - compressionTimeStart;
+        aioCb.aio_fildes = outputFd;
+        aioCb.aio_buf = snappyOutputBuffer;
+        aioCb.aio_nbytes = outSize;
+        totalBytesWritten += outSize;
+#else
         aioCb.aio_fildes = outputFd;
         aioCb.aio_buf = compressingBuffer;
         aioCb.aio_nbytes = bytesToWrite;
         totalBytesWritten += bytesToWrite;
+#endif
 
+        PerfUtils::TimeTrace::record("Issuing IO of size %u bytes", int(bytesToWrite));
         if (aio_write(&aioCb) == -1)
             fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
 
@@ -498,6 +582,7 @@ NanoLog::compressionThreadMain()
         while (aio_error(&aioCb) == EINPROGRESS);
         int err = aio_error(&aioCb);
         ssize_t ret = aio_return(&aioCb);
+        PerfUtils::TimeTrace::record("IO Complete");
 
         if (err != 0) {
             fprintf(stderr, "LogCompressor's POSIX AIO failed with %d: %s\r\n",
@@ -512,6 +597,12 @@ NanoLog::compressionThreadMain()
 
     cycleAtThreadStart = 0;
     cyclesAwake += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
+
+#ifdef USE_SNAPPY
+    free(snappyOutputBuffer);
+#endif
+
+    PerfUtils::TimeTrace::record("Compression thread exiting");
 }
 
 /**
@@ -535,6 +626,8 @@ NanoLog::setLogFile_internal(const char* filename) {
         err.append(strerror(errno));
         throw std::ios_base::failure(err);
     }
+
+    outputFile = filename;
 
     // Everything seems okay, stop the background thread and change files
     sync();
@@ -675,6 +768,7 @@ NanoLog::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
     }
 
     cyclesProducerBlocked += PerfUtils::Cycles::rdtsc() - start;
+    ++numTimesProducerBlocked;
 
     return producerPos;
 }

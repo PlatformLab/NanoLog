@@ -303,8 +303,8 @@ namespace Log {
     inline bool
     decompressLogHeader(const char **in, uint64_t lastTimestamp,
                             uint32_t &logId, uint64_t &timestamp) {
-        if (!reinterpret_cast<const UnknownHeader*>(*in)->entryType
-                                                        == EntryType::LOG_MSG)
+        if (!(reinterpret_cast<const UnknownHeader*>(*in)->entryType
+                                                        == EntryType::LOG_MSG))
             return false;
 
         CompressedEntry cre;
@@ -462,7 +462,6 @@ namespace Log {
         bool decompressUnordered(FILE *outputFd, uint64_t logMsgsToPrint);
         bool decompressTo(FILE *outputFd, uint64_t linesToPrint);
 
-    PRIVATE:
         /**
          * Reads and stores a BufferExtent from the compressed log and
          * facilitates the interpretation of the log messages contained in the

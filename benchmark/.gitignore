@@ -1,5 +1,7 @@
 decompressor
 benchmark
+interference
+unloadedLatency
 generated/
 results/
 

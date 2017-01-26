@@ -13,12 +13,13 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <algorithm>
+#include <cstdarg>
 #include <cstdlib>
 #include <fstream>
 #include <vector>
 
 #include <string.h>
-#include <stdarg.h>
 
 #include "Log.h"
 #include "Cycles.h"
@@ -28,6 +29,28 @@
 #include "GeneratedCode.h"
 
 using namespace Log;
+
+/**
+ * Hacked helper function to aggregate the first argument as a uint32_t
+ */
+long total = 0;
+long count = 0;
+long max = 0;
+long min = 0;
+
+void aggregate(const char *fmtStr, int elem) {
+    if (count == 0)
+        max = min = elem;
+
+    if (max < elem)
+        max = elem;
+
+    if (min > elem)
+        min = elem;
+
+    total += elem;
+    ++count;
+}
 
 /**
  * Find all the original NANO_LOG format strings in the user sources that
@@ -57,49 +80,256 @@ printLogMetadataContainingSubstring(std::string searchString)
     }
 }
 
+void runRCDF(std::vector<uint64_t> timeDeltas, double cyclesPerSecond) {
+    printf("# Aggregating...\r\n");
+    std::sort(timeDeltas.begin(), timeDeltas.end());
+    printf("# Done; printing rcdf\r\n");
+    printf("#   Latency     Percentage of Operations\r\n");
+
+    uint64_t sum = 0;
+    double boundary = 1.0e-10; // 1 decimal points into nanoseconds
+    uint64_t bound = PerfUtils::Cycles::fromSeconds(boundary, cyclesPerSecond);
+    double size = double(timeDeltas.size());
+
+    printf("%8.2lf    %11.10lf\r\n",
+            1e9*PerfUtils::Cycles::toSeconds(timeDeltas.front(), cyclesPerSecond),
+            1.0);
+
+    uint64_t lastPrintedIndex = 0;
+    uint64_t lastPrinted = timeDeltas.front();
+    for(uint64_t i = 1; i < timeDeltas.size(); ++i) {
+        sum += timeDeltas[i];
+        if (timeDeltas[i] - lastPrinted > bound) {
+            // Before
+            printf("%8.2lf    %11.10lf\r\n"
+                    "%8.2lf    %11.10lf\r\n"
+                    , 1e9*PerfUtils::Cycles::toSeconds(lastPrinted, cyclesPerSecond)
+                    , 1.0 - double(lastPrintedIndex)/size
+                    , 1e9*PerfUtils::Cycles::toSeconds(lastPrinted, cyclesPerSecond)
+                    , 1.0 - double(i)/size);
+            lastPrinted = timeDeltas[i];
+            lastPrintedIndex = i;
+        }
+    }
+
+    printf("%8.2lf    %11.10lf\r\n",
+            1e9*PerfUtils::Cycles::toSeconds(timeDeltas.back(), cyclesPerSecond),
+            1/size);
+
+    printf("\r\n# The mean was %0.2lf ns\r\n",
+            1e9*PerfUtils::Cycles::toSeconds(sum/timeDeltas.size(), cyclesPerSecond));
+}
+
+void printHelp(const char *exe) {
+    printf("Decompress/Aggregate log files produced by "
+                "the NanoLog System\r\n\r\n");
+
+    printf("Decompress the log file into a human-readable format:\r\n");
+    printf("\t%s decompress <logFile>\r\n\r\n", exe);
+
+    printf("Decompress the log file into a sorted human-readable format:\r\n");
+    printf("\t%s decompressSort <logFile>\r\n\r\n", exe);
+
+    printf("Create an RCDF of the inter-log invocation times:\r\n");
+    printf("\t%s rcdfTime <logFile>\r\n\r\n", exe);
+
+    printf("Run a minMaxMean aggregation on a specific logId (integer)"
+            " and interpret the first argument as an int:\r\n");
+    printf("\t%s minMaxMean <logFile> <logId>\r\n\r\n", exe);
+
+    printf("Get the logIds with static log strings "
+            "matching a substring (case sensitive)\r\n");
+    printf("\t%s find <substring>\r\n\r\n", exe);
+}
+
 /**
  * Simple program to decompress log files produced by the NanoLog System.
  * Note that this executable must be compiled with the same BufferStuffer.h
  * as the LogCompressor that generated the compressedLog for this to work.
  */
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        printf("Decompresses log files produced by the NanoLog System\r\n"
-                "into a human readable format.\r\n\r\n");
-        printf("\tUsage: %s <logFile> [# messages to print]\r\n", argv[0]);
+    if (argc < 3) {
+        printHelp(argv[0]);
         exit(1);
     }
 
-    int msgsToPrint = 0;
-    if (argc > 2) {
+    const char *logFileName = argv[2];
+    bool sorted = false;
+    bool doRCDF = false;
+    FILE *outputFd = NULL;
+    int filterId = -1;
+
+    if (strcmp(argv[1], "decompress") == 0) {
+        outputFd = stdout;
+    } else if (strcmp(argv[1], "decompressSort") == 0) {
+        outputFd = stdout;
+        sorted = true;
+    }  else if (strcmp(argv[1], "rcdfTime") == 0) {
+        doRCDF = true;
+    } else if (strcmp(argv[1], "minMaxMean") == 0) {
+        if (argc < 4) {
+            printHelp(argv[0]);
+            exit(1);
+        }
+
         try {
-            msgsToPrint = std::stoi(argv[2]);
+            filterId = std::stoi(argv[3]);
         } catch (const std::invalid_argument& e) {
-            printf("Invalid # of message to print, please enter a number:"
-                    " %s\r\n",  argv[2]);
+            printf("Invalid logId, please enter a number: %s\r\n", argv[3]);
             exit(-1);
         } catch (const std::out_of_range& e) {
-            printf("# of messages to print is too large: %s\r\n", argv[2]);
-            printf("If you intend to print all message, "
-                    "exclude the # messages to print parameter.\r\n");
+            printf("The logId is too large: %s\r\n", argv[3]);
             exit(-1);
         }
 
-        if (msgsToPrint < 0) {
-            printf("# of messages to print must be positive: %s\r\n", argv[2]);
+        if (filterId < 0) {
+            printf("The logId must be positive: %s\r\n", argv[3]);
             exit(-1);
         }
+    } else if (strcmp(argv[1], "find") == 0) {
+        printLogMetadataContainingSubstring(argv[2]);
+        exit(0);
+    } else {
+        printHelp(argv[0]);
+        exit(1);
     }
-
-    if (msgsToPrint == 0)
-        msgsToPrint = -1;
 
     Log::Decoder decoder;
-    if(!decoder.open(argv[1])) {
+    if(!decoder.open(logFileName)) {
         printf("Unable to open file %s\r\n", argv[1]);
-    } else {
-        decoder.decompressUnordered(stdout, msgsToPrint);
+        exit(1);
     }
+
+    if (doRCDF) {
+        // Reserve an insanely large buffer to accomodate the fact we may log up
+        // to 1B entries.
+        uint64_t start = PerfUtils::Cycles::rdtsc();
+        uint64_t logsPrinted = 0;
+        std::vector<uint64_t> nums;
+        nums.reserve(1000000000);
+        uint64_t stop = PerfUtils::Cycles::rdtsc();
+        double reserveTime = PerfUtils::Cycles::toSeconds(stop - start);
+
+        start = PerfUtils::Cycles::rdtsc();
+        decoder.internalDecompressUnordered(outputFd, -1, &logsPrinted, &nums);
+        stop = PerfUtils::Cycles::rdtsc();
+        double decodeTime = PerfUtils::Cycles::toSeconds(stop - start);
+
+        start = PerfUtils::Cycles::rdtsc();
+        runRCDF(nums, decoder.checkpoint.cyclesPerSecond);
+        stop = PerfUtils::Cycles::rdtsc();
+        double rcdfTime = PerfUtils::Cycles::toSeconds(stop - start);
+
+        double totalTime = reserveTime + decodeTime + rcdfTime;
+
+        printf("# Took %0.2lf seconds to aggregate %lu time entries "
+                "(%0.2lf ns/event avg)\r\n",
+                totalTime, nums.size(),
+                1.0e9*totalTime/double(nums.size()));
+
+        printf("# On average, thats..\r\n"
+                "#\t%0.2lf seconds allocate large vector (%0.2lf ns/event)\r\n"
+                "#\t%0.2lf seconds decompressing events (%0.2lf ns/event)\r\n"
+                "#\t%0.2lf seconds sorting/rcdf-ing (%0.2lf ns/event)\r\n",
+                reserveTime, 1.0e9*reserveTime/double(nums.size()),
+                decodeTime, 1.0e9*decodeTime/double(nums.size()),
+                rcdfTime, 1.0e9*rcdfTime/double(nums.size()));
+    } else {
+        uint64_t start = PerfUtils::Cycles::rdtsc();
+        uint64_t logsPrinted = 0;
+
+        typedef void (*fncPtr)(const char*, ...);
+        if (sorted) {
+            decoder.internalDecompressOrdered(outputFd, -1, &logsPrinted);
+        } else {
+            decoder.internalDecompressUnordered(outputFd, -1, &logsPrinted,
+                                        NULL, filterId, ((fncPtr)&aggregate));
+        }
+        uint64_t stop = PerfUtils::Cycles::rdtsc();
+        double time = PerfUtils::Cycles::toSeconds(stop - start);
+
+        if (filterId < 0) {
+            printf("Decompressing %ld log messages took %0.2lf "
+                    "seconds (%0.2lf ns avg)\r\n",
+                    logsPrinted, time, 1.0e9*time/(double)logsPrinted);
+        } else {
+            printf("Aggregating log message \"%s\" (logId=%d)\r\n",
+                    GeneratedFunctions::logId2Metadata[filterId].fmtString,
+                    filterId);
+            printf("Logs Encountered: %ld\r\n", logsPrinted);
+            printf("Matching Logs: %ld (%0.2lf%%)\r\n", count,
+                    (100.0*(double)count)/(double)logsPrinted);
+            printf("Min: %ld\r\n", min);
+            printf("Max: %ld\r\n", max);
+            printf("Mean: %ld\r\n", total/count);
+            printf("Total: %ld\r\n", total);
+
+            printf("\r\nThe aggregation took %0.2lf seconds over "
+                    "%ld elements (%0.2lf ns avg)\r\n",
+                    time,
+                    count, (1.0e9*time)/(double)count);
+        }
+    }
+//    if (doRCDF) {
+//        // Reserve an insanely large buffer to accomodate the fact we may log up
+//        // to 1B entries.
+//        uint64_t start = PerfUtils::Cycles::rdtsc();
+//        std::vector<uint32_t> nums;
+//        nums.reserve(1000000000);
+//        uint64_t stop = PerfUtils::Cycles::rdtsc();
+//        double reserveTime = PerfUtils::Cycles::toSeconds(stop - start);
+//
+//        start = PerfUtils::Cycles::rdtsc();
+//        decompressLogsTo(logFileName, outputFd, &nums, filterId);
+//        stop = PerfUtils::Cycles::rdtsc();
+//        double decodeTime = PerfUtils::Cycles::toSeconds(stop - start);
+//
+//        start = PerfUtils::Cycles::rdtsc();
+//        runRCDF(nums, cyclesPerSecond);
+//        stop = PerfUtils::Cycles::rdtsc();
+//        double rcdfTime = PerfUtils::Cycles::toSeconds(stop - start);
+//
+//        double totalTime = reserveTime + decodeTime + rcdfTime;
+//
+//        printf("# Took %0.2lf seconds to aggregate %lu time entries "
+//                "(%0.2lf ns/event avg)\r\n",
+//                totalTime, nums.size(),
+//                1.0e9*totalTime/double(nums.size()));
+//
+//        printf("# On average, thats..\r\n"
+//                "#\t%0.2lf seconds allocate large vector (%0.2lf ns/event)\r\n"
+//                "#\t%0.2lf seconds decompressing events (%0.2lf ns/event)\r\n"
+//                "#\t%0.2lf seconds sorting/rcdf-ing (%0.2lf ns/event)\r\n",
+//                reserveTime, 1.0e9*reserveTime/double(nums.size()),
+//                decodeTime, 1.0e9*decodeTime/double(nums.size()),
+//                rcdfTime, 1.0e9*rcdfTime/double(nums.size()));
+//    } else {
+//        uint64_t start = PerfUtils::Cycles::rdtsc();
+//        long numLogs = decompressLogsTo(logFileName, outputFd, NULL, filterId);
+//        uint64_t stop = PerfUtils::Cycles::rdtsc();
+//        double time = PerfUtils::Cycles::toSeconds(stop - start);
+//
+//        if (filterId < 0) {
+//            printf("Decompressing %ld log messages took %0.2lf "
+//                    "seconds (%0.2lf ns avg)\r\n",
+//                    numLogs, time, 1.0e9*time/(double)numLogs);
+//        } else {
+//            printf("Aggregating log message \"%s\" (logId=%d)\r\n",
+//                    GeneratedFunctions::logId2Metadata[filterId].fmtString,
+//                    filterId);
+//            printf("Logs Encountered: %ld\r\n", numLogs);
+//            printf("Matching Logs: %ld (%0.2lf%%)\r\n", count,
+//                    (100.0*(double)count)/(double)numLogs);
+//            printf("Min: %ld\r\n", min);
+//            printf("Max: %ld\r\n", max);
+//            printf("Mean: %ld\r\n", total/count);
+//            printf("Total: %ld\r\n", total);
+//
+//            printf("\r\nThe aggregation took %0.2lf seconds over "
+//                    "%ld elements (%0.2lf ns avg)\r\n",
+//                    time,
+//                    count, (1.0e9*time)/(double)count);
+//        }
 
     return 0;
 }

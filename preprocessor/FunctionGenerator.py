@@ -161,6 +161,7 @@ class FunctionGenerator(object):
             oFile.write("""
 #ifndef BUFFER_STUFFER
 #define BUFFER_STUFFER
+#include <xmmintrin.h>
 
 #include "NanoLog.h"
 #include "Packer.h"
@@ -409,6 +410,16 @@ inline {function_declaration} {{
 
     // Make the entry visible
     {finishAlloc_fn}(allocSize);
+
+    // Prefetch
+    /*
+    uint64_t numBytes = allocSize + sizeof({entry});
+    uint64_t offset = reinterpret_cast<uint64_t>(re) & 0x3fUL;
+    const char* p = reinterpret_cast<const char*>(re) - offset;
+    for (uint64_t i = 0; i < offset + numBytes; i += 64) {{
+        _mm_prefetch(p + i, _MM_HINT_T0);
+    }}
+    */
 }}
 """.format(function_declaration = recordDeclaration,
        getLogLevelFn=LOG_LEVEL_GET_FN,

@@ -28,6 +28,7 @@
 #include "Common.h"
 #include "Fence.h"
 #include "Util.h"
+#include "TimeTrace.h"
 
 /**
  * This header file serves as the application and generated code interface into
@@ -132,7 +133,7 @@ public:
         stagingBuffer->finishReservation(nbytes);
     }
 
-PRIVATE:
+public:
     // Forward Declarations
     class StagingBuffer;
     class StagingBufferDestroyer;
@@ -180,6 +181,7 @@ PRIVATE:
 
     // Globally the thread-local stagingBuffers
     std::vector<StagingBuffer*> threadBuffers;
+    uint8_t bufferIdCnt;
 
     // Stores the id for the next StagingBuffer to be allocated. The ids are
     // unique for this execution for each StagingBuffer allocation.
@@ -212,6 +214,9 @@ PRIVATE:
     // thread staging buffers and finds no log messages to output.
     std::condition_variable hintQueueEmptied;
 
+    // File opened in outputFd
+    const char *outputFile;
+
     // File handle for the output file; should only be opened once at the
     // construction of the LogCompressor
     int outputFd;
@@ -241,7 +246,10 @@ PRIVATE:
     // Metric: Number of cycles compression thread is alive
     uint64_t cyclesAwake;
 
-    // Metric: Amount of time spent compressing the dynamic log data
+    // Metric: Amount of time spent compacting the dynamic log data
+    uint64_t cyclesCompacting;
+
+    // Metric: Amount of time spent doing actual compression
     uint64_t cyclesCompressing;
 
     // Metric: Amount of time spent scanning the buffers for work and
@@ -267,6 +275,16 @@ PRIVATE:
 
     // Metric: Number of times an AIO write was completed.
     uint32_t numAioWritesCompleted;
+
+    // Metric: Largest value returned from StagingBuffer::peek() during the
+    // compression cycles
+    uint64_t maxPeekSizeEncountered;
+
+    // Metric: Total number of bytes StagingBuffer::peek()-ed
+    uint64_t totalNonZeroBytesPeeked;
+
+    // Metric: Number StagingBuffer::peeks()'s that resulted in non-zero values
+    uint64_t numNonZeroPeeks;
 
     /**
      * Implements a circular FIFO producer/consumer byte queue that is used
@@ -296,6 +314,8 @@ PRIVATE:
          */
         inline char*
         reserveProducerSpace(size_t nbytes) {
+            ++numAllocations;
+
             // Fast in-line path
             if (nbytes < minFreeSpace)
                 return producerPos;
@@ -350,8 +370,6 @@ PRIVATE:
         {
             return shouldDeallocate && consumerPos == producerPos;
         }
-
-
         uint32_t getId() {
             return id;
         }
@@ -361,10 +379,13 @@ PRIVATE:
             , endOfRecordedSpace(storage + NanoLogConfig::STAGING_BUFFER_SIZE)
             , minFreeSpace(NanoLogConfig::STAGING_BUFFER_SIZE)
             , cyclesProducerBlocked(0)
+            , numTimesProducerBlocked(0)
+            , numAllocations(0)
             , cacheLineSpacer()
             , consumerPos(storage)
             , shouldDeallocate(false)
             , id(bufferId)
+            , lastTimestampOutputted(0)
             , storage()
         {
             // Empty function, but causes the C++ runtime to instantiate the
@@ -374,7 +395,7 @@ PRIVATE:
 
         ~StagingBuffer() {
         }
-    PRIVATE:
+    public:
         char* reserveSpaceInternal(size_t nbytes, bool blocking=true);
 
         // Position within storage[] where the producer may place new data
@@ -391,6 +412,13 @@ PRIVATE:
         // Number of cycles producer was blocked while waiting for space to
         // free up in the StagingBuffer for an allocation.
         uint64_t cyclesProducerBlocked;
+
+        // Number of times the producer was blocked while waiting for space
+        // to free up in the StagingBuffer for an allocation
+        uint32_t numTimesProducerBlocked;
+
+        // Number of alloc()'s performed
+        uint64_t numAllocations;
 
         // An extra cache-line to separate the variables that are primarily
         // updated/read by the producer (above) from the ones by the
@@ -410,6 +438,9 @@ PRIVATE:
         // Uniquely identifies this StagingBuffer for this execution. It's
         // similar to ThreadId, but is only assigned to threads that NANO_LOG).
         uint32_t id;
+
+        // Keep track of stuff for the decompressor (bad abstraction, but works)
+        uint64_t lastTimestampOutputted;
 
         // Backing store used to implement the circular queue
         char storage[NanoLogConfig::STAGING_BUFFER_SIZE];

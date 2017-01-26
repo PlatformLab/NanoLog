@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <vector>
 
+#include "BenchmarkConfig.h"
 #include "Log.h"
 #include "GeneratedCode.h"
 
@@ -101,6 +102,17 @@ Log::Encoder::encodeLogMsgs(char *from,
     long remaining = nbytes;
     long numEventsProcessed = 0;
     char *bufferStart = writePos;
+
+    if (BENCHMARK_DISABLE_COMPACTION) {
+        long freeBytes = endOfBuffer - writePos;
+        long writeSize = std::min(freeBytes, remaining);
+        memcpy(writePos, from, writeSize);
+
+        *currentExtentSize += downCast<uint32_t>(writePos - bufferStart);
+
+        writePos += writeSize;
+        return writeSize;
+    }
 
     while (remaining > 0) {
         UncompressedEntry *entry
@@ -563,9 +575,11 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
     if (callRCDF)
         callRCDF->reserve(100000000);
 
+    // Hack for RCDF-ing multi-threads
+    std::vector<uint64_t> lastTimestamps;
+
     bool good = true;
     uint64_t linesPrinted = 0;
-    uint64_t lastTimestamp = 0;
     BufferFragment *bf = allocateBufferFragment();
     while(!feof(inputFd) && good && linesPrinted < logMsgsToPrint) {
         bool wrapAround = false;
@@ -581,15 +595,22 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
 
                 bool hasMore = true;
                 while (hasMore && linesPrinted < logMsgsToPrint) {
-                    uint64_t lastLastTimestamp = lastTimestamp;
+                    // Hack for RCDF-ing multi-threads
+                    while (lastTimestamps.size() <= bf->runtimeId)
+                        lastTimestamps.push_back(0);
+
+                    // Cheat so that the first timestamp ever encountered is 0
+                    if (lastTimestamps[bf->runtimeId] == 0)
+                        lastTimestamps[bf->runtimeId] = bf->nextLogTimestamp;
+                    uint64_t lastLastTimestamp = lastTimestamps[bf->runtimeId];
                     hasMore = bf->decompressNextLogStatement(outputFd,
                                                     linesPrinted,
-                                                    lastTimestamp,
+                                                    lastTimestamps[bf->runtimeId],
                                                     checkpoint,
                                                     aggregationTargetId,
                                                     aggregationFn);
                     if (callRCDF)
-                        callRCDF->push_back(lastTimestamp - lastLastTimestamp);
+                        callRCDF->push_back(lastTimestamps[bf->runtimeId] - lastLastTimestamp);
                 }
                 break;
             }

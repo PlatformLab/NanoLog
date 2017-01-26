@@ -28,22 +28,28 @@ USER_OBJS=$(USER_SRCS:.cc=.o)
 ####
 # User Section
 ####
-USER_SRCS=Benchmark.cc
+USER_SRCS=Benchmark.cc UnloadedLatency.cc
 
 # -DNDEBUG and -O3 should always be passed for high performance
 CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
 CXX=g++
 
-all: benchmark
+all: benchmark unloadedLatency
 
 # [Required] run-cxx will compile the user C++ source file into an object file using
 # the NanoLog system. See documentation in the Library Compilation section.
 %.o: %.cc
-	$(call run-cxx, $@, $<, $(CXXFLAGS))
+	$(call run-cxx, $@, $<, $(CXXFLAGS) -I.)
 
 # [Required] $(LIBRARY_LIBS) must be used
-benchmark: $(USER_OBJS) libNanoLog.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
+benchmark: Benchmark.o libNanoLog.a
+	$(CXX) $(CXXFLAGS) -o benchmark Benchmark.o -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
+
+unloadedLatency: UnloadedLatency.o libNanoLog.a
+	$(CXX) $(CXXFLAGS) -o unloadedLatency UnloadedLatency.o -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
+
+interference: Interference.o libFastLogger.a
+	$(CXX) $(CXXFLAGS) -o interference Interference.o -L. -lFastLogger $(LIBRARY_LIBS)
 
 clean:
 	@rm -f *.o benchmark /tmp/logFile
@@ -54,6 +60,19 @@ clean:
 
 RUNTIME_DIR=$(NANOLOG_DIR)/runtime
 PREPROC_DIR=$(NANOLOG_DIR)/preprocessor
+
+# This is for compression testing (benchmark branch only)
+SNAPPY_DIR=./snappy/
+
+$(SNAPPY_DIR)/installDir/lib/libsnappy.a:
+	cd $(SNAPPY_DIR) && \
+	./autogen.sh && \
+	CFLAGS="-O3 -DNDEBUG" CXXFLAGS="-O3 -DNDEBUG" ./configure && \
+	make -j10 && \
+	make install prefix=$(realpath $(SNAPPY_DIR))/installDir
+
+libsnappy.a: $(SNAPPY_DIR)/installDir/lib/libsnappy.a
+	cp $(SNAPPY_DIR)/installDir/lib/libsnappy.a .
 
 # run-cxx:
 # Compile a user C++ source file to an object file using the NanoLog system.
@@ -69,11 +88,11 @@ define run-cxx
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
-NANO_LOG_LIBRARY_LIBS=-lrt -pthread
+NANO_LOG_LIBRARY_LIBS=-lrt -pthread -lsnappy
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
-		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc
+		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/TimeTrace.cc $(RUNTIME_DIR)/Log.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \
@@ -89,16 +108,16 @@ endif
 generated/GeneratedCode.o: $(USER_OBJS)
 	mkdir -p generated
 	python $(PREPROC_DIR)/parser.py --combinedOutput="generated/GeneratedCode.cc" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/GeneratedCode.cc -I $(RUNTIME_DIR) -Igenerated
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/GeneratedCode.cc -I. -I $(RUNTIME_DIR) -Igenerated
 
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I. -I $(RUNTIME_DIR) -I $(SNAPPY_DIR) -Igenerated -Werror
 
-libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor
+libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor libsnappy.a
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
 
 decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/Util.o $(RUNTIME_DIR)/Log.o $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I. -I$(RUNTIME_DIR) -Igenerated -Werror -L. $(NANO_LOG_LIBRARY_LIBS)
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor

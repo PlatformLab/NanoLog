@@ -1,5 +1,5 @@
 # Common Sources
-SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc
+SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc TimeTrace.cc
 DEPS=Fence.h Log.h Common.h Packer.h
 OBJECTS:=$(SRCS:.cc=.o)
 
@@ -8,7 +8,7 @@ TESTS=LogTest.cc  NanoLog.cc NanoLogTest.cc PackerTest.cc
 TEST_OBJS=$(TESTS:.cc=.o)
 
 GTEST_DIR="../googletest/googletest"
-INCLUDES=-I. -ItestHelper -I${GTEST_DIR}/include
+INCLUDES=-I../benchmark -I. -ItestHelper -I${GTEST_DIR}/include
 LIBS=-L. -lgtest -lrt -pthread
 CXX_ARGS=-std=c++11 -g -O3
 

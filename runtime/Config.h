@@ -15,6 +15,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "BenchmarkConfig.h"
 #include <fcntl.h>
 #include <assert.h>
 
@@ -24,8 +25,9 @@
 
 namespace NanoLogConfig {
     // Controls in what mode the compressed log file will be opened
-    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|O_DSYNC;
+    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_DSYNC;
 
+#ifndef BENCHMARKCONFIG_H
     // Determines the byte size of the per-thread StagingBuffer that decouples
     // the producer logging thread from the consumer background compression
     // thread. This value should be large enough to handle bursts of activity.
@@ -60,6 +62,15 @@ namespace NanoLogConfig {
     // to complete. Due to overheads in the kernel, this number will
     // be a lower bound and the actual time spent sleeping may be higher.
     static const uint32_t POLL_INTERVAL_DURING_IO_US = 1;
+#else
+    // Values here are set by BenchmarkConfig.h See variables above
+    // for documentation
+    static const uint32_t STAGING_BUFFER_SIZE = BENCHMARK_STAGING_BUFFER_SIZE;
+    static const uint32_t OUTPUT_BUFFER_SIZE = BENCHMARK_OUTPUT_BUFFER_SIZE;
+    static const uint32_t RELEASE_THRESHOLD = BENCHMARK_RELEASE_THRESHOLD;
+    static const uint32_t POLL_INTERVAL_NO_WORK_US = BENCHMARK_POLL_INTERVAL_NO_WORK_US;
+    static const uint32_t POLL_INTERVAL_DURING_IO_US = BENCHMARK_POLL_INTERVAL_DURING_IO_US;
+#endif
 }
 
 #endif /* CONFIG_H */
