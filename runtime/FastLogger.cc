@@ -26,6 +26,7 @@
 // contains all the compression and decompression functions.
 #include "BufferStuffer.h"
 #include "Cycles.h"
+#include "BufferUtils.h"
 
 namespace PerfUtils {
 
@@ -289,10 +290,6 @@ FastLogger::compressionThreadMain()
             std::unique_lock<std::mutex> lock(bufferMutex);
             size_t i = lastStagingBufferChecked;
 
-            // Indicates whether uncompressed log messages were found through
-            // an iteration through all the staging buffers.
-            bool workFound = false;
-
             // Scan through the threadBuffers looking for log messages to
             // compress while the output buffer is not full.
             while (!compressionThreadShouldExit
@@ -306,7 +303,6 @@ FastLogger::compressionThreadMain()
                 // If there's work, unlock to perform it
                 if (readableBytes > 0) {
                     uint64_t start = Cycles::rdtsc();
-                    workFound = true;
                     lock.unlock();
 
                     uint64_t readableBytesStart = readableBytes;
@@ -318,7 +314,12 @@ FastLogger::compressionThreadMain()
                                     BufferUtils::UncompressedLogEntry*>(peekPosition);
                         assert(re->entrySize <= readableBytes);
 
-                        if (re->entrySize + re->argMetaBytes > endOfBuffer - out) {
+                        uint32_t maxCompressedEntrySize = re->entrySize;
+                        // The extra bit here accounts for potential nibbles
+                        maxCompressedEntrySize += re->entrySize -
+                                static_cast<uint32_t>(
+                                    sizeof(BufferUtils::UncompressedLogEntry));
+                        if (maxCompressedEntrySize > endOfBuffer - out) {
                             // don't have enough space in the output to save
                             // the uncompressed form (worst case),
                             // save our place and back out
@@ -367,14 +368,8 @@ FastLogger::compressionThreadMain()
                 i = (i + 1) % threadBuffers.size();
 
                 // Completed a pass through the buffers
-                if (i == lastStagingBufferChecked) {
-                    // If no work was found in the last pass, stop.
-                    if (!workFound) {
-                        break;
-                    }
-
-                    workFound = false;
-                }
+                if (i == lastStagingBufferChecked)
+                    break;
             }
 
             cyclesScanningAndCompressing += Cycles::rdtsc() - start;
@@ -606,13 +601,13 @@ char*
 FastLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
 {
     const char *endOfBuffer = storage + STAGING_BUFFER_SIZE;
+    uint64_t start = Cycles::rdtsc();
 
     // There's a subtle point here, all the checks for remaining
     // space are strictly < or >, not <= or => because if we allow
     // the record and print positions to overlap, we can't tell
     // if the buffer either completely full or completely empty.
     // Doing this check here ensures that == means completely empty.
-
     while (minFreeSpace <= nbytes) {
         // Since readHead can be updated in a different thread, we
         // save a consistent copy of it here to do calculations on
@@ -644,6 +639,8 @@ FastLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
         if (!blocking && minFreeSpace <= nbytes)
             return nullptr;
     }
+
+    cyclesProducerBlocked += Cycles::rdtsc() - start;
 
     return producerPos;
 }

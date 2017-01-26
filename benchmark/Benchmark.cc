@@ -61,5 +61,6 @@ int main(int argc, char** argv) {
 
     // Prints various statistics gathered by the FastLogger system to stdout
     PerfUtils::FastLogger::printStats();
+    PerfUtils::FastLogger::printConfig();
 }
 

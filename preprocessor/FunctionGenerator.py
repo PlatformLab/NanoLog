@@ -340,7 +340,6 @@ inline {function_declaration} {{
     re->fmtId = {idVariableName};
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = {nibble_size};
 
     char *buffer = re->argData;
 

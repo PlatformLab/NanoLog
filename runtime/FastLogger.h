@@ -54,26 +54,24 @@ public:
     static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|
                                                             O_DSYNC|O_DIRECT;
 
-    // Determines the byte size of the staging buffer. It is fairly large
-    // to ensure that in the best case scenario of 8x compression, we will
-    // end up with ~8MB of data which is optimal for amortizing disk seeks.
-    static const uint32_t STAGING_BUFFER_SIZE = 1<<26;
+    // Determines the byte size of the StagingBuffer.
+    static const uint32_t STAGING_BUFFER_SIZE = 1<<23;
 
     // Determines the size of the output buffer used to store compressed log
     // messages. It should be at least 8MB large to amortize disk seeks.
-    static const uint32_t OUTPUT_BUFFER_SIZE = 1<<24;
+    static const uint32_t OUTPUT_BUFFER_SIZE = 1<<26;
 
     // How often should the background compression thread wake up to check
     // for more log messages in the StagingBuffers to compress and output.
     // Due to overheads in the kernel, this number will a lower bound and
     // the actual time spent sleeping may be significantly higher.
-    static const uint32_t POLL_INTERVAL_NO_WORK_US = 10;
+    static const uint32_t POLL_INTERVAL_NO_WORK_US = 1;
 
     // How often should the background compression thread wake up and
     // check for more log messages when it's stalled waiting for an IO
     // to complete. Due to overheads in the kernel, this number will
     // be a lower bound and the actual time spent sleeping may be higher.
-    static const uint32_t POLL_INTERVAL_DURING_IO_US = 10;
+    static const uint32_t POLL_INTERVAL_DURING_IO_US = 1;
 
     // User API
     static void printStats();
@@ -147,16 +145,18 @@ PRIVATE:
      * Allocates thread-local structures if they weren't already allocated.
      * This is used by the generated C++ code to ensure it has space to
      * log uncompressed messages to and by the user if they wish to
-     * preallocate the datastructures on thread creation.
+     * preallocate the data structures on thread creation.
      */
     inline void
     ensureStagingBufferAllocated()
     {
-        std::lock_guard<std::mutex> guard(bufferMutex);
-
         if (stagingBuffer == nullptr) {
             stagingBuffer = new StagingBuffer();
-            threadBuffers.push_back(stagingBuffer);
+            // Don't take lock until we have finished the expensive allocation
+            {
+                std::lock_guard<std::mutex> guard(bufferMutex);
+                threadBuffers.push_back(stagingBuffer);
+            }
         }
     }
 
@@ -353,6 +353,8 @@ PRIVATE:
         // without rolling over the producerPos or stalling behind the consumer
         uint64_t minFreeSpace;
 
+        // Number of cycles producer was blocked while waiting for space to
+        // free up in the StagingBuffer for an allocation.
         uint64_t cyclesProducerBlocked;
 
         // An extra cache-line to separate the variables that are primarily

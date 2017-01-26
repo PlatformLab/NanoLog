@@ -50,15 +50,11 @@ namespace BufferUtils {
         // location, assigned at compile time by the preprocessor.
         uint32_t fmtId;
 
-        // Stores the rdtsc() value at the time of the log function invocation
-        uint64_t timestamp;
-
         // Number of bytes for this header and the various arguments after it
         uint32_t entrySize;
 
-        // Number of bytes that should be allocated for the Packer Nibbles
-        // TODO(syang0) remove this when you implement the better packer
-        uint8_t argMetaBytes;
+        // Stores the rdtsc() value at the time of the log function invocation
+        uint64_t timestamp;
 
         // After this header are the uncompressed arguments required by
         // the original format string
