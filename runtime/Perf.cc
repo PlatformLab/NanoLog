@@ -556,16 +556,96 @@ double perfCyclesToSeconds()
     return Cycles::toSeconds(stop - start)/count;
 }
 
+double snprintfFileLocation()
+{
+    int count = 1000000;
+    char buffer[1000];
+
+    uint64_t start = Cycles::rdtsc();
+    Util::serialize();
+    for (int i = 0; i < count; ++i) {
+        snprintf(buffer, 1000,
+            "%s:%d:%s",
+            __FILE__, __LINE__, __func__);
+    }
+    Util::serialize();
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+
+double snprintfTime()
+{
+    struct timespec now;
+    int count = 1000000;
+    char buffer[1000];
+
+    uint64_t start = Cycles::rdtsc();
+    Util::serialize();
+    for (int i = 0; i < count; ++i) {
+        clock_gettime(CLOCK_REALTIME, &now);
+        snprintf(buffer, 1000, "%010lu.%09lu", now.tv_sec, now.tv_nsec);
+    }
+    Util::serialize();
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double snprintStatic100Char()
+{
+    int count = 1000000;
+    char buffer[1000];
+
+    uint64_t start = Cycles::rdtsc();
+    Util::serialize();
+    for (int i = 0; i < count; ++i) {
+        snprintf(buffer, 1000,
+            "aEw6ppfz3QMmDXBm91v10TxzCWdTaWUUX9ta0Fihl86Ta9nlFN"
+            "JtAIDDjg9ApCgEwHvLfYZ2mTCHyMouslDI9Mvq2mvFSaNof8aJ");
+    }
+    Util::serialize();
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double snprintfRAMCloud()
+{
+    struct timespec now;
+    int count = 1000000;
+    char buffer[1000];
+
+    uint64_t start = Cycles::rdtsc();
+    Util::serialize();
+    for (int i = 0; i < count; ++i) {
+        clock_gettime(CLOCK_REALTIME, &now);
+        snprintf(buffer, 1000,
+            "%010lu.%09lu %s:%d in %s %s[%d]: %s",
+            now.tv_sec, now.tv_nsec, __FILE__, __LINE__,
+            __func__, "Debug", 100,
+            "Here is my 100 char message......................."
+            "JtAIDDjg9ApCgEwHvLfYZ2mTCHyMouslDI9Mvq2mvFSaNof8aJ");
+    }
+    Util::serialize();
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 // Measure the cost of reading the fine-grain cycle counter.
 double rdtscTest()
 {
-    int count = 1000000;
-    uint64_t start = Cycles::rdtsc();
     uint64_t total = 0;
+    int count = 1000000;
+
+    uint64_t start = Cycles::rdtsc();
     for (int i = 0; i < count; i++) {
         total += Cycles::rdtsc();
     }
     uint64_t stop = Cycles::rdtsc();
+
     return Cycles::toSeconds(stop - start)/count;
 }
 
@@ -670,7 +750,15 @@ TestInfo tests[] = {
      "condition_variable.notify_all()"},
     {"notify_one", notify_one,
      "condition_variable.notify_one()"},
-    {"rdtsc", rdtscTest,
+    {"snprintfFileLocation", snprintfFileLocation,
+     "snprintf only the __FILE__:__LINE__:__func___"},
+    {"snprintfRAMCloud", snprintfRAMCloud,
+     "snprintf in RAMCLOUD_LOG style with a 100 char user message"},
+    {"snprintStatic100Char", snprintStatic100Char,
+     "snprintf a static 100 character string wtih no format specifiers"},
+    {"snprintfTime", snprintfTime,
+     "snprintf the current time formatted as seconds.nanoseconds"},
+    {"rdtscTest", rdtscTest,
      "Read the fine-grain cycle counter"},
     {"serialize", serialize,
      "cpuid instruction for serialize"}
