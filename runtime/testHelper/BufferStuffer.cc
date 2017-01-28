@@ -44,7 +44,6 @@ void __syang0__fl__1(const char* fmtStr) {
     re->fmtId = 1;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
