@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014 Stanford University
+/* Copyright (c) 2011-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -43,12 +43,12 @@ class Cycles {
             return mockTscValue;
 #endif
         uint32_t lo, hi;
-        __asm__ __volatile__("rdtscp" : "=a" (lo), "=d" (hi));
+        __asm__ __volatile__("rdtscp" : "=a" (lo), "=d" (hi) : : "%rcx");
         return (((uint64_t)hi << 32) | lo);
     }
 
     static __inline __attribute__((always_inline))
-    double 
+    double
     perSecond(){
         return getCyclesPerSec();
     }
