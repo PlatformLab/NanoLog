@@ -357,17 +357,21 @@ FastLogger::compressionThreadMain()
                     // If there's no work, check if we're supposed to delete
                     // the stagingBuffer
                     if (sb->checkCanDelete()) {
+                        delete sb;
+
                         threadBuffers.erase(threadBuffers.begin() + i);
-
-                        if (i == threadBuffers.size()) {
-                            if (lastStagingBufferChecked == i)
-                                lastStagingBufferChecked = 0;
-
-                            i = 0;
+                        if (threadBuffers.empty()) {
+                            lastStagingBufferChecked = i = 0;
+                            break;
                         }
 
-                        delete sb;
-                        continue;
+                        // Back up the indexes so that we ensure we wont skip
+                        // a buffer in our pass (and it's okay to redo one)
+                        if (lastStagingBufferChecked >= i &&
+                                lastStagingBufferChecked > 0) {
+                            --lastStagingBufferChecked;
+                        }
+                        --i;
                     }
                 }
 
