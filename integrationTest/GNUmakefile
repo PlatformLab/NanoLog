@@ -37,17 +37,18 @@ testApp: $(USER_OBJS) libFastLogger.a
 
 
 run-test: testApp
-	@rm -f ./compressedLog
+	@rm -f /tmp/testLog
 	./testApp > /dev/null
-	@chmod 666 ./compressedLog
+	@chmod 666 /tmp/testLog
 	@# Run the decompressor and cut out the timestamps before the ':'
-	./decompressor ./compressedLog | cut -d':' -f2- > output.txt
+	./decompressor /tmp/testLog | cut -d':' -f2- > output.txt
 	diff -w expectedOutput.txt output.txt
 
 	@printf "\r\n\033[0;32mIntegration Tests completed without error!\033[0m\r\n"
+	@rm -f /tmp/testLog
 
 clean:
-	@rm -f *.o testApp folder/*.o ./compressedLog output.txt
+	@rm -f *.o testApp folder/*.o /tmp/testLog output.txt
 
 ####
 # Library Compilation (copy verbatim)

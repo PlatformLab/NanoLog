@@ -62,7 +62,7 @@ FastLogger::FastLogger()
     , numAioWritesCompleted(0)
 {
     outputFd = open("/tmp/compressedLog", FILE_PARAMS, 0666);
-    if (!outputFd) {
+    if (outputFd < 0) {
         fprintf(stderr, "FastLogger could not open the default file location "
                 "for the log file (\"%s\").\r\n Please check the permissions "
                 "or use FastLogger::setLogFile(const char* filename) to "
@@ -523,9 +523,11 @@ FastLogger::setLogFile_internal(const char* filename) {
 
     // Try to open the file
     int newFd = open(filename, FILE_PARAMS, 0666);
-    if (!newFd) {
-        std::string err = "Unable to create file: ";
+    if (newFd < 0) {
+        std::string err = "Unable to open file '";
         err.append(filename);
+        err.append("': ");
+        err.append(strerror(errno));
         throw std::ios_base::failure(err);
     }
 

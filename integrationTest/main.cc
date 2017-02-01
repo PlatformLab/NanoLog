@@ -241,7 +241,7 @@ void gah()
 
 int main()
 {
-    PerfUtils::FastLogger::setLogFile("./compressedLog");
+    PerfUtils::FastLogger::setLogFile("/tmp/testLog");
     evilTestCase(NULL);
 
     int count = 10;
