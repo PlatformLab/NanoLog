@@ -1,6 +1,7 @@
 decompressor
 benchmark
 generated/
+results/
 
 *.a
 *.o

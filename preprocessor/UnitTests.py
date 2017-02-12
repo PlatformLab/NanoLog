@@ -139,7 +139,7 @@ class PreprocesorTestCase(unittest.TestCase):
         self.assertEqual(FilePosition(0, 25), arg.endPos)
 
     def test_parseLogStatement_nestedAndMultilined(self):
-        lines = """FAST_LOG("Format \\\"string\\\" %d %d %s %0.2lf",
+        lines = """NANO_LOG("Format \\\"string\\\" %d %d %s %0.2lf",
             calculate(a, b, c) * 22/3,
             arrayDereference[indexArray[(3+5)/var]],
 {"constructor", {"nested", 4}}.getId( alpha ),
@@ -182,7 +182,7 @@ class PreprocesorTestCase(unittest.TestCase):
 
     def test_parseLogStatement_terribleFormatting(self):
         # Nested invocations and terrible formatting
-        lines = """FAST_LOG("Format String %d %0.2lf %s", calculate(a, b),
+        lines = """NANO_LOG("Format String %d %0.2lf %s", calculate(a, b),
                 100.09/
                     variable[22]
         ,   "const string" "that's actually"
@@ -219,13 +219,13 @@ class PreprocesorTestCase(unittest.TestCase):
 
     def test_parseLogStatement_missingSemicolonOrParen(self):
         with self.assertRaisesRegexp(ValueError, "Expected ';'"):
-            parseLogStatement(["FAST_LOG(\"1\") }"], FilePosition(0, 0))
+            parseLogStatement(["NANO_LOG(\"1\") }"], FilePosition(0, 0))
 
         with self.assertRaisesRegexp(ValueError, "Expected ';'"):
-            parseLogStatement(["FAST_LOG(\"1\")"], FilePosition(0, 0))
+            parseLogStatement(["NANO_LOG(\"1\")"], FilePosition(0, 0))
 
         with self.assertRaisesRegexp(ValueError, "Cannot find end"):
-            parseLogStatement(["FAST_LOG(\"1\""], FilePosition(0, 0))
+            parseLogStatement(["NANO_LOG(\"1\""], FilePosition(0, 0))
 
     def test_peekNextMeaningfulChar(self):
         lines = ["Hello ",
@@ -478,12 +478,11 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId{logId};
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -494,7 +493,7 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
     %s
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }}
 """ % ("", "")
         fg = FunctionGenerator()

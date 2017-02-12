@@ -76,6 +76,12 @@ void discard(void* value) {
     }
 }
 
+static uint64_t cntr = 0;
+
+void function(uint64_t cycles) {
+    cntr = cycles*2%100 + PerfUtils::Cycles::rdtsc();
+}
+
 //----------------------------------------------------------------------
 // Test functions start here
 //----------------------------------------------------------------------
@@ -176,6 +182,19 @@ double compressLinearSearch() {
 
     free(buffer);
     return Cycles::toSeconds(stop - start)/count;
+}
+
+double delayInBenchmark() {
+    int count = 1000000;
+    uint64_t x = 0;
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        function(0);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&cntr);
+    return Cycles::toSeconds(stop - start)/(count);
 }
 
 // Measure the cost of a 32-bit divide. Divides don't take a constant
@@ -622,11 +641,10 @@ double snprintfRAMCloud()
     for (int i = 0; i < count; ++i) {
         clock_gettime(CLOCK_REALTIME, &now);
         snprintf(buffer, 1000,
-            "%010lu.%09lu %s:%d in %s %s[%d]: %s",
+            "%010lu.%09lu %s:%d in %s %s[%d]: %s %0.6lf",
             now.tv_sec, now.tv_nsec, __FILE__, __LINE__,
             __func__, "Debug", 100,
-            "Here is my 100 char message......................."
-            "JtAIDDjg9ApCgEwHvLfYZ2mTCHyMouslDI9Mvq2mvFSaNof8aJ");
+            "Using tombstone ratio balancer with ratio =", 0.4);
     }
     Util::serialize();
     uint64_t stop = Cycles::rdtsc();
@@ -720,6 +738,8 @@ TestInfo tests[] = {
      "Compress 1M uint64_t's via binary searching if-statements"},
     {"compressLinearSearch", compressLinearSearch,
      "Compress 1M uint64_t's via linear searching for-loop"},
+    {"delayInBenchmark", delayInBenchmark,
+     "Taking an addition, modulo, and rdtsc()"},
     {"div32", div32,
      "32-bit integer division instruction"},
     {"div64", div64,

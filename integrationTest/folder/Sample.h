@@ -14,8 +14,8 @@
  */
 
  /**
-  * Helps tests the following components of the FastLogger system:
-  *   1) Detecting FAST_LOG redefinitions via #define (should handled
+  * Helps tests the following components of the NanoLog system:
+  *   1) Detecting NANO_LOG redefinitions via #define (should handled
   *      by C preprocessor) in a header file
   *   2) Consistent assignment of format identifiers to a log statement
   *      in the header file #include-d by multiple C++ files.
@@ -26,19 +26,19 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 
 #ifndef __Sample__h__
 #define __Sample__h__
 
 // Tests whether the system can detect re #define's
-#define LOG FAST_LOG
+#define LOG NANO_LOG
 
 // Tests whether header functions get parsed as well.
 static void
 hiddenInHeaderFilePrint()
 {
-    FAST_LOG("Messages in the Header"
+    NANO_LOG("Messages in the Header"
         " File"
         );
 }

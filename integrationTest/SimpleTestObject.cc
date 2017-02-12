@@ -20,7 +20,7 @@
 
 #include <string>
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 #include "Cycles.h"
 
 #include "SimpleTestObject.h"
@@ -29,16 +29,16 @@ void
 SimpleTest::logSomething()
 {
     static int cnt = 0;
-    FAST_LOG("SimpleTest::logSomething: Something = %d", ++cnt);
+    NANO_LOG("SimpleTest::logSomething: Something = %d", ++cnt);
 }
 
 void
 SimpleTest::wholeBunchOfLogStatements() {
-    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: Here I am");
+    NANO_LOG("SimpleTest::wholeBunchOfLogStatements: Here I am");
 
     for (int i = 0; i < 10; ++i) {
-        FAST_LOG("SimpleTest::wholeBunchOfLogStatements: I am in a loop!");
+        NANO_LOG("SimpleTest::wholeBunchOfLogStatements: I am in a loop!");
     }
 
-    FAST_LOG("SimpleTest::wholeBunchOfLogStatements: exiting...");
+    NANO_LOG("SimpleTest::wholeBunchOfLogStatements: exiting...");
 }

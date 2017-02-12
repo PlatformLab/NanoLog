@@ -17,31 +17,31 @@
 
 #include "TestUtil.h"
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 
 namespace {
 
 using namespace PerfUtils;
 
 // The fixture for testing class Foo.
-class FastLoggerTest : public ::testing::Test {
+class NanoLogTest : public ::testing::Test {
  protected:
   // You can remove any or all of the following functions if its body
   // is empty.
   uint32_t bufferSize;
   uint32_t halfSize;
-  PerfUtils::FastLogger::StagingBuffer *sb;
+  PerfUtils::NanoLog::StagingBuffer *sb;
 
-  FastLoggerTest()
-    : bufferSize(PerfUtils::FastLogger::STAGING_BUFFER_SIZE)
+  NanoLogTest()
+    : bufferSize(PerfUtils::NanoLog::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
-    , sb(new PerfUtils::FastLogger::StagingBuffer())
+    , sb(new PerfUtils::NanoLog::StagingBuffer())
   {
-      static_assert(1024 <= PerfUtils::FastLogger::STAGING_BUFFER_SIZE,
+      static_assert(1024 <= PerfUtils::NanoLog::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
   }
 
-  virtual ~FastLoggerTest() {
+  virtual ~NanoLogTest() {
     if (sb) {
         // Since the tests screw with internal state, it's best to
         // reset them before exiting
@@ -69,7 +69,7 @@ class FastLoggerTest : public ::testing::Test {
   // Objects declared here can be used by all tests in the test case for Foo.
 };
 
-TEST_F(FastLoggerTest, StagingBuffer_reserveProducerSpace)
+TEST_F(NanoLogTest, StagingBuffer_reserveProducerSpace)
 {
     EXPECT_EQ(sb->minFreeSpace, bufferSize);
     EXPECT_EQ(sb->storage, sb->reserveProducerSpace(100));
@@ -84,7 +84,7 @@ TEST_F(FastLoggerTest, StagingBuffer_reserveProducerSpace)
 }
 
 
-TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal)
+TEST_F(NanoLogTest, StagingBuffer_reserveSpaceInternal)
 {
     // Case 1: Empty buffer
     EXPECT_EQ(bufferSize, sb->minFreeSpace);
@@ -136,7 +136,7 @@ TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal)
     EXPECT_EQ(101U, sb->minFreeSpace);
 }
 
-TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal_rollover_prevention)
+TEST_F(NanoLogTest, StagingBuffer_reserveSpaceInternal_rollover_prevention)
 {
     // Setup the situation where the consumer is at position 0 and the producer
     // needs to roll over. When this situation occurs, the producer should
@@ -153,7 +153,7 @@ TEST_F(FastLoggerTest, StagingBuffer_reserveSpaceInternal_rollover_prevention)
     EXPECT_EQ(nullptr, sb->reserveSpaceInternal(1, false));
 }
 
-TEST_F(FastLoggerTest, StagingBuffer_finishReservation) {
+TEST_F(NanoLogTest, StagingBuffer_finishReservation) {
     EXPECT_EQ(sb->storage, sb->producerPos);
     EXPECT_EQ(bufferSize, sb->minFreeSpace);
 
@@ -166,7 +166,7 @@ TEST_F(FastLoggerTest, StagingBuffer_finishReservation) {
     EXPECT_EQ(sb->storage + 202, sb->producerPos);
 }
 
-TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
+TEST_F(NanoLogTest, StagingBuffer_finishReservation_asserts) {
 
     // Case 1a: Ran out of space and didn't reserve (Artificial)
     EXPECT_EQ(bufferSize, sb->minFreeSpace);
@@ -205,7 +205,7 @@ TEST_F(FastLoggerTest, StagingBuffer_finishReservation_asserts) {
     sb->reserveSpaceInternal(100);
 }
 
-TEST_F(FastLoggerTest, StagingBuffer_peek) {
+TEST_F(NanoLogTest, StagingBuffer_peek) {
     uint64_t bytesAvailable = -1;
 
     // Case 1: Empty Buffer
@@ -228,7 +228,7 @@ TEST_F(FastLoggerTest, StagingBuffer_peek) {
 
     // Case 3: Roll over, need double peeks.
     delete sb;
-    sb = new PerfUtils::FastLogger::StagingBuffer();
+    sb = new PerfUtils::NanoLog::StagingBuffer();
 
     sb->reserveProducerSpace(bufferSize - 100);
     sb->finishReservation(bufferSize - 100);

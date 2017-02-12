@@ -26,9 +26,9 @@ int32_t -99991
 int64_t -1
 int -12356
  How about variable width + precision?  12345.12        123        end
- 10) FAST_LOG() "FAST_LOG("Hi ")"
+ 10) NANO_LOG() "NANO_LOG("Hi ")"
  11) SDF
- 12) NEWLinesSoEvil FAST_LOG()
+ 12) NEWLinesSoEvil NANO_LOG()
  13) Yup
 ie
  13.5) This should be =2: 2

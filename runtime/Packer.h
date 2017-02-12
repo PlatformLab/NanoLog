@@ -44,7 +44,7 @@
  * whether a negation occurred for the packed primitive. It does not encode
  * a type and it's also impossible for the C++ type system to infer the
  * type from the ifstream the unpack() function takes. Thus the user of this
- * library must encode the type in some other way (The FastLogger's
+ * library must encode the type in some other way (The NanoLog's
  * LogDecompressor achieves this by encoding the type in generated source code).
  *
  * IMPORTANT NOTE: These compression schemes only work on little-endian machines

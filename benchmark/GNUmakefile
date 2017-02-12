@@ -1,17 +1,17 @@
 ########
-## This file serves as an example for how users of the FastLogger system
+## This file serves as an example for how users of the NanoLog system
 ## should layout their maikefile rules. The "Library Compilation" section
 ## shall be copied verbatim while the "User Section" can be customized
 ## with the following exceptions:
 ##   1) User C++ files MUST be compiled into .o files with run-cxx
 ##			before being linked into the main executable/library
 ##   2) The Macro USER_OBJS MUST be used to identify .o files from above
-##   3) The final executable links FastLogger.a, pthread, and lrt
+##   3) The final executable links NanoLog.a, pthread, and lrt
 ##   4) The RUNTIME_DIR and PREPROC_DIR shall identify the directories
-##			where the FastLogger's Runtime and Preproessor sources are
+##			where the NanoLog's Runtime and Preproessor sources are
 ##
 ## Note that run-cxx will add additional warnings to the user compilation
-## flags to detect misuses of the FastLogger API.
+## flags to detect misuses of the NanoLog API.
 #######
 
 ####
@@ -29,13 +29,13 @@ CXX=g++
 all: benchmark
 
 # [Required] run-cxx will compile the user C++ source file into an object file using
-# the FastLogger system. See documentation in the Library Compilation section.
+# the NanoLog system. See documentation in the Library Compilation section.
 %.o: %.cc
 	$(call run-cxx, $@, $<, $(CXXFLAGS))
 
 # [Required] $(LIBRARY_LIBS) must be used
-benchmark: $(USER_OBJS) libFastLogger.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lFastLogger $(LIBRARY_LIBS)
+benchmark: $(USER_OBJS) libNanoLog.a
+	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lNanoLog $(LIBRARY_LIBS)
 
 clean:
 	@rm -f *.o benchmark /tmp/logFile
@@ -44,10 +44,10 @@ clean:
 ## Library Options
 ####
 
-# [Required] Specifies the path to the FastLogger's Runtime Library directory
+# [Required] Specifies the path to the NanoLog's Runtime Library directory
 RUNTIME_DIR=../runtime
 
-# [Required] Specifies the path to the FastLogger's Preprocessor directory
+# [Required] Specifies the path to the NanoLog's Preprocessor directory
 PREPROC_DIR=../preprocessor
 
 ####
@@ -55,7 +55,7 @@ PREPROC_DIR=../preprocessor
 ####
 
 # run-cxx:
-# Compile a user C++ source file to an object file using the FastLogger system.
+# Compile a user C++ source file to an object file using the NanoLog system.
 # The first parameter $(1) should be the output filename (*.o)
 # The second parameter $(2) should be the input filename (*.cc)
 # The optional third parameter $(3) is any additional options compiler options.
@@ -71,7 +71,7 @@ RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
 LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
-RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/FastLogger.cc \
+RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
 		 $(RUNTIME_DIR)/Util.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
@@ -93,12 +93,12 @@ generated/BufferStuffer.o: $(USER_OBJS)
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
 
-libFastLogger.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/BufferStuffer.o decompressor
-	ar -cr libFastLogger.a $(RUNTIME_OBJS) generated/BufferStuffer.o
+libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/BufferStuffer.o decompressor
+	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/BufferStuffer.o
 
 decompressor: generated/BufferStuffer.o $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(LIBRARY_LIBS)
 
 clean-all: clean
-	@rm -f libFastLogger.a $(RUNTIME_OBJS) decompressor
+	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor
 	@rm -rf generated

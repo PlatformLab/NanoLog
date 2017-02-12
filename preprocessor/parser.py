@@ -14,14 +14,14 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-"""Fast Logger Preprocessor
-This script is the first component of a three part system (FastLogger) that
-enables fast, sub-microsecond error logging. The key to the FastLogger's speed
+"""NanoLog Preprocessor
+This script is the first component of a three part system (NanoLog) that
+enables fast, sub-microsecond error logging. The key to the NanoLog's speed
 is the extraction of static information from the log statements at compile time
 and the injection of code to log only the dynamic information at runtime into
-the user's sources. This injected code then interacts with the FastLogger
+the user's sources. This injected code then interacts with the NanoLog
 Runtime to output a succinct, compressed log which can be later transformed
-into a human-readable format by the FastLogger Decompressor.
+into a human-readable format by the NanoLog Decompressor.
 
 This script performs the first step of log statement extraction and code
 injection and is intended to be used in to phases. In the first phase, all
@@ -54,7 +54,7 @@ Options:
   --combinedOutput=HEADER
                         Output destination for the final C++ header file that
                         aggregates all the map files for use with the
-                        other FastLogger components [default:BufferStuffer.h]
+                        other NanoLog components [default:BufferStuffer.h]
 
   MAP_FILES             List of map files to combine into the final header;
                         There should be one map file per preprocessed source
@@ -72,15 +72,15 @@ from FunctionGenerator import *
 
 # Log function to search for within the C++ files and perform the replacement
 # and stripping of format strings.
-LOG_FUNCTION = "FAST_LOG"
+LOG_FUNCTION = "NANO_LOG"
 
 # Marks which argument of the record function is the static format string
 # and assumes the arguments come after this point.
 FORMAT_ARG_NUM = 0
 
-# A special C++ line at the end of FastLogger.h that marks where the parser
+# A special C++ line at the end of NanoLog.h that marks where the parser
 # can start injecting inline function definitions. The key to it being at the
-# end of FastLogger.h is that it ensures all required #includes have been
+# end of NanoLog.h is that it ensures all required #includes have been
 # included by this point in the file.
 INJECTION_MARKER = \
     "static const int __internal_dummy_variable_marker_for_code_injection = 0;"
@@ -247,7 +247,7 @@ def parseLogStatement(lines, startPosition):
     startPos = FilePosition(lineNum, offset)
     arg = parseArgumentStartingAt(lines, startPos)
     if not arg:
-      raise ValueError("Cannot find end of FAST_LOG invocation",
+      raise ValueError("Cannot find end of NANO_LOG invocation",
                        lines[startPosition[0]:startPosition[0]+5])
     args.append(arg)
     lineNum, offset = arg.endPos
@@ -257,12 +257,12 @@ def parseLogStatement(lines, startPosition):
   # To finish this off, find the closing semicolon
   semiColonPeek =  peekNextMeaningfulChar(lines, FilePosition(lineNum, offset + 1))
   if not semiColonPeek:
-    raise ValueError("Expected ';' after FAST_LOG statement",
+    raise ValueError("Expected ';' after NANO_LOG statement",
                      lines[startPosition[0]:closeParenPos.lineNum])
 
   char, pos = semiColonPeek
   if (char != ";"):
-    raise ValueError("Expected ';' after FAST_LOG statement",
+    raise ValueError("Expected ';' after NANO_LOG statement",
                    lines[startPosition[0]:pos[0]])
 
   logStatement = {
@@ -312,8 +312,8 @@ def peekNextMeaningfulChar(lines, filePos):
   return None
 
 # Given a C/C++ source file that have been preprocessed by the GNU
-# preprocessor with the -E option, identify all the FastLogger log statements
-# and inject code in place of the statements to interface with the FastLogger
+# preprocessor with the -E option, identify all the NanoLog log statements
+# and inject code in place of the statements to interface with the NanoLog
 # runtime system. The processed files will be outputted as <filename>i
 # (ex: test.i -> test.ii)
 #
@@ -343,7 +343,7 @@ def processFile(inputFile, mapOutputFilename):
       firstFilename = None
 
       # Marks at which line the preprocessor can start safely injecting
-      # generated, inlined code. A value of None indicates that the FastLogger
+      # generated, inlined code. A value of None indicates that the NanoLog
       # header was not #include-d yet
       inlineCodeInjectionLineIndex = None
 
@@ -435,16 +435,16 @@ def processFile(inputFile, mapOutputFilename):
             fmtArg = logStatement['arguments'][FORMAT_ARG_NUM]
             fmtString = extractCString(fmtArg.source)
 
-            # At this point, we should check that FastLogger was #include-d
+            # At this point, we should check that NanoLog was #include-d
             # and that the format string was a static string
             lastLogStatementLine = logStatement['semiColonPos'].lineNum
             if not inlineCodeInjectionLineIndex:
-              raise ValueError("FAST_LOG statement occurred before "
-                                "#include-ing the FastLogger header!",
+              raise ValueError("NANO_LOG statement occurred before "
+                                "#include-ing the NanoLog header!",
                                lines[lineIndex:lastLogStatementLine + 1])
 
             if not fmtString:
-              raise ValueError("The FastLogger system does not support "
+              raise ValueError("The NanoLog system does not support "
                                 "non-constant format strings",
                                 lines[lineIndex:lastLogStatementLine + 1])
 
@@ -552,7 +552,7 @@ def processFile(inputFile, mapOutputFilename):
 
     if recFns:
       # Assert is okay here since this should have been caught the first time
-      # we found FAST_LOG without a #include
+      # we found NANO_LOG without a #include
       assert inlineCodeInjectionLineIndex
       lines.insert(inlineCodeInjectionLineIndex + 1, codeToInject)
 
@@ -564,7 +564,7 @@ def processFile(inputFile, mapOutputFilename):
     functionGenerator.outputMappingFile(mapOutputFilename)
 
 if __name__ == "__main__":
-  arguments = docopt(__doc__, version='FastLogger Preprocesor v1.0')
+  arguments = docopt(__doc__, version='NanoLog Preprocesor v1.0')
 
   if arguments['--mapOutput']:
     processFile(inputFile=arguments['PREPROCESSED_SRC'],

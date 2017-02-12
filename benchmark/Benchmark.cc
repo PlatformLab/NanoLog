@@ -14,15 +14,15 @@
  */
 
  /**
-  * This file demonstrates the usage of the FastLogger API through the
+  * This file demonstrates the usage of the NanoLog API through the
   * implementation of simple benchmarking application that reports the
-  * average latency and throughput of the FastLogger system.
+  * average latency and throughput of the NanoLog system.
   */
 
 #include "Cycles.h"
 
-// Required to use the FastLogger system
-#include "FastLogger.h"
+// Required to use the NanoLog system
+#include "NanoLog.h"
 
 int main(int argc, char** argv) {
     // Number of messages to log repeatedly and take the average latency
@@ -31,18 +31,18 @@ int main(int argc, char** argv) {
     uint64_t start, stop;
     double time;
 
-    // Optional: Set the output location for the FastLogger system. By default
+    // Optional: Set the output location for the NanoLog system. By default
     // the log will be output to /tmp/compressedLog
-    PerfUtils::FastLogger::setLogFile("/tmp/logFile");
+    PerfUtils::NanoLog::setLogFile("/tmp/logFile");
 
     // Optional optimization: pre-allocates thread-local data structures
-    // needed by FastLogger. This should be invoked once per new
-    // thread that will use the FastLogger system.
-    PerfUtils::FastLogger::preallocate();
+    // needed by NanoLog. This should be invoked once per new
+    // thread that will use the NanoLog system.
+    PerfUtils::NanoLog::preallocate();
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
-        FAST_LOG("Simple log message with 0 parameters");
+        NANO_LOG("Simple log message with 0 parameters");
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
@@ -52,15 +52,15 @@ int main(int argc, char** argv) {
 
     start = PerfUtils::Cycles::rdtsc();
     // Flush all pending log messages to disk
-    PerfUtils::FastLogger::sync();
+    PerfUtils::NanoLog::sync();
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
     printf("Flushing the log statements to disk took an additional %0.2lf secs\r\n",
             time);
 
-    // Prints various statistics gathered by the FastLogger system to stdout
-    PerfUtils::FastLogger::printStats();
-    PerfUtils::FastLogger::printConfig();
+    // Prints various statistics gathered by the NanoLog system to stdout
+    PerfUtils::NanoLog::printStats();
+    PerfUtils::NanoLog::printConfig();
 }
 

@@ -1,9 +1,9 @@
-SRCS=Cycles.cc Util.cc FastLogger.cc testHelper/BufferStuffer.cc
-INCLUDES=Cycles.h Util.h Packer.h Common.h FastLogger.h BufferUtils.h
+SRCS=Cycles.cc Util.cc NanoLog.cc testHelper/BufferStuffer.cc
+INCLUDES=Cycles.h Util.h Packer.h Common.h NanoLog.h BufferUtils.h
 BENCHMARKS=Benchmark.cc
 PERF=Perf.cc PerfHelper.cc
 PERF_DEPS=PerfHelper.h
-TESTS=PackerTest.cc FastLoggerTest.cc
+TESTS=PackerTest.cc NanoLogTest.cc
 
 GTEST_DIR="../googletest/googletest"
 OBJECTS:=$(SRCS:.cc=.o)

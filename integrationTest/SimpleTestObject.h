@@ -20,7 +20,7 @@
 
 #include <string>
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 #include "Cycles.h"
 
 #include "folder/Sample.h"
@@ -37,7 +37,7 @@ public:
     void wholeBunchOfLogStatements();
     inline void logStatementsInHeader() {
         /// These should be assigned different ids due to line number
-        FAST_LOG("In the header, I am %d", number);
-        FAST_LOG("In the header, I am %d x2", number);
+        NANO_LOG("In the header, I am %d", number);
+        NANO_LOG("In the header, I am %d x2", number);
     }
 };

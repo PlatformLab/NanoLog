@@ -2,7 +2,7 @@
 #ifndef BUFFER_STUFFER
 #define BUFFER_STUFFER
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 #include "Packer.h"
 
 #include <fstream>
@@ -24,12 +24,11 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46h__1__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -40,7 +39,7 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -96,12 +95,11 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__C__mar46cc__200__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -112,7 +110,7 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -168,12 +166,11 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__B__mar46cc__294__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -184,7 +181,7 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -240,12 +237,11 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__E__del46cc__199__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -256,7 +252,7 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -312,12 +308,11 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46cc__293__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 0;
 
     char *buffer = re->argData;
 
@@ -328,7 +323,7 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -384,12 +379,11 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
 
     ;
     size_t allocSize = sizeof(arg0) +   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__D3237d__s46cc__100__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
     re->entrySize = static_cast<uint32_t>(allocSize);
-    re->argMetaBytes = 1;
 
     char *buffer = re->argData;
 
@@ -401,7 +395,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
     
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -457,7 +451,7 @@ decompressPrintArgs__D3237d__s46cc__100__ (std::ifstream &in) {
 
 } // end empty namespace
 
-// Assignment of numerical ids to format FAST_LOG occurrences
+// Assignment of numerical ids to format NANO_LOG occurrences
 extern const int __fmtId__A__mar46h__1__ = 0; // mar.h:1 "A"
 extern const int __fmtId__C__mar46cc__200__ = 1; // mar.cc:200 "C"
 extern const int __fmtId__B__mar46cc__294__ = 2; // mar.cc:294 "B"
