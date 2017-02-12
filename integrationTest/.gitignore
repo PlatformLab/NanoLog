@@ -2,7 +2,7 @@
 compressedLog
 decompressor
 generated/
-libFastLogger.a
+libNanoLog.a
 
 output.txt
 testApp

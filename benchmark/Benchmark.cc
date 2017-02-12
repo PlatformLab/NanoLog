@@ -33,12 +33,12 @@ int main(int argc, char** argv) {
 
     // Optional: Set the output location for the NanoLog system. By default
     // the log will be output to /tmp/compressedLog
-    PerfUtils::NanoLog::setLogFile("/tmp/logFile");
+    NanoLog::setLogFile("/tmp/logFile");
 
     // Optional optimization: pre-allocates thread-local data structures
     // needed by NanoLog. This should be invoked once per new
     // thread that will use the NanoLog system.
-    PerfUtils::NanoLog::preallocate();
+    NanoLog::preallocate();
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
 
     start = PerfUtils::Cycles::rdtsc();
     // Flush all pending log messages to disk
-    PerfUtils::NanoLog::sync();
+    NanoLog::sync();
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
             time);
 
     // Prints various statistics gathered by the NanoLog system to stdout
-    PerfUtils::NanoLog::printStats();
-    PerfUtils::NanoLog::printConfig();
+    NanoLog::printStats();
+    NanoLog::printConfig();
 }
 

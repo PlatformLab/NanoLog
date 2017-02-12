@@ -241,7 +241,7 @@ void gah()
 
 int main()
 {
-    PerfUtils::NanoLog::setLogFile("/tmp/testLog");
+    NanoLog::setLogFile("/tmp/testLog");
     evilTestCase(NULL);
 
     int count = 10;
@@ -264,7 +264,7 @@ int main()
     st.logSomething();
     st.logSomething();
 
-    PerfUtils::NanoLog::sync();
+    NanoLog::sync();
 
     printf("\r\nNote: This app is used in the integration tests, but"
         "is not the test runner. \r\nTo run the actual test, invoke "

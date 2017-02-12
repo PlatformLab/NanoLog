@@ -30,14 +30,14 @@ class NanoLogTest : public ::testing::Test {
   // is empty.
   uint32_t bufferSize;
   uint32_t halfSize;
-  PerfUtils::NanoLog::StagingBuffer *sb;
+  NanoLog::StagingBuffer *sb;
 
   NanoLogTest()
-    : bufferSize(PerfUtils::NanoLog::STAGING_BUFFER_SIZE)
+    : bufferSize(NanoLog::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
-    , sb(new PerfUtils::NanoLog::StagingBuffer())
+    , sb(new NanoLog::StagingBuffer())
   {
-      static_assert(1024 <= PerfUtils::NanoLog::STAGING_BUFFER_SIZE,
+      static_assert(1024 <= NanoLog::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
   }
 
@@ -228,7 +228,7 @@ TEST_F(NanoLogTest, StagingBuffer_peek) {
 
     // Case 3: Roll over, need double peeks.
     delete sb;
-    sb = new PerfUtils::NanoLog::StagingBuffer();
+    sb = new NanoLog::StagingBuffer();
 
     sb->reserveProducerSpace(bufferSize - 100);
     sb->finishReservation(bufferSize - 100);

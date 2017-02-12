@@ -24,7 +24,7 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46h__1__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -39,7 +39,7 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -95,7 +95,7 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__C__mar46cc__200__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -110,7 +110,7 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -166,7 +166,7 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__B__mar46cc__294__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -181,7 +181,7 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -237,7 +237,7 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__E__del46cc__199__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -252,7 +252,7 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -308,7 +308,7 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46cc__293__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -323,7 +323,7 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
@@ -379,7 +379,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
 
     ;
     size_t allocSize = sizeof(arg0) +   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__D3237d__s46cc__100__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -395,7 +395,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
     
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 

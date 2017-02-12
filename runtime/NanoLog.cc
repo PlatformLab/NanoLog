@@ -28,8 +28,6 @@
 #include "Cycles.h"
 #include "BufferUtils.h"
 
-namespace PerfUtils {
-
 // Define the static members of NanoLog here
 __thread NanoLog::StagingBuffer* NanoLog::stagingBuffer = nullptr;
 thread_local NanoLog::StagingBufferDestroyer NanoLog::sbc;
@@ -133,13 +131,15 @@ void
 NanoLog::printStats()
 {
    // Leaks abstraction, but basically flush so we get all the time
-    uint64_t start = Cycles::rdtsc();
+    uint64_t start = PerfUtils::Cycles::rdtsc();
     fdatasync(nanoLogSingleton.outputFd);
-    uint64_t stop = Cycles::rdtsc();
+    uint64_t stop = PerfUtils::Cycles::rdtsc();
     nanoLogSingleton.cyclesAioAndFsync += (stop - start);
 
-    double outputTime = Cycles::toSeconds(nanoLogSingleton.cyclesAioAndFsync);
-    double compressTime = Cycles::toSeconds(nanoLogSingleton.cyclesCompressing);
+    double outputTime =
+            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesAioAndFsync);
+    double compressTime =
+            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesCompressing);
     double workTime = outputTime + compressTime;
 
     double totalBytesWrittenDouble = static_cast<double>(
@@ -160,11 +160,12 @@ NanoLog::printStats()
 
     printf("There were %u file flushes and the final sync time was %lf sec\r\n",
             nanoLogSingleton.numAioWritesCompleted,
-            Cycles::toSeconds(stop - start));
+            PerfUtils::Cycles::toSeconds(stop - start));
 
-    double secondsAwake = Cycles::toSeconds(nanoLogSingleton.cyclesAwake);
-    double secondsThreadHasBeenAlive = Cycles::toSeconds(
-                        Cycles::rdtsc() - nanoLogSingleton.cycleAtThreadStart);
+    double secondsAwake =
+                    PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesAwake);
+    double secondsThreadHasBeenAlive = PerfUtils::Cycles::toSeconds(
+                        PerfUtils::Cycles::rdtsc() - nanoLogSingleton.cycleAtThreadStart);
     printf("Compression Thread was active for %0.3lf out of %0.3lf seconds "
             "(%0.2lf %%)\r\n",
             secondsAwake,
@@ -277,7 +278,7 @@ NanoLog::compressionThreadMain()
     // Marks when the thread wakes up. This value should be used to calculate
     // the number of cyclesAwake right before blocking/sleeping and then updated
     // to the latest rdtsc() when the thread re-awakens.
-    uint64_t cyclesAwakeStart = Cycles::rdtsc();
+    uint64_t cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
     cycleAtThreadStart = cyclesAwakeStart;
 
     // Write position within the compressingBuffer
@@ -291,7 +292,7 @@ NanoLog::compressionThreadMain()
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
-        uint64_t start = Cycles::rdtsc();
+        uint64_t start = PerfUtils::Cycles::rdtsc();
         // Step 1: Find buffers with entries and compress them
         {
             std::unique_lock<std::mutex> lock(bufferMutex);
@@ -309,7 +310,7 @@ NanoLog::compressionThreadMain()
 
                 // If there's work, unlock to perform it
                 if (readableBytes > 0) {
-                    uint64_t start = Cycles::rdtsc();
+                    uint64_t start = PerfUtils::Cycles::rdtsc();
                     lock.unlock();
 
                     uint64_t readableBytesStart = readableBytes;
@@ -352,7 +353,7 @@ NanoLog::compressionThreadMain()
                     }
                     totalBytesRead += readableBytesStart - readableBytes;
 
-                    cyclesCompressing += Cycles::rdtsc() - start;
+                    cyclesCompressing += PerfUtils::Cycles::rdtsc() - start;
                     lock.lock();
                 } else {
                     // If there's no work, check if we're supposed to delete
@@ -383,7 +384,7 @@ NanoLog::compressionThreadMain()
                     break;
             }
 
-            cyclesScanningAndCompressing += Cycles::rdtsc() - start;
+            cyclesScanningAndCompressing += PerfUtils::Cycles::rdtsc() - start;
         }
 
         // Check whether we should sleep or output data
@@ -397,13 +398,13 @@ NanoLog::compressionThreadMain()
                 continue;
             }
 
-            cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
+            cyclesAwake += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
 
             hintQueueEmptied.notify_one();
             workAdded.wait_for(lock, std::chrono::microseconds(
                                                     POLL_INTERVAL_NO_WORK_US));
 
-            cyclesAwakeStart = Cycles::rdtsc();
+            cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
             continue;
         }
 
@@ -411,12 +412,12 @@ NanoLog::compressionThreadMain()
             if (aio_error(&aioCb) == EINPROGRESS) {
                 const struct aiocb * const aiocb_list[] = { &aioCb };
 
-                cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
+                cyclesAwake += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
                     if (outputBufferFull) {
                         // If the output buffer is full and we're not done,
                         // wait for completion
                         int err = aio_suspend(aiocb_list, 1, NULL);
-                        cyclesAwakeStart = Cycles::rdtsc();
+                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
                         if (err != 0)
                             perror("LogCompressor's Posix AIO "
                                     "suspend operation failed");
@@ -425,10 +426,10 @@ NanoLog::compressionThreadMain()
                         std::unique_lock<std::mutex> lock(condMutex);
                         workAdded.wait_for(lock, std::chrono::microseconds(
                                                 POLL_INTERVAL_DURING_IO_US));
-                        cyclesAwakeStart = Cycles::rdtsc();
+                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
 
                         if (aio_error(&aioCb) == EINPROGRESS) {
-                            cyclesAioAndFsync += (Cycles::rdtsc() - start);
+                            cyclesAioAndFsync += (PerfUtils::Cycles::rdtsc() - start);
                             continue;
                         }
                     }
@@ -485,11 +486,11 @@ NanoLog::compressionThreadMain()
         // time spent waiting for a previous incomplete AIO to finish.
         // We could get a better time metric if we spawned a thread to
         // do synchronous IO on our behalf.
-        cyclesAioAndFsync += (Cycles::rdtsc() - start);
+        cyclesAioAndFsync += (PerfUtils::Cycles::rdtsc() - start);
     }
 
     if (hasOutstandingOperation) {
-        uint64_t start = Cycles::rdtsc();
+        uint64_t start = PerfUtils::Cycles::rdtsc();
         // Wait for any outstanding AIO to finish
         while (aio_error(&aioCb) == EINPROGRESS);
         int err = aio_error(&aioCb);
@@ -503,11 +504,11 @@ NanoLog::compressionThreadMain()
         }
         ++numAioWritesCompleted;
         hasOutstandingOperation = false;
-        cyclesAioAndFsync += (Cycles::rdtsc() - start);
+        cyclesAioAndFsync += (PerfUtils::Cycles::rdtsc() - start);
     }
 
     cycleAtThreadStart = 0;
-    cyclesAwake += Cycles::rdtsc() - cyclesAwakeStart;
+    cyclesAwake += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
 }
 
 /**
@@ -615,7 +616,7 @@ char*
 NanoLog::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
 {
     const char *endOfBuffer = storage + STAGING_BUFFER_SIZE;
-    uint64_t start = Cycles::rdtsc();
+    uint64_t start = PerfUtils::Cycles::rdtsc();
 
     // There's a subtle point here, all the checks for remaining
     // space are strictly < or >, not <= or => because if we allow
@@ -654,7 +655,7 @@ NanoLog::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
             return nullptr;
     }
 
-    cyclesProducerBlocked += Cycles::rdtsc() - start;
+    cyclesProducerBlocked += PerfUtils::Cycles::rdtsc() - start;
 
     return producerPos;
 }
@@ -691,5 +692,3 @@ NanoLog::StagingBuffer::peek(uint64_t* bytesAvailable)
     *bytesAvailable = cachedRecordHead - consumerPos;
     return consumerPos;
 }
-
-} // PerfUtils

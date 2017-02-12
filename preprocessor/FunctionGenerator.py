@@ -30,8 +30,8 @@ NIBBLE_OBJ = "BufferUtils::TwoNibbles"
 RECORD_HEADER_FN = "BufferUtils::recordMetadata"
 RECORD_PRIMITIVE_FN = "BufferUtils::recordPrimitive"
 
-ALLOC_FN = "PerfUtils::NanoLog::__internal_reserveAlloc"
-FINISH_ALLOC_FN = "PerfUtils::NanoLog::__internal_finishAlloc"
+ALLOC_FN = "NanoLog::__internal_reserveAlloc"
+FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
 
 PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"

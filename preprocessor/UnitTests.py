@@ -478,7 +478,7 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
 
     ;
     size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::NanoLog::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId{logId};
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -493,7 +493,7 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
     %s
 
     // Make the entry visible
-    PerfUtils::NanoLog::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }}
 """ % ("", "")
         fg = FunctionGenerator()
