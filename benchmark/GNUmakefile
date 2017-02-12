@@ -15,12 +15,20 @@
 #######
 
 ####
-# User Section
+## [Required] Library Variables
 ####
-USER_SRCS=Benchmark.cc
+
+# [Required] Specifies the path to the NanoLog's Library directory
+NANOLOG_DIR=..
 
 # [Required] MUST use macro to identify user *.o files
 USER_OBJS=$(USER_SRCS:.cc=.o)
+
+
+####
+# User Section
+####
+USER_SRCS=Benchmark.cc
 
 # -DNDEBUG and -O3 should always be passed for high performance
 CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
@@ -41,18 +49,11 @@ clean:
 	@rm -f *.o benchmark /tmp/logFile
 
 ####
-## Library Options
-####
-
-# [Required] Specifies the path to the NanoLog's Runtime Library directory
-RUNTIME_DIR=../runtime
-
-# [Required] Specifies the path to the NanoLog's Preprocessor directory
-PREPROC_DIR=../preprocessor
-
-####
 # Library Compilation (copy verbatim)
 ####
+
+RUNTIME_DIR=$(NANOLOG_DIR)/runtime
+PREPROC_DIR=$(NANOLOG_DIR)/preprocessor
 
 # run-cxx:
 # Compile a user C++ source file to an object file using the NanoLog system.

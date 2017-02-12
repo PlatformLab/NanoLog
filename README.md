@@ -24,14 +24,14 @@ NanoLog requires users to compile their C++ files into *.o files using the NanoL
 #### New Projects
 For new projects, the easiest way to bootstrap this process is to copy the [sample GNUMakefile](./benchmark/GNUmakefile) and make the following changes:
 
-* Change the ```RUNTIME_DIR``` and ```PREPROC_DIR``` variables to refer to the [runtime](./runtime) and [preprocessor](./preprocessor) directories respectively
+* Change the ```NANOLOG_DIR``` variable to refer to this project's [root directory](./)
 
 * Change the ```USER_SRC``` variable to refer to all your sources.
 
 #### Advanced Configuration
 If you wish to integrate into NanoLog into an existing system with an existing GNUmakefile, perform the following:
 * Copy every line after the "Library Compilation (copy verbatim)" section in the [sample GNUMakefile](./benchmark/GNUmakefile) into your makefile.
-* Make ```RUNTIME_DIR``` and ```PREPROC_DIR``` variables that to refer to the [runtime](./runtime) and [preprocessor](./preprocessor) directories respectively.
+* Add the ```NANOLOG_DIR``` variable to refer to this project's [root directory](./)
 * Compile your sources into *.o files using the ```run-cxx``` function and ensure that the ```USER_OBJS``` captures all the *.o files.
 * Link the following the NanoLog library, posix aio and pthread libraries i.e. ```-lNanoLog -lrt -pthread```.
 

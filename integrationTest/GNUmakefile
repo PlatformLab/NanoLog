@@ -7,11 +7,8 @@
 ## Library Options [Required]
 ####
 
-# Specifies the path to the NanoLog's Runtime Library
-RUNTIME_DIR=../runtime
-
-# Specifies the path to the NanoLog's Preprocessor directory
-PREPROC_DIR=../preprocessor
+# [Required] Specifies the path to the NanoLog's Library directory
+NANOLOG_DIR=..
 
 ####
 # User Section
@@ -53,6 +50,9 @@ clean:
 ####
 # Library Compilation (copy verbatim)
 ####
+
+RUNTIME_DIR=$(NANOLOG_DIR)/runtime
+PREPROC_DIR=$(NANOLOG_DIR)/preprocessor
 
 # run-cxx:
 # Compile a user C++ source file to an object file using the NanoLog system.
