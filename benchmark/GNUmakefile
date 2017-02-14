@@ -43,7 +43,7 @@ all: benchmark
 
 # [Required] $(LIBRARY_LIBS) must be used
 benchmark: $(USER_OBJS) libNanoLog.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lNanoLog $(LIBRARY_LIBS)
+	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
 
 clean:
 	@rm -f *.o benchmark /tmp/logFile
@@ -69,7 +69,7 @@ define run-cxx
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
-LIBRARY_LIBS=-lrt -pthread
+NANO_LOG_LIBRARY_LIBS=-lNanoLog -lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
@@ -98,7 +98,7 @@ libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/BufferStuffer.o decompre
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/BufferStuffer.o
 
 decompressor: generated/BufferStuffer.o $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(LIBRARY_LIBS)
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor

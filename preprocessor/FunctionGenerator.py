@@ -544,7 +544,7 @@ def parseTypesInFmtString(fmtString):
                                  "(?P<flags>[-+ #0]+)?"
                                  "(?P<width>[\\d]+|\\*)?"
                                  "(\\.(?P<precision>\\d+|\\*))?"
-                                 "(?P<length>hh|h|l|ll|j|z|t|L)?"
+                                 "(?P<length>hh|h|l|ll|j|z|Z|t|L)?"
                                  "(?P<specifier>[diuoxXfFeEgGaAcspn])",
                                  fmtString[charIndex:])
 
@@ -594,7 +594,7 @@ def parseTypesInFmtString(fmtString):
                     type = "intmax_t"
                 else:
                     type = "uintmax_t"
-            elif length == "z":
+            elif length == "z" or length == "Z":
                 type = "size_t"
             elif length == "t":
                 type = "ptrdiff_t"

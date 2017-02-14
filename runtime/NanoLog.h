@@ -373,8 +373,9 @@ PRIVATE:
         // Backing store used to implement the circular queue
         char storage[STAGING_BUFFER_SIZE];
 
-
         friend StagingBufferDestroyer;
+
+        DISALLOW_COPY_AND_ASSIGN(StagingBuffer);
     };
 
     // This class is intended to be instantiated as a C++ thread_local to
@@ -408,6 +409,7 @@ PRIVATE:
         }
     };
 
+    DISALLOW_COPY_AND_ASSIGN(NanoLog);
 };  // NanoLog
 
 // MUST appear at the very end of the NanoLog.h file, right before the
