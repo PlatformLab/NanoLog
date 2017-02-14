@@ -353,7 +353,7 @@ inline {function_declaration} {{
     {finishAlloc_fn}(allocSize);
 }}
 """.format(function_declaration = recordDeclaration,
-       strlen_declaration = "; size_t ".join(strlenDeclarations),
+       strlen_declaration = "".join(strlenDeclarations),
        primitive_size_sum = nonStringSizeOfPartialSum,
        strlen_sum = stringLenPartialSum,
        entry = RECORD_ENTRY,
@@ -614,7 +614,7 @@ def parseTypesInFmtString(fmtString):
         # Finally the special cases
         elif specifier == "p":
             if not length:
-                types.append("void*")
+                types.append("const void*")
             else:
                 raise ValueError("Invalid arguments for format specifier "
                                     + fmt.group())

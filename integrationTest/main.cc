@@ -54,8 +54,20 @@ evilTestCase(NANO_LOG* log) {
     int cnt = 2;
     NANO_LOG("Hello world number %d of %d (%0.2lf%%)! This is %s!", cnt, 10, 1.0*cnt/10, "Stephen");
 
+    NANO_LOG("This is a string of many strings, like %s, %s, and %s"
+                " with a number %d and a final string with spacers %*s\r\n",
+                "this one",
+                "this other one",
+                "this third one",
+                12345670,
+                20,
+                "far out");
 
-    void *pointer = (void*)0x7ffe075cbe7d;
+    void* pointer = (void*)0x7ffe075cbe7d;
+    const void* const_ptr = pointer;
+
+    NANO_LOG("A const void* pointer %p", const_ptr);
+
     uint8_t small = 10;
     uint16_t medium = 33;
     uint32_t large = 99991;

@@ -362,14 +362,14 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                          ["unsigned int", "unsigned int"])
 
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         ["int", "const char*", "void*"])
+                         ["int", "const char*", "const void*"])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
             parseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_cspn(self):
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         ["int", "const char*", "void*"])
+                         ["int", "const char*", "const void*"])
 
         self.assertEqual(parseTypesInFmtString("%ls %lc"),
                          ["const wchar_t*", "wint_t"])
