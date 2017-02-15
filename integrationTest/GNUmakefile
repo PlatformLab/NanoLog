@@ -22,7 +22,8 @@ USER_OBJS=$(USER_SRCS:.cc=.o)
 CXXFLAGS= -std=c++0x -O3
 CXX=g++
 
-all: run-test
+all: run-test run-empty-test
+	@printf "\r\n\033[0;32mIntegration Tests completed without error!\033[0m\r\n"
 
 # [Required] run-cxx will compile the user C++ source file into an object file using
 # the NanoLog system. See documentation in the Library Compilation section.
@@ -41,11 +42,19 @@ run-test: testApp
 	./decompressor /tmp/testLog | cut -d':' -f2- > output.txt
 	diff -w expectedOutput.txt output.txt
 
-	@printf "\r\n\033[0;32mIntegration Tests completed without error!\033[0m\r\n"
 	@rm -f /tmp/testLog
 
+run-empty-test: testApp
+	@touch emptyFile
+	@printf "Opening file emptyFile\r\n" > expected.txt
+	@printf "\r\n\r\nDecompression Complete after printing 0 log messages\r\n" >> expected.txt
+
+	./decompressor emptyFile > output.txt
+	diff -w expected.txt output.txt
+	@rm -f output.txt expected.txt emptyFile
+
 clean:
-	@rm -f *.o testApp folder/*.o /tmp/testLog output.txt
+	@rm -f *.o testApp folder/*.o /tmp/testLog output.txt emptyFile
 
 ####
 # Library Compilation (copy verbatim)

@@ -106,6 +106,9 @@ int main(int argc, char** argv) {
             while(in.peek() == 0 && in.good())
                 in.get();
         } else {
+            if (in.eof())
+                break;
+
             printf("Entry type read in metadata does not match anything "
                             "(%d); exiting...\r\n", nextType);
             exit(-1);

@@ -69,7 +69,7 @@ define run-cxx
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
-NANO_LOG_LIBRARY_LIBS=-lNanoLog -lrt -pthread
+NANO_LOG_LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \

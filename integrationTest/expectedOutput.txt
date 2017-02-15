@@ -11,6 +11,7 @@ Opening file /tmp/testLog
  Hello world number 2 of 10 (0.20%)! This is Stephen!
  This is a string of many strings, like this one, this other one, and this third one with a number 12345670 and a final string with spacers              far out
 
+ A const void* pointer 0x7ffe075cbe7d
  Let's try out all the types!
 Pointer = 0x7ffe075cbe7d
 uint8_t = 10
@@ -89,4 +90,4 @@ ie
  SimpleTest::logSomething: Something = 3
 
 
-Decompression Complete after printing 71 log messages
+Decompression Complete after printing 72 log messages
