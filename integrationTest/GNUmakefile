@@ -38,6 +38,12 @@ run-test: testApp
 	@rm -f /tmp/testLog
 	./testApp > /dev/null
 	@chmod 666 /tmp/testLog
+
+	@# Test for string special case
+	@test -n "$$(find /tmp/testLog -size -100000c)" || \
+		(printf "\r\n\033[0;31mError: /tmp/testLog is very large, suggesting a failure of the 'Special case string precision' test in main.cc\033[0m" \
+		&& echo "" && exit 1)
+
 	@# Run the decompressor and cut out the timestamps before the ':'
 	./decompressor /tmp/testLog | cut -d':' -f2- > output.txt
 	diff -w expectedOutput.txt output.txt

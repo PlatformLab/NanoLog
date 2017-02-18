@@ -21,6 +21,8 @@ import json
 import os.path
 import re
 
+from collections import namedtuple
+
 # Various globals mapping symbolic names to the object/function names in
 # the supporting C++ library. This is done so that changes in namespaces don't
 # result in large sweeping changes of this file.
@@ -35,6 +37,8 @@ FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
 
 PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"
+
+STRLEN_FN = "BufferUtils::strnlen"
 
 # This class assigns unique identifiers to unique printf-like format strings,
 # generates C++ code to record/compress/decompress the printf-like statements
@@ -278,9 +282,9 @@ void
     def generateLogFunctions(self, fmtString, compilationName, filename,
                                 linenum):
 
-        argTypes = parseTypesInFmtString(fmtString)
-        parameterDeclarationString = "".join([", %s arg%d" % (type, idx)
-                                          for idx, type in enumerate(argTypes)])
+        fmtTypes = parseTypesInFmtString(fmtString)
+        parameterDeclarationString = "".join([", %s arg%d" % (fmt.type, idx)
+                                          for idx, fmt in enumerate(fmtTypes)])
 
         logId = generateLogIdStr(fmtString, filename, linenum)
         recordFnName = "__syang0__fl" + logId
@@ -302,17 +306,29 @@ void
         ###
 
         # Create lists identifying which argument indexes are (not) strings
-        stringArgIds = [idx for idx, type in enumerate(argTypes)
-                                                    if isStringType(type)]
-        nonStringArgIds = [idx for idx, type in enumerate(argTypes)
+        stringArgIds = [idx for idx, fmt in enumerate(fmtTypes)
+                                                    if isStringType(fmt)]
+        nonStringArgIds = [idx for idx, fmt in enumerate(fmtTypes)
                                                     if idx not in stringArgIds]
 
         # Create more usable strings for each list
-        strlenDeclarations = ["size_t str{0}Len = strlen(arg{0}) + 1;"
-                                  .format(idx) for idx in stringArgIds]
+        strlenDeclarations = []
+        for idx in stringArgIds:
+            precision = fmtTypes[idx].precision
+            strlenToAdd = "size_t str{0}Len = ".format(idx)
+            if not precision:
+                strlenToAdd += "strlen(arg{0});".format(idx)
+            elif precision == '*':
+                strlenToAdd += "{0}(arg{1}, arg{2});".format(
+                                                    STRLEN_FN, idx, idx - 1)
+            else:
+                strlenToAdd += "{0}(arg{1}, {2});".format(
+                                                    STRLEN_FN, idx, precision)
+            strlenDeclarations.append(strlenToAdd)
 
-        # Note: For these two partial sums, it must end in a '+' character
-        stringLenPartialSum = "".join(["str%dLen + " % (idx)
+        # For these two partial sums, it must end in a '+' character. Also,
+        # for stringLenPartialSum, there's a +1 for a NULL character at the end
+        stringLenPartialSum = "".join(["str%dLen + 1 + " % (idx)
                                       for idx in stringArgIds])
 
         nonStringSizeOfPartialSum = "".join(["sizeof(arg%d) + " % idx
@@ -324,8 +340,9 @@ void
         recordNonStringArgsCode = "".join(["\t%s(buffer, arg%d);\n" % \
                 (RECORD_PRIMITIVE_FN, idx) for idx in nonStringArgIds])
 
-        recordStringsArgsCode = "".join(["\tmemcpy(buffer, arg{0}, str{0}Len); "
-               "buffer += str{0}Len;\n".format(idx) for idx in stringArgIds])
+        recordStringsArgsCode = ["memcpy(buffer, arg{0}, str{0}Len); "
+               "buffer += str{0}Len; *buffer = '\\0'; buffer++;".format(
+                                                idx) for idx in stringArgIds]
 
         # Start Generating the record code
         recordCode = \
@@ -353,7 +370,7 @@ inline {function_declaration} {{
     {finishAlloc_fn}(allocSize);
 }}
 """.format(function_declaration = recordDeclaration,
-       strlen_declaration = "".join(strlenDeclarations),
+       strlen_declaration = "\r\n\t".join(strlenDeclarations),
        primitive_size_sum = nonStringSizeOfPartialSum,
        strlen_sum = stringLenPartialSum,
        entry = RECORD_ENTRY,
@@ -361,7 +378,7 @@ inline {function_declaration} {{
        idVariableName = generateIdVariableNameFromLogId(logId),
        nibble_size = nibbleByteSizes,
        recordNonStringArgsCode = recordNonStringArgsCode,
-       recordStringsArgsCode = recordStringsArgsCode,
+       recordStringsArgsCode = "\r\n\t".join(recordStringsArgsCode),
        finishAlloc_fn = FINISH_ALLOC_FN
 )
 
@@ -375,7 +392,7 @@ inline {function_declaration} {{
 
         readBackNonStringArgsCode = ""
         for idx in nonStringArgIds:
-            type = argTypes[idx]
+            type = fmtTypes[idx].type
             readBackNonStringArgsCode += \
                 "\t{type} arg{id} = *reinterpret_cast<{type}*>(args); " \
                 "args +=sizeof({type});\n".format(type=type, id=idx)
@@ -433,7 +450,7 @@ inline ssize_t
         # Unpack all the non-string arguments with their nibbles
         unpackNonStringArgsCode = ""
         for i, idx in enumerate(nonStringArgIds):
-            type = argTypes[idx]
+            type = fmtTypes[idx].type
             member = "first" if (i%2 == 0) else "second"
 
             unpackNonStringArgsCode += "\t%s arg%d = %s<%s>(in, nib[%d].%s);\n" % (
@@ -442,7 +459,7 @@ inline ssize_t
         # Read back all the strings
         readbackStringCode = ""
         for idx in stringArgIds:
-            type = argTypes[idx]
+            type = fmtTypes[idx].type
             strType = "std::wstring" if "w_char" in type else "std::string"
 
             readbackStringCode += \
@@ -481,7 +498,7 @@ inline void
         fmtString=fmtString,
         filename=filename,
         linenum=linenum,
-        printfArgs="".join([", arg%d" % i for i, type in enumerate(argTypes)])
+        printfArgs="".join([", arg%d" % i for i, type in enumerate(fmtTypes)])
 )
 
         # All the code has been generated,  save them in our data structure
@@ -502,6 +519,12 @@ inline void
 
         return (recordDeclaration, recordFnName)
 
+# Identifies a format specifier's C++ type and precision within a format string.
+# The precision can have the value of None, a number, or '*' which indicate,
+# respectively, that none was provided, a static number was provided, or
+# it's specified in the previous printf argument.
+FmtType = namedtuple('FmtType', ['type', 'precision'])
+
 # Given a C++ printf-like format string, identify all the C++ types that
 # correspond to the format specifiers in the format string.
 #
@@ -512,7 +535,9 @@ inline void
 #           Printf-like format string such as "number=%d, float=%0.2f"
 #
 # \return
-#           A list of C++ types as strings (e.x. ["int", "char*", ...]
+#           A list of FmtType named tuples indicating (C++ type, precision) Ex:
+#           [("int", None), ("const char*", "*"), ("const char*", "4"), ...]
+#           Note: a precision of '*' indicates previous element is precision
 #
 # \throws ValueError
 #           Thrown if the format string does not conform to standards
@@ -562,14 +587,17 @@ def parseTypesInFmtString(fmtString):
     for fmt in matches:
         length = fmt.group('length')
         specifier = fmt.group('specifier')
+        precision = fmt.group("precision")
+        if precision and precision != '*':
+            precision = int(float(precision))
 
         # First, handle the cases where the users specify variable width
         # spacing (i.e. %*d or %*.*lf) requiring an extra argument
         if fmt.group('width') == "*":
-            types.append("int")
+            types.append(FmtType("int", None))
 
-        if fmt.group('precision') == "*":
-            types.append("int")
+        if precision == "*":
+            types.append(FmtType("int", None))
 
         # Handle the most common case of regular integer types first
         if specifier in integerSet:
@@ -602,35 +630,35 @@ def parseTypesInFmtString(fmtString):
                 raise ValueError("Invalid arguments for format specifier "
                                     + fmt.group())
 
-            types.append(type.strip())
+            types.append(FmtType(type.strip(), precision))
 
         # Next are doubles
         elif specifier in floatSet:
             if length == 'L':
-                types.append("long double")
+                types.append(FmtType("long double", precision))
             else:
-                types.append("double")
+                types.append(FmtType("double", precision))
 
         # Finally the special cases
         elif specifier == "p":
             if not length:
-                types.append("const void*")
+                types.append(FmtType("const void*", precision))
             else:
                 raise ValueError("Invalid arguments for format specifier "
                                     + fmt.group())
         elif specifier == "s":
             if not length:
-                types.append("const char*")
+                types.append(FmtType("const char*", precision))
             elif length == "l":
-                types.append("const wchar_t*")
+                types.append(FmtType("const wchar_t*", precision))
             else:
                 raise ValueError("Invalid arguments for format specifier "
                                     + fmt.group())
         elif specifier == "c":
             if not length:
-                types.append("int")
+                types.append(FmtType("int", precision))
             elif length == "l":
-                types.append("wint_t")
+                types.append(FmtType("wint_t", precision))
             else:
                 raise ValueError("Invalid arguments for format specifier "
                                  + fmt.group())
@@ -643,9 +671,10 @@ def parseTypesInFmtString(fmtString):
 # Given a C++ type (such as 'int') as identified by parseTypesInFmtString,
 # determine whether that type is a string or not.
 #
-# \param typeStr - Whether a type is a string or not in C/C++ land
+# \param typeStr - Whether a FmtType is a string or not in C/C++ land
 def isStringType(typeStr):
-    return -1 != typeStr.find("char*") or -1 != typeStr.find("wchar_t*")
+    return -1 != typeStr.type.find("char*") or \
+           -1 != typeStr.type.find("wchar_t*")
 
 # Helper functions to generate variable names
 def generateIdVariableNameFromLogId(logId):

@@ -3,7 +3,7 @@ INCLUDES=Cycles.h Util.h Packer.h Common.h NanoLog.h BufferUtils.h
 BENCHMARKS=Benchmark.cc
 PERF=Perf.cc PerfHelper.cc
 PERF_DEPS=PerfHelper.h
-TESTS=PackerTest.cc NanoLogTest.cc
+TESTS=BufferUtilsTest.cc PackerTest.cc NanoLogTest.cc
 
 GTEST_DIR="../googletest/googletest"
 OBJECTS:=$(SRCS:.cc=.o)
@@ -17,10 +17,10 @@ libPerfUtils.a: $(SRCS) $(INCLUDES)
 	g++  -O3 -c  -std=c++11  $(SRCS)
 	ar -cvq libPerfUtils.a $(OBJECTS)
 
-$(OBJECTS) : %.o :%.cc
+%.o:%.cc
 	g++ $(CXX_ARGS) -ItestHelper -I./ -c $< -o $@
 
-test: $(TESTS) $(OBJECTS) $(INCLUDES) libgtest.a
+test: $(TESTS) $(OBJECTS) $(INCLUDES) $(TEST_OBJS) libgtest.a
 	g++ $(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) $(GTEST_DIR)/src/gtest_main.cc libgtest.a -o test $(LIBS)
 
 Perf : $(OBJECTS) $(INCLUDES) $(PERF) $(PERF_DEPS)

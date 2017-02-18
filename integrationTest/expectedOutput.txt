@@ -29,6 +29,8 @@ int32_t -99991
 int64_t -1
 int -12356
  How about variable width + precision?  12345.12        123        end
+ How about a variable length string that should end here
+ And another one that should end here
  10) NANO_LOG() "NANO_LOG("Hi ")"
  11) SDF
  12) NEWLinesSoEvil NANO_LOG()
@@ -61,6 +63,9 @@ ie
 ie
  Ending on different lines
  1) Simple times
+ This string should end soon with 4 'a''s here: aaaa
+ Another string that should end soon with 5 'a''s here: aaaaa
+ A string that's just one 'a': a
  Loop test!
  Loop test!
  Loop test!
@@ -90,4 +95,4 @@ ie
  SimpleTest::logSomething: Something = 3
 
 
-Decompression Complete after printing 72 log messages
+Decompression Complete after printing 77 log messages

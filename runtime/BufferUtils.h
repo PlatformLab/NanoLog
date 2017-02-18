@@ -307,6 +307,36 @@ namespace BufferUtils {
         return cp;
     }
 
+    /**
+     * Safer implementation of strlen that allows for an upper bound
+     *
+     * \param str
+     *          String to check
+     * \param maxLen
+     *          Maximum length to check
+     */
+    static inline size_t
+    strnlen(const char* str, size_t maxLen=-1) {
+        size_t length = 0;
+        while (*str != '\0' && length < maxLen) {
+            ++str;
+            ++length;
+        }
+
+        return length;
+    }
+
+    static inline size_t
+    strnlen(const wchar_t* str, size_t maxLen=-1) {
+        size_t length = 0;
+        while (*str != '\0' && length < maxLen) {
+            ++str;
+            ++length;
+        }
+
+        return length;
+    }
+
 }; /* Buffer Utils */
 
 #endif /* BUFFERUTILS_H */

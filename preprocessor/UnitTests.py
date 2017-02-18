@@ -295,13 +295,15 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         # Tricky
         fmtString = "\\%s %%p %%%s \\\\%s"
         self.assertEqual(parseTypesInFmtString(fmtString),
-                         ["const char*", "const char*"])
+                         [("const char*", None),
+                          ("const char*", None)])
 
     def test_parseTypesInFmtString_charTypes(self):
         self.assertEqual(parseTypesInFmtString("%hhd %hhi"),
-                         ["signed char", "signed char"])
+                         [("signed char", None),
+                          ("signed char", None)])
         self.assertEqual(parseTypesInFmtString(" %d"),
-                         ["int"])
+                         [("int", None)])
 
         with self.assertRaisesRegexp(ValueError, "not supported"):
             parseTypesInFmtString("%hhn")
@@ -311,13 +313,19 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
     def test_parseTypesInFmtString_jzt(self):
         self.assertEqual(parseTypesInFmtString("%jd %ji"),
-                         ["intmax_t", "intmax_t"])
+                         [("intmax_t", None), ("intmax_t", None)])
 
         self.assertEqual(parseTypesInFmtString("%ju %jo %jx %jX"),
-                         ["uintmax_t", "uintmax_t", "uintmax_t", "uintmax_t"])
+                         [("uintmax_t", None),
+                          ("uintmax_t", None),
+                          ("uintmax_t", None),
+                          ("uintmax_t", None)])
 
         self.assertEqual(parseTypesInFmtString("%zu %zd %tu %td"),
-                         ["size_t", "size_t", 'ptrdiff_t', "ptrdiff_t"])
+                         [("size_t", None),
+                          ("size_t", None),
+                          ('ptrdiff_t', None),
+                          ("ptrdiff_t", None)])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
             parseTypesInFmtString("%jn %zn zn %tn")
@@ -338,54 +346,97 @@ class FunctionGeneratorTestCase(unittest.TestCase):
     def test_parseTypesInFmtString_doubleTypes(self):
         self.assertEqual(parseTypesInFmtString(
             "%12.0f %12.3F %e %55.3E %-10.5g %G %a %A"),
-            ["double", "double", "double", "double",
-             "double", "double", "double", "double"])
+            [("double", 0),
+             ("double", 3),
+             ("double", None),
+             ("double", 3),
+             ("double", 5),
+             ("double", None),
+             ("double", None),
+             ("double", None)])
 
         self.assertEqual(parseTypesInFmtString(
             "%12.0Lf %12.3LF %Le %55.3LE %-10.5Lg %LG %La %LA"),
-            ["long double", "long double", "long double", "long double",
-             "long double", "long double", "long double", "long double"])
+            [("long double", 0),
+             ("long double", 3),
+             ("long double", None),
+             ("long double", 3),
+             ("long double", 5),
+             ("long double", None),
+             ("long double", None),
+             ("long double", None)])
 
         # Check that random modifiers don't change the type
         self.assertEqual(parseTypesInFmtString("%lf %llf"),
-                         ["double", "double"])
+                         [("double", None), ("double", None)])
 
         # Check for errors
         with self.assertRaisesRegexp(ValueError, "Invalid arguments for"):
             parseTypesInFmtString("%Lu")
 
     def test_parseTypesInFmtString_basicIntegerTypes(self):
-        self.assertEqual(parseTypesInFmtString("%d %i"), ["int", "int"])
+        self.assertEqual(parseTypesInFmtString("%d %i"),
+                         [("int", None),
+                          ("int", None)])
         self.assertEqual(parseTypesInFmtString("%u %o"),
-                         ["unsigned int", "unsigned int"])
+                         [("unsigned int", None),
+                          ("unsigned int", None)])
         self.assertEqual(parseTypesInFmtString("%x %X"),
-                         ["unsigned int", "unsigned int"])
+                         [("unsigned int", None),
+                          ("unsigned int", None)])
 
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         ["int", "const char*", "const void*"])
+                         [("int", None),
+                          ("const char*", None),
+                          ("const void*", None)])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
             parseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_cspn(self):
         self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         ["int", "const char*", "const void*"])
+                         [("int", None),
+                          ("const char*", None),
+                          ("const void*", None)])
 
         self.assertEqual(parseTypesInFmtString("%ls %lc"),
-                         ["const wchar_t*", "wint_t"])
+                         [("const wchar_t*", None),
+                          ("wint_t", None)])
 
         with self.assertRaisesRegexp(ValueError, "not supported"):
             parseTypesInFmtString("%n")
 
+    def test_parseTypesInFmtString_precision(self):
+        self.assertEqual(parseTypesInFmtString("%0.4d %0.2s"),
+                           [('int', 4), ('const char*', 2)])
+
+        self.assertEqual(parseTypesInFmtString("%*s %.*s %*.*lf"),
+                            [ ('int', None),
+                              ('const char*', None),
+                              ('int', None),
+                              ('const char*', '*'),
+                              ('int', None),
+                              ('int', None),
+                              ('double', '*')])
+
     def test_lengthModifiers(self):
         self.assertEqual(parseTypesInFmtString("%hhd %hd %ld %lld %jd %zd %td"),
-                         ["signed char", "short int", "long int",
-                          "long long int", "intmax_t", "size_t", "ptrdiff_t"])
+                         [("signed char", None),
+                          ("short int",  None),
+                          ("long int", None),
+                          ("long long int",  None),
+                          ("intmax_t",  None),
+                          ("size_t", None),
+                          ("ptrdiff_t", None)])
 
         self.assertEqual(parseTypesInFmtString("%hhu %hu %lu %llu %ju %zu %tu"),
-                         ["unsigned char", "unsigned short int",
-                          "unsigned long int", 'unsigned long long int',
-                          "uintmax_t", "size_t", "ptrdiff_t"])
+                         [("unsigned char", None),
+                          ("unsigned short int", None),
+                          ("unsigned long int", None),
+                          ('unsigned long long int', None),
+                          ("uintmax_t",  None),
+                          ("size_t", None),
+                          ("ptrdiff_t", None)])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
             parseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn")
@@ -538,7 +589,6 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
             self.assertEqual(fg.logId2Code, data.get('logId2Code'))
 
         os.remove("test.json")
-
 
     def test_outputMappingFile_withFolders(self):
         fg = FunctionGenerator()

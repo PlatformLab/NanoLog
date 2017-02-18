@@ -105,6 +105,9 @@ evilTestCase(NANO_LOG* log) {
 
     NANO_LOG("How about variable width + precision? %*.*lf %*d %10s", 9, 2, 12345.12345, 10, 123, "end");
 
+    NANO_LOG("How about a variable length string that should end %.*s", 4, "here, but not here.");
+    NANO_LOG("And another one that should end %.4s", "here, but not here.");
+
     ////////
     // Name Collision Tests
     ////////
@@ -228,6 +231,24 @@ NO_LOG("The worse");
 
 
     NANO_LOG("1) Simple times");
+
+    //////
+    // Special case string precision
+    //////
+
+    // This test is accompanied by a log size checker in the main file.
+    // It should ensure that only 4 bytes are logged, not 1,000,000 bytes
+    void* largeString = malloc(1000000);
+    memset(largeString, 'a', 1000000);
+    NANO_LOG("This string should end soon with 4 'a''s here: %.4s",
+                static_cast<const char*>(largeString));
+
+    int length = 5;
+    NANO_LOG("Another string that should end soon with 5 'a''s here: %.*s",
+                length, static_cast<const char*>(largeString));
+
+    NANO_LOG("A string that's just one 'a': %.1000000s", "a");
+    free(largeString);
 }
 
 ////////
