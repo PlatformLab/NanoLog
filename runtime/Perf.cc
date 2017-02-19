@@ -667,6 +667,19 @@ double rdtscTest()
     return Cycles::toSeconds(stop - start)/count;
 }
 
+// Measure the cost of reading high precision time
+double high_resolution_clockTest() {
+    int count = 1000000;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        std::chrono::high_resolution_clock::now();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 // Measure the cost of cpuid
 double serialize() {
     int count = 1000000;
@@ -780,6 +793,8 @@ TestInfo tests[] = {
      "snprintf the current time formatted as seconds.nanoseconds"},
     {"rdtscTest", rdtscTest,
      "Read the fine-grain cycle counter"},
+    {"high_resolution_clock", high_resolution_clockTest,
+     "std::chrono::high_resolution_clock::now"},
     {"serialize", serialize,
      "cpuid instruction for serialize"}
 };
