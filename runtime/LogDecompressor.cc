@@ -77,7 +77,6 @@ int main(int argc, char** argv) {
     printf("Opening file %s\r\n", argv[1]);
 
     int linesPrinted = 0;
-    uint32_t lastFmtId = 0;
     uint64_t lastTimestamp = 0;
     while (!in.eof()) {
         if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
@@ -87,14 +86,18 @@ int main(int argc, char** argv) {
 
         if (nextType == EntryType::LOG_MSG) {
             DecompressedMetadata dm =
-                BufferUtils::decompressMetadata(in, lastFmtId, lastTimestamp);
+                BufferUtils::decompressMetadata(in, lastTimestamp);
             //TODO(syang0) use cyclesPerSec given in checkpoint
-            printf("%4d) +%10.2lf ns: ", linesPrinted, 1.0e9*PerfUtils::Cycles::toSeconds(dm.timestamp - lastTimestamp));
-//            printf("+%0.2lf ns\t: ", 1.0e9*PerfUtils::Cycles::toSeconds(dm.timestamp - lastTimestamp));
-
+            double timeDiff;
+            if (dm.timestamp >= lastTimestamp)
+                timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
+                                                dm.timestamp - lastTimestamp);
+            else
+                timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
+                                                lastTimestamp - dm.timestamp);
+            printf("%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
             decompressAndPrintFnArray[dm.fmtId](in);
 
-            lastFmtId = dm.fmtId;
             lastTimestamp = dm.timestamp;
             ++linesPrinted;
         } else if (nextType == EntryType::CHECKPOINT) {

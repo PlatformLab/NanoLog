@@ -269,7 +269,6 @@ void
 NanoLog::compressionThreadMain()
 {
     //TODO(syang0) These should be abstracted away
-    uint32_t lastFmtId = 0;
     uint64_t lastTimestamp = 0;
 
     // Index of the last StagingBuffer checked for uncompressed log messages
@@ -339,8 +338,7 @@ NanoLog::compressionThreadMain()
                         ++eventsProcessed;
 
                         // Compress metadata here.
-                        BufferUtils::compressMetadata(re, &out, lastTimestamp, lastFmtId);
-                        lastFmtId = re->fmtId;
+                        BufferUtils::compressMetadata(re, &out, lastTimestamp);
                         lastTimestamp = re->timestamp;
 
                         //TODO(syang0) This should be analogs with above

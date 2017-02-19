@@ -97,13 +97,13 @@ namespace BufferUtils {
         // a CompressedRecordEntry.
         uint8_t entryType:2;
 
-        //TODO(syang0) abstraction failure
-        // Value returned by pack(formatId), subtracted by 1.
+        // TODO(syang0) this is an abstraction failure.
+        // Value returned by pack(formatId), subtracted by 1 to save space.
         // i.e. if pack() returned 2 this value is 1.
         uint8_t additionalFmtIdBytes:2;
 
-        // Value returned by pack(timestamp), subtracted by 1.
-        uint8_t additionalTimestampBytes:3;
+        // Value returned by pack(timestamp)
+        uint8_t additionalTimestampBytes:4;
     } __attribute__((packed));
 
     /**
@@ -171,16 +171,13 @@ namespace BufferUtils {
      * \param lastTimestamp
      *          The last timestamp that was compressed into the output buffer.
      *          This is used to pack the timestamp more compactly.
-     * \param lastFmtId
-     *          The last format id that was compressed into the output buffer.
-     *          This is used to pack the format id more compactly
      *
      * \return
      *          Number of bytes written to out
      */
     inline size_t
     compressMetadata(UncompressedLogEntry *re, char** out,
-                        uint64_t lastTimestamp,  uint32_t lastFmtId) {
+                        uint64_t lastTimestamp) {
         CompressedRecordEntry *mo = reinterpret_cast<CompressedRecordEntry*>(
                                                                           *out);
         *out += sizeof(CompressedRecordEntry);
@@ -189,13 +186,14 @@ namespace BufferUtils {
 
         // Bitmask is needed to prevent -Wconversion warnings
         mo->additionalFmtIdBytes = 0x03 & static_cast<uint8_t>(
-                BufferUtils::pack(out, re->fmtId - lastFmtId) - 1);
-        mo->additionalTimestampBytes = 0x07 & static_cast<uint8_t>(
-                    BufferUtils::pack(out, re->timestamp - lastTimestamp) - 1);
+                BufferUtils::pack(out, re->fmtId) - 1);
+        mo->additionalTimestampBytes = 0x0F & static_cast<uint8_t>(
+                    BufferUtils::pack(out, static_cast<int64_t>(
+                                            re->timestamp - lastTimestamp)));
 
         return sizeof(CompressedRecordEntry)
                     + mo->additionalFmtIdBytes + 1
-                    + mo->additionalTimestampBytes + 1;
+                    + (0x7 & mo->additionalTimestampBytes);
     }
 
     //TODO(syang0) abstract into the generated code
@@ -204,8 +202,6 @@ namespace BufferUtils {
      *
      * \param in
      *              File stream to read from
-     * \param lastFmtId
-     *              Last format id that was decompressed (abstraction leakage)
      * \param lastTimestamp
      *              Last time stamp that was decompressed (abstraction leakage)
      *
@@ -213,8 +209,7 @@ namespace BufferUtils {
      *              the decompressed metadata
      */
     inline DecompressedMetadata
-    decompressMetadata(std::ifstream &in, uint32_t lastFmtId,
-            uint64_t lastTimestamp)
+    decompressMetadata(std::ifstream &in, uint64_t lastTimestamp)
     {
         DecompressedMetadata dm;
         CompressedRecordEntry cm;
@@ -225,12 +220,10 @@ namespace BufferUtils {
             BufferUtils::unpack<uint32_t>(in,
                         static_cast<uint8_t>(cm.additionalFmtIdBytes + 1));
         dm.timestamp =
-            BufferUtils::unpack<uint64_t>(in,
-                        static_cast<uint8_t>(cm.additionalTimestampBytes + 1));
+            BufferUtils::unpack<int64_t>(in,
+                        static_cast<uint8_t>(cm.additionalTimestampBytes));
 
-        dm.fmtId += lastFmtId;
         dm.timestamp += lastTimestamp;
-
         return dm;
     }
 
