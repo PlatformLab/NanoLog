@@ -215,6 +215,7 @@ NanoLog::printConfig() {
 
     printf("StagingBuffer size: %u MB\r\n", STAGING_BUFFER_SIZE/1000000);
     printf("Output Buffer size: %u MB\r\n", OUTPUT_BUFFER_SIZE/1000000);
+    printf("Release Threshold : %u MB\r\n", RELEASE_THRESHOLD/1000000);
     printf("Idle Poll Interval: %u µs\r\n", POLL_INTERVAL_NO_WORK_US);
     printf("IO Poll Interval  : %u µs\r\n", POLL_INTERVAL_DURING_IO_US);
 }
@@ -313,6 +314,7 @@ NanoLog::compressionThreadMain()
                     lock.unlock();
 
                     uint64_t readableBytesStart = readableBytes;
+                    uint32_t bytesConsumed = 0;
                     //TODO(syang0) This should be abstracted away, me thinks.
                     while (readableBytes > 0) {
                         assert(readableBytes >= sizeof(BufferUtils::UncompressedLogEntry));
@@ -347,8 +349,14 @@ NanoLog::compressionThreadMain()
 
                         readableBytes -= re->entrySize;
                         peekPosition += re->entrySize;
-                        sb->consume(re->entrySize);
+                        bytesConsumed += re->entrySize;
+
+                        if (bytesConsumed >= RELEASE_THRESHOLD) {
+                            sb->consume(bytesConsumed);
+                            bytesConsumed = 0;
+                        }
                     }
+                    sb->consume(bytesConsumed);
                     totalBytesRead += readableBytesStart - readableBytes;
 
                     cyclesCompressing += PerfUtils::Cycles::rdtsc() - start;
@@ -627,20 +635,19 @@ NanoLog::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
         char *cachedReadPos = consumerPos;
 
         if (cachedReadPos <= producerPos) {
-            // All the space between the current producerPos and the end
-            // of the buffer available to us.
             minFreeSpace = endOfBuffer - producerPos;
 
             if (minFreeSpace > nbytes)
                 return producerPos;
 
             // Not enough space at the end of the buffer; wrap around
-            //TODO(syang0) I think a lock is needed here in case of reordering
             endOfRecordedSpace = producerPos;
 
             // Prevent the roll over if it overlaps the two positions because
             // that would imply the buffer is completely empty when it's not.
             if (cachedReadPos != storage) {
+                // prevents producerPos from updating before endOfRecordedSpace
+                Fence::sfence();
                 producerPos = storage;
                 minFreeSpace = cachedReadPos - producerPos;
             }
@@ -677,7 +684,7 @@ NanoLog::StagingBuffer::peek(uint64_t* bytesAvailable)
     char *cachedRecordHead = producerPos;
 
     if (cachedRecordHead < consumerPos) {
-        //TODO(syang0) LocK? See reserveSpaceInternal
+        Fence::lfence(); // Prevent reading new producerPos but old endOf...
         *bytesAvailable = endOfRecordedSpace - consumerPos;
 
         if (*bytesAvailable > 0)
