@@ -138,27 +138,27 @@ inline int
 pack(char **buffer, int16_t val)
 {
     if (val >= 0 || val <= int16_t(-(1<<8)))
-        return pack(buffer, static_cast<uint16_t>(val));
+        return pack<uint16_t>(buffer, static_cast<uint16_t>(val));
     else
-        return 8 + pack(buffer, static_cast<uint16_t>(-val));
+        return 8 + pack<uint16_t>(buffer, static_cast<uint16_t>(-val));
 }
 
 inline int
 pack(char **buffer, int32_t val)
 {
     if (val >= 0 || val <= int32_t(-(1<<24)))
-        return pack(buffer, static_cast<uint32_t>(val));
+        return pack<uint32_t>(buffer, static_cast<uint32_t>(val));
     else
-        return 8 + pack(buffer, static_cast<uint32_t>(-val));
+        return 8 + pack<uint32_t>(buffer, static_cast<uint32_t>(-val));
 }
 
 inline int
 pack(char **buffer, int64_t val)
 {
     if (val >= 0 || val <= int64_t(-(1LL<<56)))
-        return pack(buffer, static_cast<uint64_t>(val));
+        return pack<uint64_t>(buffer, static_cast<uint64_t>(val));
     else
-        return 8 + pack(buffer, static_cast<uint64_t>(-val));
+        return 8 + pack<uint64_t>(buffer, static_cast<uint64_t>(-val));
 }
 
 /**
