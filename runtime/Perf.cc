@@ -41,9 +41,11 @@
 #include <stdlib.h>
 #include <syscall.h>
 
+#include "BufferUtils.h"
 #include "Cycles.h"
 #include "PerfHelper.h"
 #include "Util.h"
+#include "Fence.h"
 
 using namespace PerfUtils;
 /**
@@ -721,6 +723,51 @@ double cond_wait_for_microsecond() {
     return Cycles::toSeconds(stop - start)/count;
 }
 
+
+double uncompressedLogEntryIteration() {
+    int arraySize = 1000000;
+
+    typedef BufferUtils::UncompressedLogEntry Entry;
+    Entry *in = static_cast<Entry*>(malloc(sizeof(Entry)*arraySize));
+    uint64_t junk = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int j = 0; j < arraySize; ++j) {
+        junk += in[j].entrySize;
+        junk += in[j].fmtId;
+        junk += in[j].timestamp;
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&junk);
+    free(in);
+
+    return Cycles::toSeconds(stop - start)/(arraySize);
+}
+
+double uncompressedLogEntryIterationWithFence() {
+    int arraySize = 1000000;
+
+    typedef BufferUtils::UncompressedLogEntry Entry;
+    Entry *in = static_cast<Entry*>(malloc(sizeof(Entry)*arraySize));
+    uint64_t junk = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int j = 0; j < arraySize; ++j) {
+        junk += in[j].entrySize;
+        junk += in[j].fmtId;
+        junk += in[j].timestamp;
+
+        Fence::lfence();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&junk);
+    free(in);
+
+    return Cycles::toSeconds(stop - start)/(arraySize);
+}
+
 // The following struct and table define each performance test in terms of
 // a string name and a function that implements the test.
 struct TestInfo {
@@ -796,7 +843,12 @@ TestInfo tests[] = {
     {"high_resolution_clock", high_resolution_clockTest,
      "std::chrono::high_resolution_clock::now"},
     {"serialize", serialize,
-     "cpuid instruction for serialize"}
+     "cpuid instruction for serialize"},
+    {"LogEntryIteration", uncompressedLogEntryIteration,
+      "Per element cost of iterating through log entries"},
+    {"LogEntryIterationFence", uncompressedLogEntryIterationWithFence,
+      "Per element cost of iterating through log entries with lfences"},
+
 };
 
 /**
