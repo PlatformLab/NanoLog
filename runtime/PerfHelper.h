@@ -23,6 +23,8 @@
 
 #include <stdint.h>
 
+#include "stdio.h"
+
 namespace PerfHelper {
 
 void flushCache();

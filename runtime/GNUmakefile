@@ -1,41 +1,41 @@
-SRCS=Cycles.cc Util.cc NanoLog.cc testHelper/BufferStuffer.cc
-INCLUDES=Cycles.h Util.h Packer.h Common.h NanoLog.h BufferUtils.h
-BENCHMARKS=Benchmark.cc
-PERF=Perf.cc PerfHelper.cc
-PERF_DEPS=PerfHelper.h
-TESTS=BufferUtilsTest.cc PackerTest.cc NanoLogTest.cc
-
-GTEST_DIR="../googletest/googletest"
+# Common Sources
+SRCS=Cycles.cc Util.cc testHelper/BufferStuffer.cc
+DEPS=Fence.h BufferUtils.h Common.h Packer.h
 OBJECTS:=$(SRCS:.cc=.o)
 
+# Test Specific Sources
+TESTS=BufferUtilsTest.cc  NanoLog.cc NanoLogTest.cc PackerTest.cc
+TEST_OBJS=$(TESTS:.cc=.o)
+
+GTEST_DIR="../googletest/googletest"
+INCLUDES=-I. -ItestHelper -I${GTEST_DIR}/include
+LIBS=-L. -lgtest -lrt -pthread
 CXX_ARGS=-std=c++11 -g -O3
-LIBS=-lrt -pthread
 
 all: test Perf
 
-libPerfUtils.a: $(SRCS) $(INCLUDES)
-	g++  -O3 -c  -std=c++11  $(SRCS)
-	ar -cvq libPerfUtils.a $(OBJECTS)
+%.o:%.cc %.h $(DEPS)
+	g++ $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
 %.o:%.cc
-	g++ $(CXX_ARGS) -ItestHelper -I./ -c $< -o $@
+	g++ $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
-test: $(TESTS) $(OBJECTS) $(INCLUDES) $(TEST_OBJS) libgtest.a
-	g++ $(CXX_ARGS) -isystem ${GTEST_DIR}/include $(TESTS) $(OBJECTS) $(GTEST_DIR)/src/gtest_main.cc libgtest.a -o test $(LIBS)
+$(TEST_OBJS): %.o:%.cc $(DEPS) libgtest.a
+	g++ $(CXX_ARGS) $(INCLUDES) $(LIBS) -c $< -o $@
 
-Perf : $(OBJECTS) $(INCLUDES) $(PERF) $(PERF_DEPS)
-	g++ $(CXX_ARGS) $(PERF) $(OBJECTS) -o Perf $(LIBS)
+test: $(TEST_OBJS) $(OBJECTS) libgtest.a
+	g++ $(CXX_ARGS) $(INCLUDE) -isystem ${GTEST_DIR}/include $^ $(GTEST_DIR)/src/gtest_main.cc -o test $(LIBS)
+
+Perf: Perf.cc PerfHelper.cc PerfHelper.h $(OBJECTS) $(DEPS)
+	g++ $(CXX_ARGS) $^ -o Perf
 
 libgtest.a:
 	g++ -std=c++11 -isystem $(GTEST_DIR)/include -I$(GTEST_DIR) -c $(GTEST_DIR)/src/gtest-all.cc $(LIBS)
 	ar -rv libgtest.a gtest-all.o
-	rm gtest-all.o
-
-benchmark : $(SRCS) $(INCLUDES)
-	g++ -o benchmark -O3 -std=c++0x $(SRCS)  $(BENCHMARKS) $(LIBS)
+	@rm gtest-all.o
 
 clean:
-	rm -f Perf test benchmark compressedLog *.o *.gch *.log
+	rm -f Perf test compressedLog testHelper/*.o *.o *.gch *.log
 
 clean-all: clean
-	rm -f libPerfUtils.a libgtest.a
+	rm -f libgtest.a

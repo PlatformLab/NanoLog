@@ -20,7 +20,7 @@
 #ifndef BUFFER_STUFFER
 #define BUFFER_STUFFER
 
-#include "FastLogger.h"
+#include "NanoLog.h"
 #include "Packer.h"
 
 #include <fstream>     // for decompression
@@ -36,7 +36,7 @@ namespace {
 void __syang0__fl__1(const char* fmtStr) {
     ;
     size_t allocSize = 0 + 0 + sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(PerfUtils::FastLogger::__internal_reserveAlloc(allocSize));
+    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     if (re == nullptr)
         return;
@@ -51,7 +51,7 @@ void __syang0__fl__1(const char* fmtStr) {
     ;
 
     // Make the entry visible
-    PerfUtils::FastLogger::__internal_finishAlloc(allocSize);
+    NanoLog::__internal_finishAlloc(allocSize);
 }
 
 
