@@ -49,8 +49,7 @@ public:
     // supposed to for the user to toggle...
 
     // Controls in what mode the file will be opened
-    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|
-                                                            O_DSYNC|O_DIRECT;
+    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|O_DSYNC;
 
     // Determines the byte size of the per-thread StagingBuffer that decouples
     // the producer logging thread from the consumer background compression
@@ -58,8 +57,15 @@ public:
     static const uint32_t STAGING_BUFFER_SIZE = 1<<20;
 
     // Determines the size of the output buffer used to store compressed log
-    // messages. It should be at least 8MB large to amortize disk seeks.
+    // messages. It should be at least 8MB large to amortize disk seeks and
+    // shall not be smaller than STAGING_BUFFER_SIZE.
     static const uint32_t OUTPUT_BUFFER_SIZE = 1<<26;
+
+    // This invariant must be true so that we can output at least one full
+    // StagingBuffer per output buffer.
+    static_assert(STAGING_BUFFER_SIZE <= OUTPUT_BUFFER_SIZE,
+        "OUTPUT_BUFFER_SIZE must be greater than or "
+            "equal to the STAGING_BUFFER_SIZE");
 
     // The threshold at which the consumer should release space back to the
     // producer in the thread-local StagingBuffer. Due to the blocking nature
@@ -158,17 +164,24 @@ PRIVATE:
     ensureStagingBufferAllocated()
     {
         if (stagingBuffer == nullptr) {
-            stagingBuffer = new StagingBuffer();
-            // Don't take lock until we have finished the expensive allocation
-            {
-                std::lock_guard<std::mutex> guard(bufferMutex);
-                threadBuffers.push_back(stagingBuffer);
-            }
+            std::unique_lock<std::mutex> guard(bufferMutex);
+            uint32_t bufferId = nextBufferId++;
+
+            // Unlocked for the expensive StagingBuffer allocation
+            guard.unlock();
+            stagingBuffer = new StagingBuffer(bufferId);
+            guard.lock();
+
+            threadBuffers.push_back(stagingBuffer);
         }
     }
 
     // Globally the thread-local stagingBuffers
     std::vector<StagingBuffer*> threadBuffers;
+
+    // Stores the id for the next StagingBuffer to be allocated. The ids are
+    // unique for this execution for each StagingBuffer allocation.
+    uint32_t nextBufferId = 1;
 
     // Protects reads and writes to threadBuffers
     std::mutex bufferMutex;
@@ -331,7 +344,12 @@ PRIVATE:
             return shouldDeallocate && consumerPos == producerPos;
         }
 
-        StagingBuffer()
+
+        uint32_t getId() {
+            return id;
+        }
+
+        StagingBuffer(uint32_t bufferId)
             : producerPos(storage)
             , endOfRecordedSpace(storage + STAGING_BUFFER_SIZE)
             , minFreeSpace(STAGING_BUFFER_SIZE)
@@ -339,6 +357,7 @@ PRIVATE:
             , cacheLineSpacer()
             , consumerPos(storage)
             , shouldDeallocate(false)
+            , id(bufferId)
             , storage()
         {
             // Empty function, but causes the C++ runtime to instantiate the
@@ -380,6 +399,10 @@ PRIVATE:
         // should be cleaned up once the buffer has been emptied by the
         // compression thread.
         bool shouldDeallocate;
+
+        // Uniquely identifies this StagingBuffer for this execution. It's
+        // similar to ThreadId, but is only assigned to threads that NANO_LOG).
+        uint32_t id;
 
         // Backing store used to implement the circular queue
         char storage[STAGING_BUFFER_SIZE];

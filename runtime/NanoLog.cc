@@ -36,6 +36,7 @@ NanoLog NanoLog::nanoLogSingleton;
 // NanoLog constructor
 NanoLog::NanoLog()
     : threadBuffers()
+    , nextBufferId()
     , bufferMutex()
     , compressionThread()
     , hasOutstandingOperation(false)
@@ -269,9 +270,6 @@ NanoLog::waitForAIO() {
 void
 NanoLog::compressionThreadMain()
 {
-    //TODO(syang0) These should be abstracted away
-    uint64_t lastTimestamp = 0;
-
     // Index of the last StagingBuffer checked for uncompressed log messages
     size_t lastStagingBufferChecked = 0;
 
@@ -289,6 +287,13 @@ NanoLog::compressionThreadMain()
     // to insufficient space in the outputBuffer
     bool outputBufferFull = false;
 
+    // Indicates that in scanning the StagingBuffers, we have passed the
+    // zero-th index, but have not yet encoded that in he compressed output
+    bool wrapAround = false;
+
+    // On restart of the main thread, put in a checkpoint in the output
+    BufferUtils::insertCheckpoint(&out, endOfBuffer);
+
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
@@ -305,16 +310,21 @@ NanoLog::compressionThreadMain()
                         && !threadBuffers.empty()) {
                 uint64_t readableBytes = 0;
                 StagingBuffer *sb = threadBuffers[i];
-
                 char *peekPosition = sb->peek(&readableBytes);
 
                 // If there's work, unlock to perform it
                 if (readableBytes > 0) {
                     uint64_t start = PerfUtils::Cycles::rdtsc();
+                    if (!BufferUtils::encodeBufferChange(sb->getId(),
+                            wrapAround, &out, endOfBuffer))
+                        break;
+
+                    wrapAround = false;
                     lock.unlock();
 
                     uint64_t readableBytesStart = readableBytes;
                     uint32_t bytesConsumed = 0;
+                    uint64_t lastTimestamp = 0;
                     //TODO(syang0) This should be abstracted away, me thinks.
                     while (readableBytes > 0) {
                         assert(readableBytes >= sizeof(BufferUtils::UncompressedLogEntry));
@@ -339,7 +349,7 @@ NanoLog::compressionThreadMain()
 
                         ++eventsProcessed;
 
-                        // Compress metadata here.
+                        // Compressed metadata here.
                         BufferUtils::compressMetadata(re, &out, lastTimestamp);
                         lastTimestamp = re->timestamp;
 
@@ -370,6 +380,7 @@ NanoLog::compressionThreadMain()
                         threadBuffers.erase(threadBuffers.begin() + i);
                         if (threadBuffers.empty()) {
                             lastStagingBufferChecked = i = 0;
+                            wrapAround = true;
                             break;
                         }
 
@@ -385,7 +396,10 @@ NanoLog::compressionThreadMain()
 
                 i = (i + 1) % threadBuffers.size();
 
-                // Completed a pass through the buffers
+                if (i == 0)
+                    wrapAround = true;
+
+                // Completed a full pass through the buffers
                 if (i == lastStagingBufferChecked)
                     break;
             }
@@ -419,26 +433,26 @@ NanoLog::compressionThreadMain()
                 const struct aiocb * const aiocb_list[] = { &aioCb };
 
                 cyclesAwake += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
-                    if (outputBufferFull) {
-                        // If the output buffer is full and we're not done,
-                        // wait for completion
-                        int err = aio_suspend(aiocb_list, 1, NULL);
-                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
-                        if (err != 0)
-                            perror("LogCompressor's Posix AIO "
-                                    "suspend operation failed");
-                    } else {
-                        // Otherwise do our regular sleep
-                        std::unique_lock<std::mutex> lock(condMutex);
-                        workAdded.wait_for(lock, std::chrono::microseconds(
-                                                POLL_INTERVAL_DURING_IO_US));
-                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                if (outputBufferFull) {
+                    // If the output buffer is full and we're not done,
+                    // wait for completion
+                    int err = aio_suspend(aiocb_list, 1, NULL);
+                    cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                    if (err != 0)
+                        perror("LogCompressor's Posix AIO "
+                                "suspend operation failed");
+                } else {
+                    // Otherwise do our regular sleep
+                    std::unique_lock<std::mutex> lock(condMutex);
+                    workAdded.wait_for(lock, std::chrono::microseconds(
+                                            POLL_INTERVAL_DURING_IO_US));
+                    cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
 
-                        if (aio_error(&aioCb) == EINPROGRESS) {
-                            cyclesAioAndFsync += (PerfUtils::Cycles::rdtsc() - start);
-                            continue;
-                        }
+                    if (aio_error(&aioCb) == EINPROGRESS) {
+                        cyclesAioAndFsync += (PerfUtils::Cycles::rdtsc() - start);
+                        continue;
                     }
+                }
             }
 
             int err = aio_error(&aioCb);

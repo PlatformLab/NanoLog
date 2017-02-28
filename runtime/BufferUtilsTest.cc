@@ -23,6 +23,7 @@
 
 #include "NanoLog.h"
 #include "BufferUtils.h"
+#include "Packer.h"
 
 namespace {
 
@@ -93,45 +94,45 @@ TEST_F(BufferUtilsTest, compressMetadata_negativeDeltas)
 
 TEST_F(BufferUtilsTest, compressMetadata_end2end)
 {
-    char buffer[100];
-    char *pos = buffer;
+    char backing_buffer[100];
+    char *buffer = backing_buffer;
     size_t cmpSize;
     UncompressedLogEntry re;
     DecompressedMetadata dm;
 
     re.fmtId = 1000;
     re.timestamp = 10000000000000L;
-    cmpSize = compressMetadata(&re, &pos, 0);
+    cmpSize = compressMetadata(&re, &buffer, 0);
     EXPECT_EQ(9U, cmpSize);
-    EXPECT_EQ(9U, pos - buffer);
+    EXPECT_EQ(9U, buffer - backing_buffer);
 
     re.fmtId = 10000;
     re.timestamp = 10000;
-    cmpSize = compressMetadata(&re, &pos, 10000000000000L);
+    cmpSize = compressMetadata(&re, &buffer, 10000000000000L);
     EXPECT_EQ(9U, cmpSize);
-    EXPECT_EQ(18U, pos - buffer);
+    EXPECT_EQ(18U, buffer - backing_buffer);
 
     re.fmtId = 1;
     re.timestamp = 100000;
-    cmpSize = compressMetadata(&re, &pos, 10000);
+    cmpSize = compressMetadata(&re, &buffer, 10000);
     EXPECT_EQ(5U, cmpSize);
-    EXPECT_EQ(23U, pos - buffer);
+    EXPECT_EQ(23U, buffer - backing_buffer);
 
     re.fmtId = 1;
     re.timestamp = 100001;
-    cmpSize = compressMetadata(&re, &pos, 100000);
+    cmpSize = compressMetadata(&re, &buffer, 100000);
     EXPECT_EQ(3U, cmpSize);
-    EXPECT_EQ(26U, pos - buffer);
+    EXPECT_EQ(26U, buffer - backing_buffer);
 
-    cmpSize = compressMetadata(&re, &pos, 100001);
+    cmpSize = compressMetadata(&re, &buffer, 100001);
     EXPECT_EQ(3U, cmpSize);
-    EXPECT_EQ(29U, pos - buffer);
+    EXPECT_EQ(29U, buffer - backing_buffer);
 
     // Write the data to a file.
     std::ofstream oFile;
     oFile.open("testLog.dat");
     ASSERT_TRUE(oFile.good());
-    oFile.write(buffer, pos - buffer);
+    oFile.write(backing_buffer, buffer - backing_buffer);
     ASSERT_TRUE(oFile.good());
     oFile.close();
 
@@ -159,6 +160,95 @@ TEST_F(BufferUtilsTest, compressMetadata_end2end)
     dm = decompressMetadata(iFile, 100001);
     EXPECT_EQ(1, dm.fmtId);
     EXPECT_EQ(100001, dm.timestamp);
+
+    iFile.close();
+    std::remove("testLog.dat");
+}
+
+TEST_F(BufferUtilsTest, encodeBufferChange) {
+    char backing_buffer[100];
+    char *endOfBuffer = backing_buffer + sizeof(backing_buffer);
+    char *buffer = backing_buffer;
+
+    // not enough space at all
+    EXPECT_FALSE(encodeBufferChange(0, false, &buffer, buffer));
+    EXPECT_FALSE(encodeBufferChange(50, true, &buffer, buffer));
+    EXPECT_EQ(backing_buffer, buffer);
+
+    // Pessimistic space checker
+    EXPECT_FALSE(encodeBufferChange(1, true, &buffer, buffer + 1));
+
+    // Encode short case
+    ASSERT_EQ(backing_buffer, buffer);
+    EXPECT_TRUE(encodeBufferChange(10, false, &buffer, endOfBuffer));
+    EXPECT_EQ(backing_buffer + 1, buffer);
+
+    BufferChange *tc = reinterpret_cast<BufferChange*>(backing_buffer);
+    EXPECT_EQ(EntryType::BUFFER_CHANGE, tc->entryType);
+    EXPECT_EQ(1U, tc->isShort);
+    EXPECT_FALSE(tc->wrapAround);
+    EXPECT_EQ(10U, tc->threadIdOrPackNibble);
+
+    // Encode long case
+    EXPECT_TRUE(encodeBufferChange(32, true, &buffer, endOfBuffer));
+    EXPECT_GE(backing_buffer + 1 + 2, buffer);
+
+    tc = reinterpret_cast<BufferChange*>(backing_buffer + 1);
+    EXPECT_EQ(EntryType::BUFFER_CHANGE, tc->entryType);
+    EXPECT_TRUE(tc->wrapAround);
+    EXPECT_EQ(0U, tc->isShort);
+
+    // DO NOT test for unpacking the result because that would
+    // be testing for packer. Instead, we save that for an end2end test
+}
+
+TEST_F(BufferUtilsTest, decodeBufferChange_end2end) {
+    char backing_buffer[10000];
+    char *endOfBuffer = backing_buffer + sizeof(backing_buffer);
+    char *buffer = backing_buffer;
+
+
+    ASSERT_TRUE(encodeBufferChange(28394, true, &buffer, endOfBuffer));
+    for (uint32_t i = 0; i < 64; ++i)
+        ASSERT_TRUE(encodeBufferChange(i, false, &buffer, endOfBuffer));
+
+    char *pos = buffer;
+    ASSERT_TRUE(encodeBufferChange(1000, false, &buffer, endOfBuffer));
+    ASSERT_TRUE(encodeBufferChange(70000, false, &buffer, endOfBuffer));
+    // Expect it to be not much larger than the number of bytes
+    // needed to represent the ThreadChange and 1000, 70000 numbers.
+    EXPECT_LE(7U, buffer - pos);
+
+    // Write the data to a file.
+    std::ofstream oFile;
+    oFile.open("testLog.dat");
+    ASSERT_TRUE(oFile.good());
+    oFile.write(backing_buffer, buffer - backing_buffer);
+    ASSERT_TRUE(oFile.good());
+    oFile.close();
+
+    // Read it back
+    std::ifstream iFile;
+    iFile.open("testLog.dat");
+    ASSERT_TRUE(iFile.good());
+
+    // Test the decoding
+    bool wrapAround = false;
+    EXPECT_EQ(28394, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_TRUE(wrapAround);
+
+    for (uint32_t i = 0; i < 64; ++i) {
+        EXPECT_EQ(i, decodeBufferChange(iFile, &wrapAround));
+        EXPECT_FALSE(wrapAround);
+    }
+
+    EXPECT_EQ(1000U, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_FALSE(wrapAround);
+    EXPECT_EQ(70000U, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_FALSE(wrapAround);
+
+    iFile.peek();
+    EXPECT_TRUE(iFile.eof());
 
     iFile.close();
     std::remove("testLog.dat");

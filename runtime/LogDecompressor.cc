@@ -25,6 +25,12 @@
 
 using namespace BufferUtils;
 
+#ifdef DEBUG_DECOMPRESSOR
+#define DEBUG_PRINT(x) printf("DEBUG: " x)
+#else
+#define DEBUG_PRINT(x)
+#endif
+
 /**
  * Simple program to decompress log files produced by the NanoLog System.
  * Note that this executable must be compiled with the same BufferStuffer.h
@@ -76,6 +82,8 @@ int main(int argc, char** argv) {
 
     printf("Opening file %s\r\n", argv[1]);
 
+    Checkpoint cp;
+    double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
     int linesPrinted = 0;
     uint64_t lastTimestamp = 0;
     while (!in.eof()) {
@@ -87,34 +95,34 @@ int main(int argc, char** argv) {
         if (nextType == EntryType::LOG_MSG) {
             DecompressedMetadata dm =
                 BufferUtils::decompressMetadata(in, lastTimestamp);
-            //TODO(syang0) use cyclesPerSec given in checkpoint
             double timeDiff;
             if (dm.timestamp >= lastTimestamp)
                 timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
-                                                dm.timestamp - lastTimestamp);
+                                                dm.timestamp - lastTimestamp,
+                                                cyclesPerSecond);
             else
                 timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
-                                                lastTimestamp - dm.timestamp);
+                                                lastTimestamp - dm.timestamp,
+                                                cyclesPerSecond);
             printf("%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
             decompressAndPrintFnArray[dm.fmtId](in);
 
             lastTimestamp = dm.timestamp;
             ++linesPrinted;
         } else if (nextType == EntryType::CHECKPOINT) {
-            // Read in the rest of the checkpoint and don't process (for now)
-            Checkpoint cp = BufferUtils::readCheckpoint(in);
-            printf("Found a checkpoint. CyclesPerSec=%lf\r\n", cp.cyclesPerSecond);
+            cp = BufferUtils::readCheckpoint(in);
+            cyclesPerSecond = cp.cyclesPerSecond;
+            DEBUG_PRINT("DEBUG: Found Checkpoint\r\n");
         } else if (nextType == EntryType::INVALID) {
-            // It's possible we hit a pad byte, double check.
+            // Consume pad bytes
             while(in.peek() == 0 && in.good())
                 in.get();
-        } else {
+
             if (in.eof())
                 break;
-
-            printf("Entry type read in metadata does not match anything "
-                            "(%d); exiting...\r\n", nextType);
-            exit(-1);
+        } else {
+            BufferUtils::decodeBufferChange(in);
+            DEBUG_PRINT("DEBUG: Found buffer change\r\n");
         }
     }
 

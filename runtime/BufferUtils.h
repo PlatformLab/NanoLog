@@ -78,9 +78,105 @@ namespace BufferUtils {
         // Indicates a struct CheckPoint
         CHECKPOINT = 2,
 
-        // Indicates the end of the file stream/buffer
-        END_OF_FILE
+        // Indicates that the next LOG_MSG's which come after this input are
+        // from a different buffer.
+        BUFFER_CHANGE = 3
     };
+
+    /**
+     * Marker in the compressed log that indicates to which StagingBuffer/Thread
+     * the next contiguous chunk of LOG_MSG's belong to (before the next
+     * BufferChange marker).
+     */
+    struct BufferChange {
+        // Byte representation of EntryType::BUFFER_CHANGE
+        uint8_t entryType:2;
+
+        // Indicates that the BufferChange also corresponds with a complete
+        // pass through all the StagingBuffer's at runtime. This information can
+        // be used to determine the maximal temporal reordering that can occur
+        // in the linear compressed log.
+        uint8_t wrapAround:1;
+
+        // A value of 1 indicates the next 4 bits are a threadId, else
+        // the next 4 bits are the 4-bit result of a pack() operation.
+        uint8_t isShort:1;
+
+        // Value is either a 4-bit threadId or a Pack() result used to compact
+        // the thread id that comes after this header.
+        uint8_t threadIdOrPackNibble:4;
+    } __attribute__((packed));
+
+    /**
+     * Insert a BufferChange marker in the output which associates the log
+     * messages that come after it in the output with a particular runtime
+     * StagingBuffer.
+     *
+     * \param bufferId
+     *      Id of the StagingBuffer to tag the marker with
+     *
+     * \param wrapAround
+     *      Indicates whether this marker also corresponds with a complete pass
+     *      through the runtime StagingBuffer's
+     *
+     * \param[in/out] output
+     *      Buffer to insert the BufferChange marker into and bump the pointer
+     *
+     * \param endOfOut
+     *      Marks the end of output (used to compute free space)
+     *
+     * \return
+     *      Indicates whether the operation was successful (true) or has failed
+     *      due to insufficient space (false).
+     */
+    inline bool
+    encodeBufferChange(uint32_t bufferId, bool wrapAround,
+                            char** output, const char* endOfOut)
+    {
+        if (sizeof(BufferChange) + sizeof(bufferId) >
+                static_cast<size_t>((endOfOut - *output)))
+            return false;
+
+        BufferChange *tc = reinterpret_cast<BufferChange*>(*output);
+        tc->wrapAround = wrapAround;
+        tc->entryType = EntryType::BUFFER_CHANGE;
+        *output += sizeof(BufferChange);
+
+        if (bufferId < (1<<4)) {
+            tc->isShort = true;
+            tc->threadIdOrPackNibble = 0x0F & bufferId;
+        } else {
+            tc->isShort = false;
+            tc->threadIdOrPackNibble = 0x0F & pack(output, bufferId);
+        }
+
+        return true;
+    }
+
+    /**
+     * Read back the bufferId embedded in a BufferChange marker within the
+     * input stream. Note, it is the responsibility of the caller to ensure
+     * that the stream contains a BufferChange marker.
+     *
+     * \param in
+     *      Input stream to interpret the BufferChange marker
+     * \return
+     *      The buffer id associated with the marker.
+     */
+    inline uint32_t
+    decodeBufferChange(std::ifstream &in, bool *wrapAround=NULL) {
+        BufferChange tc;
+        in.read(reinterpret_cast<char*>(&tc), sizeof(BufferChange));
+        assert(tc.entryType == EntryType::BUFFER_CHANGE);
+
+        if (wrapAround)
+            *wrapAround = tc.wrapAround;
+
+        if (tc.isShort)
+            return tc.threadIdOrPackNibble;
+
+        return unpack<uint32_t>(in, tc.threadIdOrPackNibble);
+    }
 
     /**
      * Marks the beginning of a compressed log message. After this comes
@@ -246,9 +342,7 @@ namespace BufferUtils {
                 "so we can peek() it at decompression");
 
         int type = in.peek();
-        if (type == EOF)
-            return EntryType::END_OF_FILE;
-        if (type < 0 || type > 255)
+        if (type == EOF || type < 0 || type > 255)
             return EntryType::INVALID;
 
         CompressedRecordEntry *cm = reinterpret_cast<CompressedRecordEntry*>(&type);

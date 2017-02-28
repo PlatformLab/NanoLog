@@ -35,7 +35,7 @@ class NanoLogTest : public ::testing::Test {
   NanoLogTest()
     : bufferSize(NanoLog::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
-    , sb(new NanoLog::StagingBuffer())
+    , sb(new NanoLog::StagingBuffer(0))
   {
       static_assert(1024 <= NanoLog::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
@@ -228,7 +228,7 @@ TEST_F(NanoLogTest, StagingBuffer_peek) {
 
     // Case 3: Roll over, need double peeks.
     delete sb;
-    sb = new NanoLog::StagingBuffer();
+    sb = new NanoLog::StagingBuffer(1);
 
     sb->reserveProducerSpace(bufferSize - 100);
     sb->finishReservation(bufferSize - 100);
