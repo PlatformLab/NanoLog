@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
     Checkpoint cp;
     double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
     int linesPrinted = 0;
+    bool bufferChanged = false;
     uint64_t lastTimestamp = 0;
     while (!in.eof()) {
         if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
@@ -94,7 +95,9 @@ int main(int argc, char** argv) {
 
         if (nextType == EntryType::LOG_MSG) {
             DecompressedMetadata dm =
-                BufferUtils::decompressMetadata(in, lastTimestamp);
+                BufferUtils::decompressMetadata(in,
+                                        (bufferChanged) ? 0 : lastTimestamp);
+            bufferChanged = false;
             double timeDiff;
             if (dm.timestamp >= lastTimestamp)
                 timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
@@ -104,6 +107,9 @@ int main(int argc, char** argv) {
                 timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
                                                 lastTimestamp - dm.timestamp,
                                                 cyclesPerSecond);
+            if (linesPrinted == 0)
+                timeDiff = 0;
+            
             printf("%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
             decompressAndPrintFnArray[dm.fmtId](in, stdout);
 
@@ -122,7 +128,8 @@ int main(int argc, char** argv) {
                 break;
         } else {
             BufferUtils::decodeBufferChange(in);
-            DEBUG_PRINT("DEBUG: Found buffer change\r\n");
+            bufferChanged = true;
+            DEBUG_PRINT("Found buffer change\r\n");
         }
     }
 
