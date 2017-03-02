@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
                                                 lastTimestamp - dm.timestamp,
                                                 cyclesPerSecond);
             printf("%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
-            decompressAndPrintFnArray[dm.fmtId](in);
+            decompressAndPrintFnArray[dm.fmtId](in, stdout);
 
             lastTimestamp = dm.timestamp;
             ++linesPrinted;

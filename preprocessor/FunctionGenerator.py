@@ -174,6 +174,16 @@ class FunctionGenerator(object):
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
+/**
+ * Describes a log message found in the user sources by the original format
+ * string provided, the file where the log message occurred, and the line number
+ */
+struct LogMetadata {
+  const char *fmtString;
+  const char *fileName;
+  uint32_t lineNumber;
+};
+
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
 // functions
 namespace {
@@ -193,11 +203,18 @@ namespace {
 """)
             # Here, we take the iteration order as the canonical order
             count = 0
+            logId2Metadata = []
             compressFnNameArray = []
             decompressFnNameArray = []
             for logId, code in mergedCode.iteritems():
                 if logId == "__INVALID__INVALID__INVALID__":
                     continue
+
+                logId2Metadata.append("{\"%s\", \"%s\", %d}" % (
+                    code["fmtString"],
+                    code["filename"],
+                    code["linenum"]
+                ))
 
                 oFile.write("extern const int %s = %d; // %s:%d \"%s\"\n" % (
                         generateIdVariableNameFromLogId(logId),
@@ -212,6 +229,12 @@ namespace {
                 decompressFnNameArray.append(code["decompressFnName"])
             oFile.write("""
 
+// Map of numerical ids to log message metadata
+struct LogMetadata logId2Metadata[{count}] =
+{{
+    {listOfLogId2Metadata}
+}};
+
 // Map of numerical ids to compression functions
 ssize_t
 (*compressFnArray[{count}]) ({Entry} *re, char* out)
@@ -221,7 +244,7 @@ ssize_t
 
 // Map of numerical ids to decompression functions
 void
-(*decompressAndPrintFnArray[{count}]) (std::ifstream &in)
+(*decompressAndPrintFnArray[{count}]) (std::ifstream &in, FILE *outputFd)
 {{
     {listOfDecompressionFnNames}
 }};
@@ -232,6 +255,7 @@ void
 #endif /* BUFFER_STUFFER */
 """.format(count=count,
            Entry=RECORD_ENTRY,
+           listOfLogId2Metadata=",\n".join(logId2Metadata),
            listOfCompressFnNames=",\n".join(compressFnNameArray),
            listOfDecompressionFnNames=",\n".join(decompressFnNameArray)
 ))
@@ -474,7 +498,7 @@ inline ssize_t
         decompressionCode = \
 """
 inline void
-{decompressFnName} (std::ifstream &in) {{
+{decompressFnName} (std::ifstream &in, FILE *outputFd) {{
     {Nibble} nib[{nibbleBytes}];
     in.read(reinterpret_cast<char*>(&nib), {nibbleBytes});
 
@@ -488,7 +512,8 @@ inline void
     const char *filename = "{filename}";
     const int linenum = {linenum};
 
-    printf("{fmtString}" "\\r\\n" {printfArgs});
+    if (outputFd)
+        fprintf(outputFd, "{fmtString}" "\\r\\n" {printfArgs});
 }}
 """.format(decompressFnName=decompressFnName,
         Nibble=NIBBLE_OBJ,
