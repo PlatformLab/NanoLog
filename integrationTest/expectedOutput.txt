@@ -1,6 +1,4 @@
 Opening file /tmp/testLog
- DEBUG: Found Checkpoint
- DEBUG: Found buffer change
  Simple times
  More simplicity
  How about a number? 1900

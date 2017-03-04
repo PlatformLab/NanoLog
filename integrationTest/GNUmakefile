@@ -112,7 +112,7 @@ libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) $(RUNTIME_DIR)/Cycles.o decompress
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/BufferStuffer.o
 
 decompressor: generated/BufferStuffer.o $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) -DDEBUG_DECOMPRESSOR $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(LIBRARY_LIBS)
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(LIBRARY_LIBS)
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) *.pyc decompressor
