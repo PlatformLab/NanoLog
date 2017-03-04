@@ -39,6 +39,7 @@ PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"
 
 STRLEN_FN = "BufferUtils::strnlen"
+GENERATED_CODE_NAMESPACE = "GeneratedFunctions"
 
 # This class assigns unique identifiers to unique printf-like format strings,
 # generates C++ code to record/compress/decompress the printf-like statements
@@ -201,6 +202,7 @@ namespace {
 
 // Assignment of numerical ids to format NANO_LOG occurrences
 """)
+
             # Here, we take the iteration order as the canonical order
             count = 0
             logId2Metadata = []
@@ -228,6 +230,8 @@ namespace {
                 compressFnNameArray.append(code["compressFnName"])
                 decompressFnNameArray.append(code["decompressFnName"])
             oFile.write("""
+// Start new namespace for generated ids and code
+namespace {namespace} {{
 
 // Map of numerical ids to log message metadata
 struct LogMetadata logId2Metadata[{count}] =
@@ -244,20 +248,28 @@ ssize_t
 
 // Map of numerical ids to decompression functions
 void
-(*decompressAndPrintFnArray[{count}]) (std::ifstream &in, FILE *outputFd)
+(*decompressAndPrintFnArray[{count}]) (std::ifstream &in,
+                                        FILE *outputFd,
+                                        void (*aggFn)(const char*, ...))
 {{
     {listOfDecompressionFnNames}
 }};
 
+// Total number of logIds. Can be used to bounds check array accesses.
+size_t numLogIds = {count};
+
 // Pop the unused gcc warnings
 #pragma GCC diagnostic pop
+
+}}; // {namespace}
 
 #endif /* BUFFER_STUFFER */
 """.format(count=count,
            Entry=RECORD_ENTRY,
            listOfLogId2Metadata=",\n".join(logId2Metadata),
            listOfCompressFnNames=",\n".join(compressFnNameArray),
-           listOfDecompressionFnNames=",\n".join(decompressFnNameArray)
+           listOfDecompressionFnNames=",\n".join(decompressFnNameArray),
+           namespace=GENERATED_CODE_NAMESPACE
 ))
 
     # Given a compilation unit via filename, return all the record functions
@@ -498,7 +510,9 @@ inline ssize_t
         decompressionCode = \
 """
 inline void
-{decompressFnName} (std::ifstream &in, FILE *outputFd) {{
+{decompressFnName} (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {{
     {Nibble} nib[{nibbleBytes}];
     in.read(reinterpret_cast<char*>(&nib), {nibbleBytes});
 
@@ -514,6 +528,9 @@ inline void
 
     if (outputFd)
         fprintf(outputFd, "{fmtString}" "\\r\\n" {printfArgs});
+
+    if (aggFn)
+        (*aggFn)("{fmtString}" {printfArgs});
 }}
 """.format(decompressFnName=decompressFnName,
         Nibble=NIBBLE_OBJ,

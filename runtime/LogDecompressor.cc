@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,6 +15,10 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <vector>
+
+#include <string.h>
+#include <stdarg.h>
 
 #include "BufferUtils.h"
 #include "Cycles.h"
@@ -30,6 +34,116 @@ using namespace BufferUtils;
 #else
 #define DEBUG_PRINT(x)
 #endif
+
+/**
+ * Given a compressed NanoLog log file, decompress it and output it to an
+ * outputFd.
+ *
+ * \param filename
+ *      Compressed NanoLog log file to decompress
+ * \param outputFd
+ *      File Descriptor to fprintf the original log messages to
+ * \param[optional] msgsToPrint
+ *      Limit for how many log messages to print
+ *
+ * \return
+ *      number of log encountered
+ */
+long
+decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
+{
+    std::ifstream in(filename, std::ifstream::binary);
+    if (!in.is_open()) {
+        printf("Unable to open file: %s\r\n", filename);
+        exit(-1);
+    }
+    fprintf(outputFd, "Opening file %s\r\n", filename);
+
+    double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
+    Checkpoint cp;
+    int linesPrinted = 0;
+    bool bufferChanged = false;
+    uint64_t lastTimestamp = 0;
+
+    while (!in.eof()) {
+        if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
+            break;
+
+        EntryType nextType = BufferUtils::peekEntryType(in);
+
+        if (nextType == EntryType::LOG_MSG) {
+            DecompressedMetadata dm =
+                BufferUtils::decompressMetadata(in,
+                                        (bufferChanged) ? 0 : lastTimestamp);
+            bufferChanged = false;
+            double timeDiff;
+            if (dm.timestamp >= lastTimestamp)
+                timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
+                                                dm.timestamp - lastTimestamp,
+                                                cyclesPerSecond);
+            else
+                timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
+                                                lastTimestamp - dm.timestamp,
+                                                cyclesPerSecond);
+            if (linesPrinted == 0)
+                timeDiff = 0;
+
+           fprintf(outputFd, "%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
+            GeneratedFunctions::decompressAndPrintFnArray[dm.fmtId](
+                                                            in, outputFd, NULL);
+            lastTimestamp = dm.timestamp;
+            ++linesPrinted;
+        } else if (nextType == EntryType::CHECKPOINT) {
+            cp = BufferUtils::readCheckpoint(in);
+            cyclesPerSecond = cp.cyclesPerSecond;
+            DEBUG_PRINT("DEBUG: Found Checkpoint\r\n");
+        } else if (nextType == EntryType::INVALID) {
+            // Consume pad bytes
+            while(in.peek() == 0 && in.good())
+                in.get();
+
+            if (in.eof())
+                break;
+        } else {
+            BufferUtils::decodeBufferChange(in);
+            bufferChanged = true;
+            DEBUG_PRINT("Found buffer change\r\n");
+        }
+    }
+
+    fprintf(outputFd, "\r\n\r\nDecompression Complete after printing %d "
+            "log messages\r\n", linesPrinted);
+
+    return linesPrinted;
+}
+
+/**
+ * Find all the original NANO_LOG format strings in the user sources that
+ * statically contain the searchString and print them out in the format
+ * "id   | filename | line | format string"
+ *
+ * \param searchString
+ *      Static string to search for in the format strings
+ */
+void
+printLogMetadataContainingSubstring(std::string searchString)
+{
+    std::vector<size_t> matchingLogIds;
+
+    for (size_t i = 0; i < GeneratedFunctions::numLogIds; ++i) {
+        const char *fmtMsg = GeneratedFunctions::logId2Metadata[i].fmtString;
+        if (strstr(fmtMsg, searchString.c_str()))
+            matchingLogIds.push_back(i);
+    }
+
+    printf("%4s | %-20s | %-4s | %s\r\n", "id", "filename", "line",
+                                                            "format string");
+    for (auto id : matchingLogIds) {
+        GeneratedFunctions::LogMetadata lm = GeneratedFunctions::logId2Metadata[id];
+        printf("%4lu | %-20s | %-4u | %s\r\n", id, lm.fileName, lm.lineNumber,
+                                                                lm.fmtString);
+    }
+}
 
 /**
  * Simple program to decompress log files produced by the NanoLog System.
@@ -74,67 +188,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::ifstream in(argv[1], std::ifstream::binary);
-    if (!in.is_open()) {
-        printf("Unable to open file: %s\r\n", argv[1]);
-        exit(-1);
-    }
-
-    printf("Opening file %s\r\n", argv[1]);
-
-    Checkpoint cp;
-    double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
-    int linesPrinted = 0;
-    bool bufferChanged = false;
-    uint64_t lastTimestamp = 0;
-    while (!in.eof()) {
-        if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
-            break;
-
-        EntryType nextType = BufferUtils::peekEntryType(in);
-
-        if (nextType == EntryType::LOG_MSG) {
-            DecompressedMetadata dm =
-                BufferUtils::decompressMetadata(in,
-                                        (bufferChanged) ? 0 : lastTimestamp);
-            bufferChanged = false;
-            double timeDiff;
-            if (dm.timestamp >= lastTimestamp)
-                timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
-                                                dm.timestamp - lastTimestamp,
-                                                cyclesPerSecond);
-            else
-                timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
-                                                lastTimestamp - dm.timestamp,
-                                                cyclesPerSecond);
-            if (linesPrinted == 0)
-                timeDiff = 0;
-            
-            printf("%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
-            decompressAndPrintFnArray[dm.fmtId](in, stdout);
-
-            lastTimestamp = dm.timestamp;
-            ++linesPrinted;
-        } else if (nextType == EntryType::CHECKPOINT) {
-            cp = BufferUtils::readCheckpoint(in);
-            cyclesPerSecond = cp.cyclesPerSecond;
-            DEBUG_PRINT("DEBUG: Found Checkpoint\r\n");
-        } else if (nextType == EntryType::INVALID) {
-            // Consume pad bytes
-            while(in.peek() == 0 && in.good())
-                in.get();
-
-            if (in.eof())
-                break;
-        } else {
-            BufferUtils::decodeBufferChange(in);
-            bufferChanged = true;
-            DEBUG_PRINT("Found buffer change\r\n");
-        }
-    }
-
-    printf("\r\n\r\nDecompression Complete after printing %d log messages\r\n",
-            linesPrinted);
+    decompressLogsTo(argv[1], stdout, msgsToPrint);
 
     return 0;
 }

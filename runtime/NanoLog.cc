@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -354,7 +354,9 @@ NanoLog::compressionThreadMain()
                         lastTimestamp = re->timestamp;
 
                         //TODO(syang0) This should be analogs with above
-                        size_t bytesOut = compressFnArray[re->fmtId](re, out);
+                        size_t bytesOut =
+                                GeneratedFunctions::compressFnArray[re->fmtId](
+                                                                    re, out);
                         out += bytesOut;
 
                         readableBytes -= re->entrySize;

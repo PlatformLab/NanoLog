@@ -82,7 +82,9 @@ compressArgs__A__mar46h__1__(BufferUtils::UncompressedLogEntry *re, char* out) {
 
 
 inline void
-decompressPrintArgs__A__mar46h__1__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__A__mar46h__1__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
     in.read(reinterpret_cast<char*>(&nib), 0);
 
@@ -98,6 +100,9 @@ decompressPrintArgs__A__mar46h__1__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
+
+    if (aggFn)
+        (*aggFn)("A" );
 }
 
 
@@ -154,7 +159,9 @@ compressArgs__C__mar46cc__200__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__C__mar46cc__200__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__C__mar46cc__200__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
     in.read(reinterpret_cast<char*>(&nib), 0);
 
@@ -170,6 +177,9 @@ decompressPrintArgs__C__mar46cc__200__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "C" "\r\n" );
+
+    if (aggFn)
+        (*aggFn)("C" );
 }
 
 
@@ -226,7 +236,9 @@ compressArgs__B__mar46cc__294__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__B__mar46cc__294__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__B__mar46cc__294__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
     in.read(reinterpret_cast<char*>(&nib), 0);
 
@@ -242,6 +254,9 @@ decompressPrintArgs__B__mar46cc__294__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "B" "\r\n" );
+
+    if (aggFn)
+        (*aggFn)("B" );
 }
 
 
@@ -298,7 +313,9 @@ compressArgs__E__del46cc__199__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__E__del46cc__199__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__E__del46cc__199__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
     in.read(reinterpret_cast<char*>(&nib), 0);
 
@@ -314,6 +331,9 @@ decompressPrintArgs__E__del46cc__199__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "E" "\r\n" );
+
+    if (aggFn)
+        (*aggFn)("E" );
 }
 
 
@@ -370,7 +390,9 @@ compressArgs__A__mar46cc__293__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__A__mar46cc__293__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__A__mar46cc__293__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
     in.read(reinterpret_cast<char*>(&nib), 0);
 
@@ -386,6 +408,9 @@ decompressPrintArgs__A__mar46cc__293__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
+
+    if (aggFn)
+        (*aggFn)("A" );
 }
 
 
@@ -445,7 +470,9 @@ compressArgs__D3237d__s46cc__100__(BufferUtils::UncompressedLogEntry *re, char* 
 
 
 inline void
-decompressPrintArgs__D3237d__s46cc__100__ (std::ifstream &in, FILE *outputFd) {
+decompressPrintArgs__D3237d__s46cc__100__ (std::ifstream &in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[1];
     in.read(reinterpret_cast<char*>(&nib), 1);
 
@@ -462,6 +489,9 @@ decompressPrintArgs__D3237d__s46cc__100__ (std::ifstream &in, FILE *outputFd) {
 
     if (outputFd)
         fprintf(outputFd, "D %d" "\r\n" , arg0);
+
+    if (aggFn)
+        (*aggFn)("D %d" , arg0);
 }
 
 
@@ -475,6 +505,8 @@ extern const int __fmtId__E__del46cc__199__ = 3; // del.cc:199 "E"
 extern const int __fmtId__A__mar46cc__293__ = 4; // mar.cc:293 "A"
 extern const int __fmtId__D3237d__s46cc__100__ = 5; // s.cc:100 "D %d"
 
+// Start new namespace for generated ids and code
+namespace GeneratedFunctions {
 
 // Map of numerical ids to log message metadata
 struct LogMetadata logId2Metadata[6] =
@@ -501,7 +533,9 @@ compressArgs__D3237d__s46cc__100__
 
 // Map of numerical ids to decompression functions
 void
-(*decompressAndPrintFnArray[6]) (std::ifstream &in, FILE *outputFd)
+(*decompressAndPrintFnArray[6]) (std::ifstream &in,
+                                        FILE *outputFd,
+                                        void (*aggFn)(const char*, ...))
 {
     decompressPrintArgs__A__mar46h__1__,
 decompressPrintArgs__C__mar46cc__200__,
@@ -511,7 +545,12 @@ decompressPrintArgs__A__mar46cc__293__,
 decompressPrintArgs__D3237d__s46cc__100__
 };
 
+// Total number of logIds. Can be used to bounds check array accesses.
+size_t numLogIds = 6;
+
 // Pop the unused gcc warnings
 #pragma GCC diagnostic pop
+
+}; // GeneratedFunctions
 
 #endif /* BUFFER_STUFFER */
