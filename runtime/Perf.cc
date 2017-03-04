@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -87,6 +87,48 @@ void function(uint64_t cycles) {
 //----------------------------------------------------------------------
 // Test functions start here
 //----------------------------------------------------------------------
+
+double aggregate_customFunction() {
+    int count = 1000000;
+    int total = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int j = 0; j < count; ++j) {
+        total += PerfHelper::sum4(j, j, j, j);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&total);
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double aggregate_templates() {
+    int count = 1000000;
+    int total = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int j = 0; j < count; ++j) {
+        total += PerfHelper::templateSum(4, j, j, j, j);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&total);
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double aggregate_va_args() {
+    int count = 1000000;
+    int total = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int j = 0; j < count; ++j) {
+        total += PerfHelper::va_argSum(4, j, j, j, j);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&total);
+    return Cycles::toSeconds(stop - start)/count;
+}
 
 double compressBinarySearch() {
     const int count = 1000000;
@@ -782,6 +824,12 @@ struct TestInfo {
                                   // test output fits on a single line).
 };
 TestInfo tests[] = {
+    {"aggregate_customFunction", aggregate_customFunction,
+     "Sum 4 int's with a custom function"},
+    {"aggregate_templates", aggregate_templates,
+     "Sum 4 int's via varadic templates"},
+    {"aggregate_va_args", aggregate_va_args,
+     "Sum 4 int's via va_args"},
     {"arrayPush", arrayPush,
      "Push 4 uint64_t's into a byte array via cast + pointer bump"},
     {"arrayStructCast", arrayStructCast,
@@ -894,7 +942,7 @@ main(int argc, char *argv[])
                 }
             }
             if (!foundTest) {
-                int width = printf("%-18s ??", argv[i]);
+                int width = printf("%-20s ??", argv[i]);
                 printf("%*s No such test\n", 26-width, "");
             }
         }

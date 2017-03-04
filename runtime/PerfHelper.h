@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -21,9 +21,10 @@
 #ifndef PERFHELPER_H
 #define PERFHELPER_H
 
-#include <stdint.h>
+#include <cstdarg>
 
-#include "stdio.h"
+#include <stdint.h>
+#include <stdio.h>
 
 namespace PerfHelper {
 
@@ -106,6 +107,60 @@ void discard(void* value) {
         printf("Value was 0x%x\n", x);
     }
 }
+
+// Below are 3 functions that use various methods to sum integers.
+
+/**
+ * Sum a variable number of int arguments via the va_args mechanism
+ *
+ * \param count
+ *      Number of int arguments passed in
+ * \param ...
+ *      The int arguments themselves
+ * \return
+ *      The sum of the int arguments.
+ */
+int va_argSum(int count, ...);
+
+/**
+ * Simple function to sum 4 int's.
+ *
+ * \param a
+ *      First integer
+ * \param b
+ *      Second integer
+ * \param c
+ *      Third integer
+ * \param d
+ *      Fourth integer
+ * \return
+ *      The sum
+ */
+int sum4(int a, int b, int c, int d);
+
+
+/**
+ * Sum a variable number of arguments via variadic templates. This would most
+ * likely compile down to a single function call that may be in-lined.
+ *
+ * \param first
+ *      First argument in a "recursive" varadic arguments
+ * \param args
+ *      The rest of the arguments
+ * \return
+ *      Sum of the arguments
+ */
+
+template<typename T>
+T templateSum(T v) {
+  return v;
+}
+
+template<typename T, typename... Args>
+T templateSum(T first, Args... args) {
+  return first + templateSum(args...);
+}
+
 } // PerfHelper
 
 #endif  // PERFHELPER_H

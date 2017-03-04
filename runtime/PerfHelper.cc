@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -13,6 +13,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <cstdarg>
 #include <stdint.h>
 
 /**
@@ -41,4 +42,22 @@ plusOne(uint64_t x)
     return x + 1;
 }
 
+// See documentation in PerfHelper.h
+int sum4(int a, int b, int c, int d) {
+    return a + b + c + d;
 }
+
+// See documentation in PerfHelper.h
+int va_argSum(int count, ...)
+{
+    int result = 0;
+    va_list args;
+    va_start(args, count);
+    for (int i = 0; i < count; ++i) {
+        result += va_arg(args, int);
+    }
+    va_end(args);
+    return result;
+}
+
+} // PerfHelper namespace
