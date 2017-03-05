@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -105,6 +105,13 @@ namespace BufferUtils {
         // Value is either a 4-bit threadId or a Pack() result used to compact
         // the thread id that comes after this header.
         uint8_t threadIdOrPackNibble:4;
+
+        // Optimization that hints that the next BufferChange structure is at
+        // least this many bytes later in the buffer. After this many bytes,
+        // one may find a BufferChange structure, other entries before the next
+        // BufferChange, or no BufferChange at all (if it's towards the end of
+        // the file).
+        uint32_t minDistanceToNextBufferChange;
     } __attribute__((packed));
 
     /**
@@ -125,13 +132,19 @@ namespace BufferUtils {
      * \param endOfOut
      *      Marks the end of output (used to compute free space)
      *
+     * \param hintNext
+     *      A uint32_t pointer that can be used to hint at the minimum number
+     *      of bytes between this BufferChange and the next. This parameter is
+     *      exposed as a pointer to allow setting the value after the
+     *      BufferChange has been encoded.
+     *
      * \return
      *      Indicates whether the operation was successful (true) or has failed
      *      due to insufficient space (false).
      */
     inline bool
-    encodeBufferChange(uint32_t bufferId, bool wrapAround,
-                            char** output, const char* endOfOut)
+    encodeBufferChange(uint32_t bufferId, bool wrapAround, char** output,
+                            const char* endOfOut, uint32_t **hintNext=NULL)
     {
         if (sizeof(BufferChange) + sizeof(bufferId) >
                 static_cast<size_t>((endOfOut - *output)))
@@ -140,7 +153,11 @@ namespace BufferUtils {
         BufferChange *tc = reinterpret_cast<BufferChange*>(*output);
         tc->wrapAround = wrapAround;
         tc->entryType = EntryType::BUFFER_CHANGE;
+        tc->minDistanceToNextBufferChange = 0;
         *output += sizeof(BufferChange);
+
+        if (hintNext)
+            *hintNext = &tc->minDistanceToNextBufferChange;
 
         if (bufferId < (1<<4)) {
             tc->isShort = true;
@@ -160,17 +177,28 @@ namespace BufferUtils {
      *
      * \param in
      *      Input stream to interpret the BufferChange marker
+     * \param[out] wrapAround
+     *      An optional bool pointer that if set, indicates whether the runtime
+     *      encoded a wrapAround occurrence whereby the log compressor made
+     *      a complete pass through all the StagingBuffers.
+     * \param[out] hintNextBufferChange
+     *      An optional uint32_t pointer that if set, indicates the minimum
+     *      byte distance to the next BufferChange structure.
      * \return
      *      The buffer id associated with the marker.
      */
     inline uint32_t
-    decodeBufferChange(std::ifstream &in, bool *wrapAround=NULL) {
+    decodeBufferChange(std::ifstream &in, bool *wrapAround=NULL,
+                        uint32_t *hintNextBufferChange=NULL) {
         BufferChange tc;
         in.read(reinterpret_cast<char*>(&tc), sizeof(BufferChange));
         assert(tc.entryType == EntryType::BUFFER_CHANGE);
 
         if (wrapAround)
             *wrapAround = tc.wrapAround;
+
+        if (hintNextBufferChange)
+            *hintNextBufferChange = tc.minDistanceToNextBufferChange;
 
         if (tc.isShort)
             return tc.threadIdOrPackNibble;

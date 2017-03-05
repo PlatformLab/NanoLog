@@ -315,8 +315,10 @@ NanoLog::compressionThreadMain()
                 // If there's work, unlock to perform it
                 if (readableBytes > 0) {
                     uint64_t start = PerfUtils::Cycles::rdtsc();
+                    uint32_t *hintNextBuffer = NULL;
+                    char *outputStart = out;
                     if (!BufferUtils::encodeBufferChange(sb->getId(),
-                            wrapAround, &out, endOfBuffer))
+                            wrapAround, &out, endOfBuffer, &hintNextBuffer))
                         break;
 
                     wrapAround = false;
@@ -370,6 +372,7 @@ NanoLog::compressionThreadMain()
                     }
                     sb->consume(bytesConsumed);
                     totalBytesRead += readableBytesStart - readableBytes;
+                    *hintNextBuffer = static_cast<uint32_t>(out - outputStart);
 
                     cyclesCompressing += PerfUtils::Cycles::rdtsc() - start;
                     lock.lock();

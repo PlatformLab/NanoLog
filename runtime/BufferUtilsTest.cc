@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -181,7 +181,7 @@ TEST_F(BufferUtilsTest, encodeBufferChange) {
     // Encode short case
     ASSERT_EQ(backing_buffer, buffer);
     EXPECT_TRUE(encodeBufferChange(10, false, &buffer, endOfBuffer));
-    EXPECT_EQ(backing_buffer + 1, buffer);
+    EXPECT_EQ(backing_buffer + sizeof(BufferChange), buffer);
 
     BufferChange *tc = reinterpret_cast<BufferChange*>(backing_buffer);
     EXPECT_EQ(EntryType::BUFFER_CHANGE, tc->entryType);
@@ -191,12 +191,22 @@ TEST_F(BufferUtilsTest, encodeBufferChange) {
 
     // Encode long case
     EXPECT_TRUE(encodeBufferChange(32, true, &buffer, endOfBuffer));
-    EXPECT_GE(backing_buffer + 1 + 2, buffer);
+    EXPECT_GE(backing_buffer + 2*sizeof(BufferChange) + 1, buffer);
 
-    tc = reinterpret_cast<BufferChange*>(backing_buffer + 1);
+    tc = reinterpret_cast<BufferChange*>(backing_buffer + sizeof(BufferChange));
     EXPECT_EQ(EntryType::BUFFER_CHANGE, tc->entryType);
     EXPECT_TRUE(tc->wrapAround);
     EXPECT_EQ(0U, tc->isShort);
+
+    // Test the pointer pointer to next
+    uint32_t *next = NULL;
+    buffer = backing_buffer;
+    encodeBufferChange(10, false, &buffer, endOfBuffer, &next);
+    ASSERT_NE(nullptr, next);
+
+    *next = 102384;
+    tc = reinterpret_cast<BufferChange*>(backing_buffer);
+    EXPECT_EQ(102384, tc->minDistanceToNextBufferChange);
 
     // DO NOT test for unpacking the result because that would
     // be testing for packer. Instead, we save that for an end2end test

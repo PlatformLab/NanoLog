@@ -30,9 +30,9 @@
 using namespace BufferUtils;
 
 #ifdef DEBUG_DECOMPRESSOR
-#define DEBUG_PRINT(x) printf("DEBUG: " x)
+#define DEBUG_PRINT(...) printf("DEBUG: " __VA_ARGS__)
 #else
-#define DEBUG_PRINT(x)
+#define DEBUG_PRINT(...)
 #endif
 
 /**
@@ -64,6 +64,7 @@ decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
     int linesPrinted = 0;
     bool bufferChanged = false;
     uint64_t lastTimestamp = 0;
+    uint32_t hintNextBufferChange = 0;
 
     while (!in.eof()) {
         if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
@@ -105,9 +106,24 @@ decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
             if (in.eof())
                 break;
         } else {
-            BufferUtils::decodeBufferChange(in);
+            uint32_t currentPos = static_cast<uint32_t>(in.tellg());
+            assert(currentPos >= hintNextBufferChange);
+            uint32_t next;
+
             bufferChanged = true;
-            DEBUG_PRINT("Found buffer change\r\n");
+            bool wrapAround = false;
+
+#ifndef DEBUG_DECOMPRESSOR
+            BufferUtils::decodeBufferChange(in, &wrapAround, &next);
+            if (hintNextBufferChange > 0) {}; // get rid of unused warnings.
+#else
+            uint32_t currentBufferId = BufferUtils::decodeBufferChange(
+                        in, &wrapAround, &next);
+            DEBUG_PRINT("Found buffer change at %ld to %d with wrapAround=%d and "
+                    "next being %u bytes away.\r\n", (long)(in.tellg()),
+                    currentBufferId, wrapAround, next);
+#endif
+            hintNextBufferChange = next + currentPos;
         }
     }
 

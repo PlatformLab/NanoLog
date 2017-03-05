@@ -82,7 +82,7 @@ define run-cxx
 	@rm -f $(2).i $(2).ii generated/BufferStuffer.h
 endef
 
-RUNTIME_CXX_FLAGS= -std=c++0x -O3 -DNDEBUG -g
+RUNTIME_CXX_FLAGS= -std=c++0x -O3 -g
 LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
