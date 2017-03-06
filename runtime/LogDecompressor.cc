@@ -57,7 +57,8 @@ decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
         printf("Unable to open file: %s\r\n", filename);
         exit(-1);
     }
-    fprintf(outputFd, "Opening file %s\r\n", filename);
+    if (outputFd)
+        fprintf(outputFd, "# Opening file %s\r\n", filename);
 
     double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
     Checkpoint cp;
@@ -89,7 +90,9 @@ decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
             if (linesPrinted == 0)
                 timeDiff = 0;
 
-           fprintf(outputFd, "%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
+            if (outputFd)
+                fprintf(outputFd, "%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
+
             GeneratedFunctions::decompressAndPrintFnArray[dm.fmtId](
                                                             in, outputFd, NULL);
             lastTimestamp = dm.timestamp;
@@ -127,7 +130,8 @@ decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
         }
     }
 
-    fprintf(outputFd, "\r\n\r\nDecompression Complete after printing %d "
+    if (outputFd)
+        fprintf(outputFd, "\r\n\r\nDecompression Complete after printing %d "
             "log messages\r\n", linesPrinted);
 
     return linesPrinted;
@@ -167,20 +171,11 @@ printLogMetadataContainingSubstring(std::string searchString)
  * as the LogCompressor that generated the compressedLog for this to work.
  */
 int main(int argc, char** argv) {
-    uint32_t bufferSize = 1<<26;
-
     if (argc < 2) {
         printf("Decompresses log files produced by the NanoLog System\r\n"
                 "into a human readable format.\r\n\r\n");
         printf("\tUsage: %s <logFile> [# messages to print]", argv[0]);
         exit(1);
-    }
-
-    char *scratchBufferSpace = static_cast<char*>(calloc(1, bufferSize));
-    if (!scratchBufferSpace) {
-        printf("Malloc of a %d byte array as a staging buffer "
-                "for decompressing failed\r\n", bufferSize);
-        exit(-1);
     }
 
     int msgsToPrint = 0;
