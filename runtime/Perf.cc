@@ -34,6 +34,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <map>
 
 #include <unistd.h>
@@ -128,6 +129,103 @@ double aggregate_va_args() {
 
     discard(&total);
     return Cycles::toSeconds(stop - start)/count;
+}
+
+/**
+ * Reads a number of bytes from an ifstream repeatedly and times it
+ *
+ * \param readSize
+ *          Number of bytes to read at once
+ *
+ * \return total time taken to read the readSize in seconds
+ */
+double ifstreamReadHelper(int readSize) {
+    int dataLen = 1000000;
+    char *backing_buffer = static_cast<char*>(malloc(dataLen));
+
+    std::ofstream oFile;
+    oFile.open("/tmp/testLog.dat");
+    oFile.write(backing_buffer, dataLen);
+    oFile.close();
+
+    // Read it back
+    std::ifstream iFile;
+    iFile.open("/tmp/testLog.dat");
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < dataLen/readSize; ++i) {
+        iFile.read(backing_buffer, readSize);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(backing_buffer);
+    std::remove("/tmp/testLog.dat");
+    free(backing_buffer);
+
+    return Cycles::toSeconds(stop - start)/(dataLen/readSize);
+}
+
+double ifstreamRead1() {
+    return ifstreamReadHelper(1);
+}
+
+double ifstreamRead10() {
+    return ifstreamReadHelper(10);
+}
+
+double ifstreamRead100() {
+    return ifstreamReadHelper(100);
+}
+
+/**
+ * Reads a number of bytes from an fread repeatedly and times it
+ *
+ * \param readSize
+ *          Number of bytes to read at once
+ *
+ * \return total time taken to read the readSize in seconds
+ */
+double freadHelper(int readSize) {
+    int dataLen = 1000000;
+    char *backing_buffer = static_cast<char*>(malloc(dataLen));
+
+    std::ofstream oFile;
+    oFile.open("/tmp/testLog.dat");
+    oFile.write(backing_buffer, dataLen);
+    oFile.close();
+
+    // Read it back
+    FILE *fd = fopen ("/tmp/testLog.dat", "r");
+    if (!fd) {
+        printf("Error: fread test could not open temp file/tmp/testLog.dat\r\n");
+        exit(1);
+    }
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < dataLen/readSize; ++i) {
+        fread(backing_buffer, 1, readSize, fd);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(backing_buffer);
+    free(backing_buffer);
+
+    fclose(fd);
+    std::remove("/tmp/testLog.dat");
+
+    return Cycles::toSeconds(stop - start)/(dataLen/readSize);
+}
+
+double fread1() {
+    return freadHelper(1);
+}
+
+double fread10() {
+    return freadHelper(10);
+}
+
+double fread100() {
+    return freadHelper(100);
 }
 
 double compressBinarySearch() {
@@ -858,6 +956,18 @@ TestInfo tests[] = {
      "Randomly dereference a function array of size 50"},
     {"switchStatement", switchCost,
      "Random switch statement of size 50"},
+    {"fread1", fread1,
+     "Cost of reading 1 byte via fread"},
+    {"fread10", fread10,
+     "Cost of reading 10 bytes via fread"},
+    {"fread100", fread100,
+     "Cost of reading 100 bytes via fread"},
+    {"ifstreamRead1", ifstreamRead1,
+     "Cost of reading 1 byte from an ifstream"},
+    {"ifstreamRead10", ifstreamRead10,
+     "Cost of reading 10 bytes from an ifstream"},
+    {"ifstreamRead10", ifstreamRead100,
+     "Cost of reading 100 bytes from an ifstream"},
     {"mapCreate", mapCreate,
      "Create+delete entry in std::map"},
     {"mapLookup", mapLookup,
