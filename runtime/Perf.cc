@@ -601,6 +601,52 @@ double mapLookup()
     return Cycles::toSeconds(stop - start)/(count*numKeys);
 }
 
+/**
+ * Measure the cost of copying cpyBytes from cold/hot source/destinations
+ *
+ * \param cpySize
+ *          Size of the copy
+ * \param coldSrc
+ *          if false, source will be fixed; otherwise random
+ * \param coldDst
+ *          if false, destination will be fixed; otherwise random
+ * \return
+ *        average time per cpyByte copy
+ */
+double manualCopy(int cpySize, bool coldSrc, bool coldDst) {
+    int count = 1000000;
+    uint32_t src[count], dst[count];
+    int bufSize = 1000000000; // 1GB buffer
+    char *buf = static_cast<char*>(malloc(bufSize));
+
+    uint32_t bound = (bufSize - cpySize);
+    for (int i = 0; i < count; i++) {
+        src[i] = (coldSrc) ? (rand() % bound) : 0;
+        dst[i] = (coldDst) ? (rand() % bound) : 0;
+    }
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        for (int j = 0; j < cpySize; ++j) {
+           *(buf + dst[i]) = *(buf + src[i]);
+        }
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    free(buf);
+    return Cycles::toSeconds(stop - start)/(count);
+}
+
+double manualCopyCached1()
+{
+    return manualCopy(1, false, false);
+}
+
+double manualCopyCached10()
+{
+    return manualCopy(10, false, false);
+}
+
 // Measure the cost of copying a given number of bytes with memcpy.
 double memcpyShared(int cpySize, bool coldSrc, bool coldDst)
 {
@@ -625,6 +671,10 @@ double memcpyShared(int cpySize, bool coldSrc, bool coldDst)
 
     free(buf);
     return Cycles::toSeconds(stop - start)/(count);
+}
+
+double memcpyCached1() {
+    return memcpyShared(1, false, false);
 }
 
 double memcpyCached100()
@@ -656,7 +706,6 @@ double memcpyCold1000()
 {
     return memcpyShared(1000, true, true);
 }
-
 
 // Cost of notifying a condition variable
 double notify_all() {
@@ -972,6 +1021,12 @@ TestInfo tests[] = {
      "Create+delete entry in std::map"},
     {"mapLookup", mapLookup,
      "Lookup in std::map<uint64_t, uint64_t>"},
+    {"manualCopyCached1", manualCopyCached1,
+     "for-loop copy 1 byte with hot/fixed dst and src"},
+    {"manualCopyCached10", manualCopyCached10,
+     "for-loop copy 10 bytes with hot/fixed dst and src"},
+    {"memcpyCached1", memcpyCached1,
+     "memcpy 1 bytes with hot/fixed dst and src"},
     {"memcpyCached100", memcpyCached100,
      "memcpy 100 bytes with hot/fixed dst and src"},
     {"memcpyCached1000", memcpyCached1000,
