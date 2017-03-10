@@ -165,7 +165,6 @@ class FunctionGenerator(object):
 #include "NanoLog.h"
 #include "Packer.h"
 
-#include <fstream>
 #include <string>
 
 // Since some of the functions/variables output below are for debugging purposes
@@ -248,7 +247,7 @@ ssize_t
 
 // Map of numerical ids to decompression functions
 void
-(*decompressAndPrintFnArray[{count}]) (std::ifstream &in,
+(*decompressAndPrintFnArray[{count}]) (const char **in,
                                         FILE *outputFd,
                                         void (*aggFn)(const char*, ...))
 {{
@@ -510,11 +509,12 @@ inline ssize_t
         decompressionCode = \
 """
 inline void
-{decompressFnName} (std::ifstream &in,
+{decompressFnName} (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {{
     {Nibble} nib[{nibbleBytes}];
-    in.read(reinterpret_cast<char*>(&nib), {nibbleBytes});
+    memcpy(&nib, (*in), {nibbleBytes});
+    (*in) += {nibbleBytes};
 
     // Unpack all the non-string argments
     {unpackNonStringArgsCode}

@@ -14,7 +14,7 @@
  */
 
 #include <cstddef>
-#include <fstream>          // std::ifstream
+#include <cstring>
 
 #include <stdint.h>
 
@@ -174,16 +174,16 @@ pack(char **buffer, int64_t val)
  */
 template<typename T>
 inline int
-pack(char **buffer, T* pointer) {
-    return pack<uint64_t>(buffer, reinterpret_cast<uint64_t>(pointer));
+pack(char **in, T* pointer) {
+    return pack<uint64_t>(in, reinterpret_cast<uint64_t>(pointer));
 }
 
 /**
  * Floating point specialization for the pack template that will copy the value
  * without compression.
  *
- * \param buffer
- *      char array to copy the integer into and bump
+ * \param[in/out] buffer
+ *      char array to copy the float into and bump
  * \param val
  *      Unsigned integer to pack into the buffer
  *
@@ -198,11 +198,12 @@ pack(char **buffer, T val) {
 }
 
 /**
- * Below are various unpack functions that will take an input stream and
- * the special code and return the original value.
+ * Below are various unpack functions that will take in a data array pointer
+ * and the special pack code, return the value originally pack()-ed and bump
+ * the pointer to "consume" the pack()-ed value.
  *
  * \param in
- *      std::ifstream to read the data from
+ *      data array pointer to read the data back from and increment.
  * \param packResult
  *      special 4-bit code returned from pack()
  *
@@ -213,7 +214,7 @@ pack(char **buffer, T val) {
 template<typename T>
 inline typename std::enable_if<!std::is_floating_point<T>::value &&
                                 !std::is_pointer<T>::value, T>::type
-unpack(std::ifstream &in, uint8_t packResult)
+unpack(const char **in, uint8_t packResult)
 {
     T packed = 0;
 
@@ -221,30 +222,35 @@ unpack(std::ifstream &in, uint8_t packResult)
         return packed;
 
     if (packResult <= 8) {
-       in.read(reinterpret_cast<char*>(&packed), packResult);
+        memcpy(&packed, (*in), packResult);
+        (*in) += packResult;
        return packed;
     }
 
-    int bytes = packResult - 8;
-    in.read(reinterpret_cast<char*>(&packed), bytes);
+    int bytes = (0x0f & (packResult - 8));
+    memcpy(&packed, (*in), bytes);
+    (*in) += bytes;
+
     return -packed;
 }
 template<typename T>
 inline typename std::enable_if<std::is_pointer<T>::value, T>::type
-unpack(std::ifstream &in, uint8_t packResult) {
-    return (T*)(unpack<uint64_t>(in, packResult));
+unpack(const char **in, uint8_t packNibble) {
+    return (T*)(unpack<uint64_t>(in, packNibble));
 }
 
 template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
-unpack(std::ifstream &in, uint8_t packResult) {
-    if (packResult == 0)
+unpack(const char **in, uint8_t packNibble) {
+    if (packNibble == 0)
         return 0.0;
 
-    T res = 0.0;
-    in.read(reinterpret_cast<char*>(&res), packResult);
+    T result;
+    uint8_t nib = (0x0f & packNibble);
+    std::memcpy(&result, (*in), nib);
+    (*in) += (0x0f & nib);
     
-    return res;
+    return result;
 }
 } /* BufferUtils */
 

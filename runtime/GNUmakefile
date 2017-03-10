@@ -17,7 +17,7 @@ all: test Perf
 %.o:%.cc %.h $(DEPS)
 	g++ $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
-%.o:%.cc
+%.o:%.cc $(DEPS)
 	g++ $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
 $(TEST_OBJS): %.o:%.cc $(DEPS) libgtest.a
@@ -26,7 +26,7 @@ $(TEST_OBJS): %.o:%.cc $(DEPS) libgtest.a
 test: $(TEST_OBJS) $(OBJECTS) libgtest.a
 	g++ $(CXX_ARGS) $(INCLUDE) -isystem ${GTEST_DIR}/include $^ $(GTEST_DIR)/src/gtest_main.cc -o test $(LIBS)
 
-Perf: Perf.cc PerfHelper.cc PerfHelper.h $(OBJECTS) $(DEPS)
+Perf: Perf.o PerfHelper.o PerfHelper.h $(OBJECTS)
 	g++ $(CXX_ARGS) $^ -o Perf
 
 libgtest.a:

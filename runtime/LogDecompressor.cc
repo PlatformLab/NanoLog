@@ -36,6 +36,112 @@ using namespace BufferUtils;
 #endif
 
 /**
+ * Stores a fragment of the compressed log corresponding to a contiguous chunk
+ * of log messages belonging to one StagingBuffer.
+ */
+struct BufferFragment {
+    // Stores the bytes in the compressed log fragment. The size is chosen to
+    // be 2x the size of a runtime StagingBuffer to account for any other
+    // entries that may be inserted at runtime.
+    //TODO(syang0) get the variables out please...
+    char storage[1<<26];
+
+    // Number of valid bytes in storage
+    uint64_t validBytes;
+
+    // The runtime StagingBuffer id associated with this fragment.
+    uint32_t runtimeId;
+
+    // For efficient IO, we read the entire fragment in once and then keep
+    // track of a read position within the buffer
+    const char *readPos;
+
+    // End of the valid data in storage
+    char *endOfBuffer;
+
+    // For sorting, store the metadata for the next log message to be
+    // decompressed so we can access its timestamp.
+    DecompressedMetadata nextLogMetadata;
+
+    /**
+     * Read in the next buffer fragment from the compressed log.
+     *
+     * \param fd
+     *      File stream to read it from
+     * \param[out] wrapAround
+     *      Indicates whether a wrap around was indicated in the log or not.
+     *
+     * \return
+     *      indicates whether the operation succeeded (true) or failed due to
+     *      a malformed log data.
+     */
+    bool readBufferFragment(FILE *fd, bool *wrapAround=NULL) {
+        validBytes = fread(storage, 1, BufferChange::maxSize(), fd);
+        BufferChange *bc = reinterpret_cast<BufferChange*>(storage);
+
+        if (bc->entryType != EntryType::BUFFER_CHANGE ||
+                validBytes < sizeof(BufferChange))
+            return false;
+
+        uint64_t remaining = bc->minDistanceToNextBufferChange - validBytes;
+        validBytes += fread(storage + validBytes, 1, remaining, fd);
+
+        if (validBytes != bc->minDistanceToNextBufferChange)
+            return false;
+
+        readPos = storage;
+        endOfBuffer = storage + validBytes;
+        runtimeId = decodeBufferChange(&readPos, wrapAround);
+
+        #ifdef DEBUG_DECOMPRESSOR
+        DEBUG_PRINT("Found buffer change at %ld to %d with wrapAround=%d and "
+                "next being %u bytes away.\r\n", (long)(ftell(fd)),
+                runtimeId, *wrapAround, validBytes);
+        #endif
+
+        nextLogMetadata = decompressMetadata(&readPos, 0);
+        return true;
+    }
+
+    inline bool
+    decompressNextLogStatement(FILE *outputFd,
+                                uint64_t &linesPrinted,
+                                uint64_t &lastTimestamp,
+                                double cyclesPerSecond)
+    {
+        if (readPos > endOfBuffer)
+            return false;
+
+        double timeDiff;
+        if (nextLogMetadata.timestamp >= lastTimestamp)
+            timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
+                                    nextLogMetadata.timestamp - lastTimestamp,
+                                    cyclesPerSecond);
+        else
+            timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
+                                    lastTimestamp - nextLogMetadata.timestamp,
+                                    cyclesPerSecond);
+        if (linesPrinted == 0)
+            timeDiff = 0;
+
+        if (outputFd)
+            fprintf(outputFd, "%4ld) +%12.2lf ns: ", linesPrinted, timeDiff);
+
+        GeneratedFunctions::decompressAndPrintFnArray[nextLogMetadata.fmtId](
+                                                    &readPos, outputFd, NULL);
+
+        lastTimestamp = nextLogMetadata.timestamp;
+        linesPrinted++;
+        if (readPos > endOfBuffer)
+            return false;
+
+        nextLogMetadata = decompressMetadata(&readPos, nextLogMetadata.timestamp);
+
+        return true;
+    }
+};
+
+/**
  * Given a compressed NanoLog log file, decompress it and output it to an
  * outputFd.
  *
@@ -50,88 +156,46 @@ using namespace BufferUtils;
  *      number of log encountered
  */
 long
-decompressLogsTo(const char *filename, FILE *outputFd, long msgsToPrint = 0)
+decompressLogsTo(const char *filename, FILE *outputFd, uint64_t msgsToPrint = 0)
 {
-    std::ifstream in(filename, std::ifstream::binary);
-    if (!in.is_open()) {
+    double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
+    Checkpoint cp;
+    uint64_t linesPrinted = 0;
+    uint64_t lastTimestamp = 0;
+
+    FILE *in = fopen(filename, "rb");
+    if (!in) {
         printf("Unable to open file: %s\r\n", filename);
         exit(-1);
     }
+
     if (outputFd)
         fprintf(outputFd, "# Opening file %s\r\n", filename);
 
-    double cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
-    Checkpoint cp;
-    int linesPrinted = 0;
-    bool bufferChanged = false;
-    uint64_t lastTimestamp = 0;
-    uint32_t hintNextBufferChange = 0;
+    if(!readCheckpoint(cp, in)) {
+        printf("Error: Could not read initial checkpoint, "
+                "the compressed log may be corrupted.\r\n");
+        exit(-1);
+    }
+    cyclesPerSecond = cp.cyclesPerSecond;
 
-    while (!in.eof()) {
-        if (msgsToPrint > 0 && linesPrinted >= msgsToPrint)
+    BufferFragment *bf = new BufferFragment();
+    while(!feof(in) && linesPrinted < msgsToPrint) {
+        bool wrapAround = false;
+        if (!bf->readBufferFragment(in, &wrapAround))
             break;
 
-        EntryType nextType = BufferUtils::peekEntryType(in);
-
-        if (nextType == EntryType::LOG_MSG) {
-            DecompressedMetadata dm =
-                BufferUtils::decompressMetadata(in,
-                                        (bufferChanged) ? 0 : lastTimestamp);
-            bufferChanged = false;
-            double timeDiff;
-            if (dm.timestamp >= lastTimestamp)
-                timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
-                                                dm.timestamp - lastTimestamp,
-                                                cyclesPerSecond);
-            else
-                timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
-                                                lastTimestamp - dm.timestamp,
-                                                cyclesPerSecond);
-            if (linesPrinted == 0)
-                timeDiff = 0;
-
-            if (outputFd)
-                fprintf(outputFd, "%4d) +%12.2lf ns: ", linesPrinted, timeDiff);
-
-            GeneratedFunctions::decompressAndPrintFnArray[dm.fmtId](
-                                                            in, outputFd, NULL);
-            lastTimestamp = dm.timestamp;
-            ++linesPrinted;
-        } else if (nextType == EntryType::CHECKPOINT) {
-            cp = BufferUtils::readCheckpoint(in);
-            cyclesPerSecond = cp.cyclesPerSecond;
-            DEBUG_PRINT("DEBUG: Found Checkpoint\r\n");
-        } else if (nextType == EntryType::INVALID) {
-            // Consume pad bytes
-            while(in.peek() == 0 && in.good())
-                in.get();
-
-            if (in.eof())
-                break;
-        } else {
-            uint32_t currentPos = static_cast<uint32_t>(in.tellg());
-            assert(currentPos >= hintNextBufferChange);
-            uint32_t next;
-
-            bufferChanged = true;
-            bool wrapAround = false;
-
-#ifndef DEBUG_DECOMPRESSOR
-            BufferUtils::decodeBufferChange(in, &wrapAround, &next);
-            if (hintNextBufferChange > 0) {}; // get rid of unused warnings.
-#else
-            uint32_t currentBufferId = BufferUtils::decodeBufferChange(
-                        in, &wrapAround, &next);
-            DEBUG_PRINT("Found buffer change at %ld to %d with wrapAround=%d and "
-                    "next being %u bytes away.\r\n", (long)(in.tellg()),
-                    currentBufferId, wrapAround, next);
-#endif
-            hintNextBufferChange = next + currentPos;
-        }
+        bool success = false;
+        do {
+            success = bf->decompressNextLogStatement(outputFd,
+                                                        linesPrinted,
+                                                        lastTimestamp,
+                                                        cyclesPerSecond);
+        } while (success);
     }
 
     if (outputFd)
-        fprintf(outputFd, "\r\n\r\nDecompression Complete after printing %d "
+        fprintf(outputFd, "\r\n\r\nDecompression Complete after printing %lu "
             "log messages\r\n", linesPrinted);
 
     return linesPrinted;
@@ -198,6 +262,9 @@ int main(int argc, char** argv) {
             exit(-1);
         }
     }
+
+    if (msgsToPrint == 0)
+        msgsToPrint = -1;
 
     decompressLogsTo(argv[1], stdout, msgsToPrint);
 

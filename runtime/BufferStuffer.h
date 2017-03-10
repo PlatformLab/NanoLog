@@ -51,7 +51,8 @@ extern struct LogMetadata logId2Metadata[];
 
 /**
  * Map of unique logIds to the compression function that takes an
- * UncompressedLogEntry from the StagingBuffer and compresses it to buffer out.
+ * UncompressedLogEntry from the StagingBuffer and and compresses it to buffer
+ * out.
  *
  * \param re
  *          Pointer to an UncomrpessedLogEntry within a StagingBuffer.
@@ -66,14 +67,19 @@ extern ssize_t
 
 
 /**
- * Map of unique logIds to the decompression function that takes an input stream
- * (whose next bytes contain a compressed log) and prints the original log
- * output to outputFd. An optional aggregator function can be passed in to
- * interpret the results.
+ * Map of unique logIds to functions which would decompress and print the
+ * original log message to outputFd.
  *
- * \param in
- *      Input stream whose next bytes contain a compressed log corresponding
- *      to logId index..
+ * Each function takes in a buffer pointer (whose next bytes point to the
+ * "argData" section of a CompressedLogEntry), an outputFd to output the log
+ * message to, and an optional aggregation function that takes in the same
+ * arguments as the original NANO_LOG(...) invocation. For example, an valid
+ * aggregation function for NANO_LOG("Hello World %d, %s\r\n, num, str) would
+ * have a function signature of void "fn(const char *, int, const char*)".
+ *
+ * \param[in/out] in
+ *      Character buffer who's next bytes contain the argument section of
+ *      a CompressedLogEntry.
  * \param outputFd
  *      File descriptor to print the original log message to. Set to NULL for
  *      no output.
@@ -81,7 +87,7 @@ extern ssize_t
  *      Optional va_arg-style function used to aggregate the results.
  */
 extern void
-(*decompressAndPrintFnArray[]) (std::ifstream &in,
+(*decompressAndPrintFnArray[]) (const char **in,
                                     FILE *outputFd,
                                     void (*aggFn)(char*, ...));
 

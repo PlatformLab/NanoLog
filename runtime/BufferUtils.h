@@ -14,9 +14,9 @@
  */
 
 #include <ctime>
-#include <fstream>
 
 #include <assert.h>
+#include <stdio.h>
 
 #include "Cycles.h"
 #include "Packer.h"
@@ -112,6 +112,12 @@ namespace BufferUtils {
         // BufferChange, or no BufferChange at all (if it's towards the end of
         // the file).
         uint32_t minDistanceToNextBufferChange;
+
+        // Returns the maximum size the BufferChange structure can be with
+        // the Pack()-ed arguments.
+        static int maxSize() {
+            return sizeof(BufferChange) + sizeof(uint32_t);
+        }
     } __attribute__((packed));
 
     /**
@@ -172,11 +178,12 @@ namespace BufferUtils {
 
     /**
      * Read back the bufferId embedded in a BufferChange marker within the
-     * input stream. Note, it is the responsibility of the caller to ensure
-     * that the stream contains a BufferChange marker.
+     * character array and bump the array pointer to "consume" the data.
+     * Note, it is the responsibility of the caller to ensure that the
+     * array contains a BufferChange marker.
      *
      * \param in
-     *      Input stream to interpret the BufferChange marker
+     *      Input character buffer to interpret the BufferChange marker
      * \param[out] wrapAround
      *      An optional bool pointer that if set, indicates whether the runtime
      *      encoded a wrapAround occurrence whereby the log compressor made
@@ -188,10 +195,11 @@ namespace BufferUtils {
      *      The buffer id associated with the marker.
      */
     inline uint32_t
-    decodeBufferChange(std::ifstream &in, bool *wrapAround=NULL,
+    decodeBufferChange(const char **in, bool *wrapAround=NULL,
                         uint32_t *hintNextBufferChange=NULL) {
         BufferChange tc;
-        in.read(reinterpret_cast<char*>(&tc), sizeof(BufferChange));
+        memcpy(&tc, (*in), sizeof(BufferChange));
+        (*in) += sizeof(BufferChange);
         assert(tc.entryType == EntryType::BUFFER_CHANGE);
 
         if (wrapAround)
@@ -325,19 +333,20 @@ namespace BufferUtils {
      * Read in and decompress the metadata from a UncompressedLogEntry.
      *
      * \param in
-     *              File stream to read from
+     *      character array to read in from
      * \param lastTimestamp
-     *              Last time stamp that was decompressed (abstraction leakage)
+     *      last timestamp that was decompressed (abstraction leakage)
      *
      * \return
      *              the decompressed metadata
      */
     inline DecompressedMetadata
-    decompressMetadata(std::ifstream &in, uint64_t lastTimestamp)
+    decompressMetadata(const char **in, uint64_t lastTimestamp)
     {
         DecompressedMetadata dm;
         CompressedRecordEntry cm;
-        in.read(reinterpret_cast<char*>(&cm), sizeof(CompressedRecordEntry));
+        memcpy(&cm, (*in), sizeof(CompressedRecordEntry));
+        (*in) += sizeof(CompressedRecordEntry);
         assert(cm.entryType == EntryType::LOG_MSG);
 
         dm.fmtId =
@@ -352,26 +361,49 @@ namespace BufferUtils {
     }
 
     /**
-     * Peek in an input file stream and identify the next entry (if there is
-     * one) that can be read back.
+     * Peek into a data array and identify the next entry embedded in the
+     * compressed log (if there is one) and read it back.
      *
      * \param in
-     *              File stream to peek into
-     *
+     *      Character array to peek into
      * \return
-     *              An EntryType specifying what comes next
+     *      An EntryType specifying what comes next
      */
     inline EntryType
-    peekEntryType(std::ifstream &in) {
-        // CompressedMetadata only takes a byte, so we can peek it and determine
-        // the entry type.
+    peekEntryType(char *in) {
+        int type = (uint8_t)(*in);
+        if (type == EOF || type < 0 || type > 255)
+            return EntryType::INVALID;
+
+        // TODO(syang0) breaks more abstractions
         static_assert(sizeof(CompressedRecordEntry) == 1,
                 "CompressedMetadata should only be 1 byte "
                 "so we can peek() it at decompression");
 
-        int type = in.peek();
+        CompressedRecordEntry *cm = reinterpret_cast<CompressedRecordEntry*>(&type);
+        return EntryType(cm->entryType);
+    }
+
+    /**
+     * Peek into the next byte in the file and identify the next entry embedded
+     * in the compressed log (if there is one) and read it back.
+     *
+     * \param fd
+     *      File descriptor to peek into
+     * \return
+     *      EntryType corresponding to the next entry in the compressed log
+     */
+    inline EntryType
+    peekEntryType(FILE *fd) {
+        int type = fgetc(fd);
+        ungetc(type, fd);
+
         if (type == EOF || type < 0 || type > 255)
             return EntryType::INVALID;
+
+        static_assert(sizeof(CompressedRecordEntry) == 1,
+                "CompressedMetadata should only be 1 byte "
+                "so we can peek() it at decompression");
 
         CompressedRecordEntry *cm = reinterpret_cast<CompressedRecordEntry*>(&type);
         return EntryType(cm->entryType);
@@ -408,18 +440,44 @@ namespace BufferUtils {
     }
 
     /**
-     * Extracts a checkpoint from a file stream
+     * Extracts a checkpoint from a character array and bumps the pointer to
+     * "consume" the data.
      *
-     * \param in
-     *          File stream to read from
+     * \param[in/out] in
+     *      Character data stream to read from
      * \return
-     *          The extracted Checkpoint
+     *      The extracted Checkpoint
      */
     inline Checkpoint
-    readCheckpoint(std::ifstream &in) {
+    readCheckpoint(char **in) {
         Checkpoint cp;
-        in.read(reinterpret_cast<char*>(&cp), sizeof(Checkpoint));
+        memcpy(&cp, (*in), sizeof(Checkpoint));
+        (*in) += sizeof(Checkpoint);
         return cp;
+    }
+
+    /**
+     * Extracts a checkpoint from a character array from a file descriptor.
+     *
+     * \param[out] cp
+     *      Checkpoint structure to read the data into
+     * \param fd
+     *      Stream to read checkpoint from
+     *
+     * \return
+     *      Whether the operation succeeded or failed due to lack of
+     *      space/malformed log
+     */
+    inline bool
+    readCheckpoint(Checkpoint &cp, FILE *fd) {
+        cp.entryType = EntryType::INVALID;
+        long numRead = fread(&cp, sizeof(Checkpoint), 1UL, fd);
+
+        if (!numRead)
+            return false;
+
+        assert(cp.entryType == EntryType::CHECKPOINT);
+        return true;
     }
 
     /**

@@ -128,41 +128,29 @@ TEST_F(BufferUtilsTest, compressMetadata_end2end)
     EXPECT_EQ(3U, cmpSize);
     EXPECT_EQ(29U, buffer - backing_buffer);
 
-    // Write the data to a file.
-    std::ofstream oFile;
-    oFile.open("testLog.dat");
-    ASSERT_TRUE(oFile.good());
-    oFile.write(backing_buffer, buffer - backing_buffer);
-    ASSERT_TRUE(oFile.good());
-    oFile.close();
+    const char *readPtr = backing_buffer;
 
-    // Read it back
-    std::ifstream iFile;
-    iFile.open("testLog.dat");
-    ASSERT_TRUE(iFile.good());
-
-    dm = decompressMetadata(iFile, 0U);
+    dm = decompressMetadata(&readPtr, 0U);
     EXPECT_EQ(1000, dm.fmtId);
     EXPECT_EQ(10000000000000L, dm.timestamp);
 
-    dm = decompressMetadata(iFile, 10000000000000L);
+    dm = decompressMetadata(&readPtr, 10000000000000L);
     EXPECT_EQ(10000, dm.fmtId);
     EXPECT_EQ(10000, dm.timestamp);
 
-    dm = decompressMetadata(iFile, 10000);
+    dm = decompressMetadata(&readPtr, 10000);
     EXPECT_EQ(1, dm.fmtId);
     EXPECT_EQ(100000, dm.timestamp);
 
-    dm = decompressMetadata(iFile, 100000);
+    dm = decompressMetadata(&readPtr, 100000);
     EXPECT_EQ(1, dm.fmtId);
     EXPECT_EQ(100001, dm.timestamp);
 
-    dm = decompressMetadata(iFile, 100001);
+    dm = decompressMetadata(&readPtr, 100001);
     EXPECT_EQ(1, dm.fmtId);
     EXPECT_EQ(100001, dm.timestamp);
 
-    iFile.close();
-    std::remove("testLog.dat");
+    EXPECT_EQ(29U, readPtr - backing_buffer);
 }
 
 TEST_F(BufferUtilsTest, encodeBufferChange) {
@@ -229,39 +217,24 @@ TEST_F(BufferUtilsTest, decodeBufferChange_end2end) {
     // needed to represent the ThreadChange and 1000, 70000 numbers.
     EXPECT_LE(7U, buffer - pos);
 
-    // Write the data to a file.
-    std::ofstream oFile;
-    oFile.open("testLog.dat");
-    ASSERT_TRUE(oFile.good());
-    oFile.write(backing_buffer, buffer - backing_buffer);
-    ASSERT_TRUE(oFile.good());
-    oFile.close();
-
-    // Read it back
-    std::ifstream iFile;
-    iFile.open("testLog.dat");
-    ASSERT_TRUE(iFile.good());
+    const char *readPtr = backing_buffer;
 
     // Test the decoding
     bool wrapAround = false;
-    EXPECT_EQ(28394, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_EQ(28394, decodeBufferChange(&readPtr, &wrapAround));
     EXPECT_TRUE(wrapAround);
 
     for (uint32_t i = 0; i < 64; ++i) {
-        EXPECT_EQ(i, decodeBufferChange(iFile, &wrapAround));
+        EXPECT_EQ(i, decodeBufferChange(&readPtr, &wrapAround));
         EXPECT_FALSE(wrapAround);
     }
 
-    EXPECT_EQ(1000U, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_EQ(1000U, decodeBufferChange(&readPtr, &wrapAround));
     EXPECT_FALSE(wrapAround);
-    EXPECT_EQ(70000U, decodeBufferChange(iFile, &wrapAround));
+    EXPECT_EQ(70000U, decodeBufferChange(&readPtr, &wrapAround));
     EXPECT_FALSE(wrapAround);
 
-    iFile.peek();
-    EXPECT_TRUE(iFile.eof());
-
-    iFile.close();
-    std::remove("testLog.dat");
+    EXPECT_LE(7U, readPtr - pos);
 }
 
 TEST_F(BufferUtilsTest, strnlen) {

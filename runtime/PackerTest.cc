@@ -267,30 +267,30 @@ TEST_F(PackerTest, unpack_int) {
     ASSERT_EQ(4, pack(&buffer, -int(1<<25)));
     ASSERT_EQ(buffer_space + 21, buffer);
 
-    // Write the buffer to a file and read it back
-    ofstream oFile;
-    oFile.open(testFile);
-    oFile.write(buffer_space, buffer - buffer_space);
-    oFile.close();
+//    // Write the buffer to a file and read it back
+//    ofstream oFile;
+//    oFile.open(testFile);
+//    oFile.write(buffer_space, buffer - buffer_space);
+//    oFile.close();
+//
+//    ifstream in;
+//    in.open(testFile);
+    const char *readPtr = buffer_space;
 
-    ifstream in;
-    in.open(testFile);
+    EXPECT_EQ(0, unpack<int>(&readPtr, 1));
 
-    EXPECT_EQ(0, unpack<int>(in, 1));
+    EXPECT_EQ(1, unpack<int>(&readPtr, 1));
+    EXPECT_EQ(-1, unpack<int>(&readPtr, 1 + 8));
+    EXPECT_EQ(255, unpack<int>(&readPtr, 1));
+    EXPECT_EQ(256, unpack<int>(&readPtr, 2));
 
-    EXPECT_EQ(1, unpack<int>(in, 1));
-    EXPECT_EQ(-1, unpack<int>(in, 1 + 8));
-    EXPECT_EQ(255, unpack<int>(in, 1));
-    EXPECT_EQ(256, unpack<int>(in, 2));
+    EXPECT_EQ(int((1<<24) - 1), unpack<int>(&readPtr, 3));
+    EXPECT_EQ(-int(1<<24), unpack<int>(&readPtr, 4));
+    EXPECT_EQ(int(1<<25), unpack<int>(&readPtr, 4));
+    EXPECT_EQ(-int(1<<25), unpack<int>(&readPtr, 4));
+    EXPECT_EQ(buffer_space + 21, readPtr);
 
-    EXPECT_EQ(int((1<<24) - 1), unpack<int>(in, 3));
-    EXPECT_EQ(-int(1<<24), unpack<int>(in, 4));
-    EXPECT_EQ(int(1<<25), unpack<int>(in, 4));
-    EXPECT_EQ(-int(1<<25), unpack<int>(in, 4));
-    EXPECT_EQ(-1, in.get());
-    EXPECT_TRUE(in.eof());
-
-    std::remove(testFile);
+//    std::remove(testFile);
 }
 
 TEST_F(PackerTest, unpack_pointer) {
@@ -302,18 +302,11 @@ TEST_F(PackerTest, unpack_pointer) {
     EXPECT_EQ(6U, pack(&buffer, ptr1));
     EXPECT_EQ(buffer_space + 14, buffer);
 
-    ofstream oFile;
-    oFile.open(testFile);
-    oFile.write(buffer_space, buffer - buffer_space);
-    oFile.close();
+    const char *readPtr = buffer_space;
 
-    ifstream in;
-    in.open(testFile);
-
-    EXPECT_EQ(ptr0, unpack<void*>(in, 8));
-    EXPECT_EQ(ptr1, unpack<void*>(in, 6));
-    EXPECT_EQ(-1, in.get());
-    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(ptr0, unpack<void*>(&readPtr, 8));
+    EXPECT_EQ(ptr1, unpack<void*>(&readPtr, 6));
+    EXPECT_EQ(buffer_space + 14, readPtr);
 }
 
 TEST_F(PackerTest, unpack_uint64_t) {
@@ -325,18 +318,11 @@ TEST_F(PackerTest, unpack_uint64_t) {
     EXPECT_EQ(6U, pack(&buffer, u1));
     ASSERT_EQ(buffer_space + 14, buffer);
 
-    ofstream oFile;
-    oFile.open(testFile);
-    oFile.write(buffer_space, buffer - buffer_space);
-    oFile.close();
+    const char *readPtr = buffer_space;
 
-    ifstream in;
-    in.open(testFile);
-
-    EXPECT_EQ(u0, unpack<uint64_t>(in, 8));
-    EXPECT_EQ(u1, unpack<uint64_t>(in, 6));
-    EXPECT_EQ(-1, in.get());
-    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(u0, unpack<uint64_t>(&readPtr, 8));
+    EXPECT_EQ(u1, unpack<uint64_t>(&readPtr, 6));
+    EXPECT_EQ(buffer_space + 14, readPtr);
 }
 
 TEST_F(PackerTest, unpack_ptrdiff) {
@@ -357,21 +343,13 @@ TEST_F(PackerTest, unpack_ptrdiff) {
     EXPECT_EQ(8, pack(&buffer, bigDiff2));
     ASSERT_EQ(buffer_space + 18, buffer);
 
-    ofstream oFile;
-    oFile.open(testFile);
-    oFile.write(buffer_space, buffer - buffer_space);
-    oFile.close();
+    const char *readPtr = buffer_space;
 
-    ifstream in;
-    in.open(testFile);
-
-    EXPECT_EQ(smallDiff1, unpack<std::ptrdiff_t>(in, 1U));
-    EXPECT_EQ(smallDiff2, unpack<std::ptrdiff_t>(in, 1 + 8));
-    EXPECT_EQ(bigDiff1, unpack<std::ptrdiff_t>(in, 8));
-    EXPECT_EQ(bigDiff2, unpack<std::ptrdiff_t>(in, 8));
-
-    EXPECT_EQ(-1, in.get());
-    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(smallDiff1, unpack<std::ptrdiff_t>(&readPtr, 1U));
+    EXPECT_EQ(smallDiff2, unpack<std::ptrdiff_t>(&readPtr, 1 + 8));
+    EXPECT_EQ(bigDiff1, unpack<std::ptrdiff_t>(&readPtr, 8));
+    EXPECT_EQ(bigDiff2, unpack<std::ptrdiff_t>(&readPtr, 8));
+    EXPECT_EQ(buffer_space + 18, readPtr);
 }
 
 TEST_F(PackerTest, packFloating) {
@@ -394,22 +372,15 @@ TEST_F(PackerTest, unpack_floating) {
     ASSERT_EQ(4, pack(&buffer, (float)(0.1)));
     ASSERT_EQ(buffer_space + 24, buffer);
 
-    ofstream oFile;
-    oFile.open(testFile);
-    oFile.write(buffer_space, buffer - buffer_space);
-    oFile.close();
+    const char *readPtr = buffer_space;
 
-    ifstream in;
-    in.open(testFile);
+    EXPECT_EQ(0.0, unpack<double>(&readPtr, 8));
+    EXPECT_EQ(0.0, unpack<float>(&readPtr, 4));
+    EXPECT_EQ(buffer_space + sizeof(float) + sizeof(double), readPtr);
 
-    EXPECT_EQ(0.0, unpack<double>(in, 8));
-    EXPECT_EQ(0.0, unpack<float>(in, 4));
-
-    EXPECT_EQ(0.1, unpack<double>(in, 8));
-    EXPECT_EQ(0.1f, unpack<float>(in, 4));
-
-    EXPECT_EQ(-1, in.get());
-    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(0.1, unpack<double>(&readPtr, 8));
+    EXPECT_EQ(0.1f, unpack<float>(&readPtr, 4));
+    EXPECT_EQ(buffer_space + 2*(sizeof(float) + sizeof(double)), readPtr);
 }
 
 }  // namespace
