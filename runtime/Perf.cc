@@ -41,6 +41,7 @@
 #include <sched.h>
 #include <stdlib.h>
 #include <syscall.h>
+#include <stdio.h>
 
 #include "BufferUtils.h"
 #include "Cycles.h"
@@ -226,6 +227,38 @@ double fread10() {
 
 double fread100() {
     return freadHelper(100);
+}
+
+double fgetcFn() {
+    int dataLen = 1000000;
+    char *backing_buffer = static_cast<char*>(malloc(dataLen));
+
+    std::ofstream oFile;
+    oFile.open("/tmp/testLog.dat");
+    oFile.write(backing_buffer, dataLen);
+    oFile.close();
+
+    // Read it back
+    FILE *fd = fopen ("/tmp/testLog.dat", "r");
+    if (!fd) {
+        printf("Error: fread test could not open temp file/tmp/testLog.dat\r\n");
+        exit(1);
+    }
+
+    uint8_t cnt = 0;
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < dataLen; ++i) {
+        cnt += fgetc(fd);
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&cnt);
+    free(backing_buffer);
+
+    fclose(fd);
+    std::remove("/tmp/testLog.dat");
+
+    return Cycles::toSeconds(stop - start)/(dataLen);
 }
 
 double compressBinarySearch() {
@@ -1005,6 +1038,8 @@ TestInfo tests[] = {
      "Randomly dereference a function array of size 50"},
     {"switchStatement", switchCost,
      "Random switch statement of size 50"},
+    {"fgetc", fgetcFn,
+     "Cost of a single fgetc"},
     {"fread1", fread1,
      "Cost of reading 1 byte via fread"},
     {"fread10", fread10,
