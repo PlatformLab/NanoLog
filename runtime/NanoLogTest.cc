@@ -33,11 +33,11 @@ class NanoLogTest : public ::testing::Test {
   NanoLog::StagingBuffer *sb;
 
   NanoLogTest()
-    : bufferSize(NanoLog::STAGING_BUFFER_SIZE)
+    : bufferSize(NanoLogConfig::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
     , sb(new NanoLog::StagingBuffer(0))
   {
-      static_assert(1024 <= NanoLog::STAGING_BUFFER_SIZE,
+      static_assert(1024 <= NanoLogConfig::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
   }
 

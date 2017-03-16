@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -38,5 +38,20 @@
     TypeName(const TypeName&) = delete;             \
     TypeName& operator=(const TypeName&) = delete;
 #endif
+
+/**
+ * Cast one size of int down to another one.
+ * Asserts that no precision is lost at runtime.
+ */
+template<typename Small, typename Large>
+Small
+downCast(const Large& large)
+{
+    Small small = static_cast<Small>(large);
+    // The following comparison (rather than "large==small") allows
+    // this method to convert between signed and unsigned values.
+    assert(large-small == 0);
+    return small;
+}
 
 #endif

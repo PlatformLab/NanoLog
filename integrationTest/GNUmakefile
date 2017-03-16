@@ -52,8 +52,8 @@ run-test: testApp
 
 run-empty-test: testApp
 	@touch emptyFile
-	@printf "Opening file emptyFile\r\n" > expected.txt
-	@printf "\r\n\r\nDecompression Complete after printing 0 log messages\r\n" >> expected.txt
+	@printf "Error: Could not read initial checkpoint, the compressed log may be corrupted.\r\n" > expected.txt
+	@printf "Unable to open file emptyFile\r\n" >> expected.txt
 
 	./decompressor emptyFile > output.txt
 	diff -w expected.txt output.txt
@@ -87,7 +87,7 @@ LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
-																							$(RUNTIME_DIR)/Util.cc
+						  $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \

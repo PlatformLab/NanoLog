@@ -43,8 +43,8 @@
 #include <syscall.h>
 #include <stdio.h>
 
-#include "BufferUtils.h"
 #include "Cycles.h"
+#include "Log.h"
 #include "PerfHelper.h"
 #include "Util.h"
 #include "Fence.h"
@@ -949,7 +949,7 @@ double cond_wait_for_microsecond() {
 double uncompressedLogEntryIteration() {
     int arraySize = 1000000;
 
-    typedef BufferUtils::UncompressedLogEntry Entry;
+    typedef Log::UncompressedEntry Entry;
     Entry *in = static_cast<Entry*>(malloc(sizeof(Entry)*arraySize));
     uint64_t junk = 0;
 
@@ -970,7 +970,7 @@ double uncompressedLogEntryIteration() {
 double uncompressedLogEntryIterationWithFence() {
     int arraySize = 1000000;
 
-    typedef BufferUtils::UncompressedLogEntry Entry;
+    typedef Log::UncompressedEntry Entry;
     Entry *in = static_cast<Entry*>(malloc(sizeof(Entry)*arraySize));
     uint64_t junk = 0;
 
@@ -1050,7 +1050,7 @@ TestInfo tests[] = {
      "Cost of reading 1 byte from an ifstream"},
     {"ifstreamRead10", ifstreamRead10,
      "Cost of reading 10 bytes from an ifstream"},
-    {"ifstreamRead10", ifstreamRead100,
+    {"ifstreamRead100", ifstreamRead100,
      "Cost of reading 100 bytes from an ifstream"},
     {"mapCreate", mapCreate,
      "Create+delete entry in std::map"},

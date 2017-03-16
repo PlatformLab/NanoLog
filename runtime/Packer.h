@@ -12,6 +12,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#include <type_traits>
 
 #include <cstddef>
 #include <cstring>
@@ -52,7 +53,6 @@
 
 namespace BufferUtils {
 
-
 /**
  * Packs two 4-bit nibbles into one byte. This is used to pack the special
  * codes returned by pack() in the compressed log.
@@ -61,7 +61,6 @@ struct TwoNibbles {
     uint8_t first:4;
     uint8_t second:4;
 } __attribute__((packed));
-
 
 /**
  * Given an unsigned integer and a char array, find the fewest number of

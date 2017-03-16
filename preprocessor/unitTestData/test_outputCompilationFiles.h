@@ -5,7 +5,6 @@
 #include "NanoLog.h"
 #include "Packer.h"
 
-#include <fstream>
 #include <string>
 
 // Since some of the functions/variables output below are for debugging purposes
@@ -33,8 +32,8 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46h__1__;
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46h__1__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -54,7 +53,7 @@ inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
 
 
 inline ssize_t
-compressArgs__A__mar46h__1__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__A__mar46h__1__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -69,12 +68,14 @@ compressArgs__A__mar46h__1__(BufferUtils::UncompressedLogEntry *re, char* out) {
     // Pack all the primitives
     
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ( 0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ( 0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -82,11 +83,12 @@ compressArgs__A__mar46h__1__(BufferUtils::UncompressedLogEntry *re, char* out) {
 
 
 inline void
-decompressPrintArgs__A__mar46h__1__ (std::ifstream &in,
+decompressPrintArgs__A__mar46h__1__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
-    in.read(reinterpret_cast<char*>(&nib), 0);
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
     
@@ -110,8 +112,8 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
     extern const uint32_t __fmtId__C__mar46cc__200__;
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__C__mar46cc__200__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -131,7 +133,7 @@ inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
 
 
 inline ssize_t
-compressArgs__C__mar46cc__200__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__C__mar46cc__200__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -146,12 +148,14 @@ compressArgs__C__mar46cc__200__(BufferUtils::UncompressedLogEntry *re, char* out
     // Pack all the primitives
     
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ( 0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ( 0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -159,11 +163,12 @@ compressArgs__C__mar46cc__200__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__C__mar46cc__200__ (std::ifstream &in,
+decompressPrintArgs__C__mar46cc__200__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
-    in.read(reinterpret_cast<char*>(&nib), 0);
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
     
@@ -187,8 +192,8 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
     extern const uint32_t __fmtId__B__mar46cc__294__;
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__B__mar46cc__294__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -208,7 +213,7 @@ inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
 
 
 inline ssize_t
-compressArgs__B__mar46cc__294__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__B__mar46cc__294__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -223,12 +228,14 @@ compressArgs__B__mar46cc__294__(BufferUtils::UncompressedLogEntry *re, char* out
     // Pack all the primitives
     
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ( 0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ( 0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -236,11 +243,12 @@ compressArgs__B__mar46cc__294__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__B__mar46cc__294__ (std::ifstream &in,
+decompressPrintArgs__B__mar46cc__294__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
-    in.read(reinterpret_cast<char*>(&nib), 0);
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
     
@@ -264,8 +272,8 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
     extern const uint32_t __fmtId__E__del46cc__199__;
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__E__del46cc__199__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -285,7 +293,7 @@ inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
 
 
 inline ssize_t
-compressArgs__E__del46cc__199__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__E__del46cc__199__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -300,12 +308,14 @@ compressArgs__E__del46cc__199__(BufferUtils::UncompressedLogEntry *re, char* out
     // Pack all the primitives
     
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ( 0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ( 0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -313,11 +323,12 @@ compressArgs__E__del46cc__199__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__E__del46cc__199__ (std::ifstream &in,
+decompressPrintArgs__E__del46cc__199__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
-    in.read(reinterpret_cast<char*>(&nib), 0);
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
     
@@ -341,8 +352,8 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46cc__293__;
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46cc__293__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -362,7 +373,7 @@ inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
 
 
 inline ssize_t
-compressArgs__A__mar46cc__293__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__A__mar46cc__293__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -377,12 +388,14 @@ compressArgs__A__mar46cc__293__(BufferUtils::UncompressedLogEntry *re, char* out
     // Pack all the primitives
     
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ( 0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ( 0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -390,11 +403,12 @@ compressArgs__A__mar46cc__293__(BufferUtils::UncompressedLogEntry *re, char* out
 
 
 inline void
-decompressPrintArgs__A__mar46cc__293__ (std::ifstream &in,
+decompressPrintArgs__A__mar46cc__293__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
-    in.read(reinterpret_cast<char*>(&nib), 0);
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
     
@@ -418,8 +432,8 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
     extern const uint32_t __fmtId__D3237d__s46cc__100__;
 
     ;
-    size_t allocSize = sizeof(arg0) +   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize = sizeof(arg0) +   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__D3237d__s46cc__100__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -428,7 +442,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
     char *buffer = re->argData;
 
     // Record the non-string arguments
-    	BufferUtils::recordPrimitive(buffer, arg0);
+    	Log::recordPrimitive(buffer, arg0);
 
 
     // Record the strings (if any) at the end of the entry
@@ -440,7 +454,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
 
 
 inline ssize_t
-compressArgs__D3237d__s46cc__100__(BufferUtils::UncompressedLogEntry *re, char* out) {
+compressArgs__D3237d__s46cc__100__(Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -457,12 +471,14 @@ compressArgs__D3237d__s46cc__100__(BufferUtils::UncompressedLogEntry *re, char* 
     	nib[0].first = 0x0f & static_cast<uint8_t>(BufferUtils::pack(&out, arg0));
 
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - (sizeof(arg0) +  0)
-                                        - sizeof(BufferUtils::UncompressedLogEntry);
-    if (stringBytes > 0) {
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - (sizeof(arg0) +  0)
+                                            - sizeof(Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
     }
 
     return out - originalOutPtr;
@@ -470,11 +486,12 @@ compressArgs__D3237d__s46cc__100__(BufferUtils::UncompressedLogEntry *re, char* 
 
 
 inline void
-decompressPrintArgs__D3237d__s46cc__100__ (std::ifstream &in,
+decompressPrintArgs__D3237d__s46cc__100__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[1];
-    in.read(reinterpret_cast<char*>(&nib), 1);
+    memcpy(&nib, (*in), 1);
+    (*in) += 1;
 
     // Unpack all the non-string argments
     	int arg0 = BufferUtils::unpack<int>(in, nib[0].first);
@@ -521,7 +538,7 @@ struct LogMetadata logId2Metadata[6] =
 
 // Map of numerical ids to compression functions
 ssize_t
-(*compressFnArray[6]) (BufferUtils::UncompressedLogEntry *re, char* out)
+(*compressFnArray[6]) (Log::UncompressedEntry *re, char* out)
 {
     compressArgs__A__mar46h__1__,
 compressArgs__C__mar46cc__200__,
@@ -533,7 +550,7 @@ compressArgs__D3237d__s46cc__100__
 
 // Map of numerical ids to decompression functions
 void
-(*decompressAndPrintFnArray[6]) (std::ifstream &in,
+(*decompressAndPrintFnArray[6]) (const char **in,
                                         FILE *outputFd,
                                         void (*aggFn)(const char*, ...))
 {

@@ -528,8 +528,8 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
     extern const uint32_t __fmtId{logId};
 
     ;
-    size_t allocSize =   sizeof(BufferUtils::UncompressedLogEntry);
-    BufferUtils::UncompressedLogEntry *re = reinterpret_cast<BufferUtils::UncompressedLogEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(Log::UncompressedEntry);
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
 
     re->fmtId = __fmtId{logId};
     re->timestamp = PerfUtils::Cycles::rdtsc();

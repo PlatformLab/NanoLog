@@ -65,7 +65,7 @@ define run-cxx
 	@mkdir -p generated
 	python $(PREPROC_DIR)/parser.py --mapOutput="generated/$(2).map" $(2).i
 	$(CXX) -I $(RUNTIME_DIR) -c -o $(1) $(2).ii $(3)
-	@rm -f $(2).i $(2).ii generated/BufferStuffer.h
+	@rm -f $(2).i $(2).ii generated/GeneratedCode.cc
 endef
 
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
@@ -73,7 +73,7 @@ NANO_LOG_LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
-		 $(RUNTIME_DIR)/Util.cc
+		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \
@@ -86,19 +86,19 @@ ifeq ($(COMPILER),gnu)
 CXXWARNS += -Weffc++
 endif
 
-generated/BufferStuffer.o: $(USER_OBJS)
+generated/GeneratedCode.o: $(USER_OBJS)
 	mkdir -p generated
-	python $(PREPROC_DIR)/parser.py --combinedOutput="generated/BufferStuffer.cc" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/BufferStuffer.cc -I $(RUNTIME_DIR) -Igenerated
+	python $(PREPROC_DIR)/parser.py --combinedOutput="generated/GeneratedCode.cc" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/GeneratedCode.cc -I $(RUNTIME_DIR) -Igenerated
 
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
 
-libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/BufferStuffer.o decompressor
-	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/BufferStuffer.o
+libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor
+	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
 
-decompressor: generated/BufferStuffer.o $(RUNTIME_OBJS) $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $(RUNTIME_OBJS) generated/BufferStuffer.o $(RUNTIME_DIR)/LogDecompressor.cc -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
+decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/Util.o $(RUNTIME_DIR)/Log.o $(RUNTIME_DIR)/LogDecompressor.cc
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor

@@ -26,11 +26,10 @@ from collections import namedtuple
 # Various globals mapping symbolic names to the object/function names in
 # the supporting C++ library. This is done so that changes in namespaces don't
 # result in large sweeping changes of this file.
-RECORD_ENTRY = "BufferUtils::UncompressedLogEntry"
-NIBBLE_OBJ = "BufferUtils::TwoNibbles"
+RECORD_ENTRY = "Log::UncompressedEntry"
+RECORD_PRIMITIVE_FN = "Log::recordPrimitive"
 
-RECORD_HEADER_FN = "BufferUtils::recordMetadata"
-RECORD_PRIMITIVE_FN = "BufferUtils::recordPrimitive"
+NIBBLE_OBJ = "BufferUtils::TwoNibbles"
 
 ALLOC_FN = "NanoLog::__internal_reserveAlloc"
 FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
@@ -38,7 +37,6 @@ FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
 PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"
 
-STRLEN_FN = "BufferUtils::strnlen"
 GENERATED_CODE_NAMESPACE = "GeneratedFunctions"
 
 # This class assigns unique identifiers to unique printf-like format strings,
@@ -354,11 +352,9 @@ size_t numLogIds = {count};
             if not precision:
                 strlenToAdd += "strlen(arg{0});".format(idx)
             elif precision == '*':
-                strlenToAdd += "{0}(arg{1}, arg{2});".format(
-                                                    STRLEN_FN, idx, idx - 1)
+                strlenToAdd += "strnlen(arg{0}, arg{1});".format(idx, idx - 1)
             else:
-                strlenToAdd += "{0}(arg{1}, {2});".format(
-                                                    STRLEN_FN, idx, precision)
+                strlenToAdd += "strnlen(arg{0}, {1});".format(idx, precision)
             strlenDeclarations.append(strlenToAdd)
 
         # For these two partial sums, it must end in a '+' character. Also,
@@ -459,12 +455,14 @@ inline ssize_t
     // Pack all the primitives
     {packNonStringArgsCode}
 
-    // memcpy all the strings without compression
-    size_t stringBytes = re->entrySize - ({sizeofNonStringTypes} 0)
-                                        - sizeof({Entry});
-    if (stringBytes > 0) {{
-        memcpy(out, args, stringBytes);
-        out += stringBytes;
+    if ({hasStrings}) {{
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - ({sizeofNonStringTypes} 0)
+                                            - sizeof({Entry});
+        if (stringBytes > 0) {{
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }}
     }}
 
     return out - originalOutPtr;
@@ -475,7 +473,8 @@ inline ssize_t
         nibbleBytes=nibbleByteSizes,
         readBackNonStringArgsCode=readBackNonStringArgsCode,
         packNonStringArgsCode=packNonStringArgsCode,
-        sizeofNonStringTypes=nonStringSizeOfPartialSum
+        sizeofNonStringTypes=nonStringSizeOfPartialSum,
+        hasStrings=("true" if stringArgIds else "false")
 )
 
         ###
@@ -495,14 +494,12 @@ inline ssize_t
         readbackStringCode = ""
         for idx in stringArgIds:
             type = fmtTypes[idx].type
-            strType = "std::wstring" if "w_char" in type else "std::string"
 
             readbackStringCode += \
             """
-                {strType} arg{idx}_str;
-                std::getline(in, arg{idx}_str, '\\0');
-                {type} arg{idx} = arg{idx}_str.c_str();
-            """.format(strType=strType, idx=idx, type=type)
+                {type} arg{idx} = *in;
+                (*in) += strlen(arg{idx}) + 1; // +1 for null terminator
+            """.format(idx=idx, type=type)
 
 
         decompressFnName = "decompressPrintArgs" + logId

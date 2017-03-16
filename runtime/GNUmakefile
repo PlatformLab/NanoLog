@@ -1,10 +1,10 @@
 # Common Sources
-SRCS=Cycles.cc Util.cc testHelper/BufferStuffer.cc
-DEPS=Fence.h BufferUtils.h Common.h Packer.h
+SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc
+DEPS=Fence.h Log.h Common.h Packer.h
 OBJECTS:=$(SRCS:.cc=.o)
 
 # Test Specific Sources
-TESTS=BufferUtilsTest.cc  NanoLog.cc NanoLogTest.cc PackerTest.cc
+TESTS=LogTest.cc  NanoLog.cc NanoLogTest.cc PackerTest.cc
 TEST_OBJS=$(TESTS:.cc=.o)
 
 GTEST_DIR="../googletest/googletest"
@@ -23,7 +23,7 @@ all: test Perf
 $(TEST_OBJS): %.o:%.cc $(DEPS) libgtest.a
 	g++ $(CXX_ARGS) $(INCLUDES) $(LIBS) -c $< -o $@
 
-test: $(TEST_OBJS) $(OBJECTS) libgtest.a
+test: $(OBJECTS) $(TEST_OBJS) libgtest.a
 	g++ $(CXX_ARGS) $(INCLUDE) -isystem ${GTEST_DIR}/include $^ $(GTEST_DIR)/src/gtest_main.cc -o test $(LIBS)
 
 Perf: Perf.o PerfHelper.o PerfHelper.h $(OBJECTS)

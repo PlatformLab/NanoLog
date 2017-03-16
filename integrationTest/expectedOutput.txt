@@ -1,4 +1,3 @@
-Opening file /tmp/testLog
  Simple times
  More simplicity
  How about a number? 1900
@@ -95,4 +94,4 @@ ie
  SimpleTest::logSomething: Something = 3
 
 
-Decompression Complete after printing 77 log messages
+# Decompression Complete after printing 77 log messages
