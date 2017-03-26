@@ -493,7 +493,7 @@ namespace Log {
             bool hasMoreLogs;
 
             // For sorting, store the metadata for the next log message to be
-            // decompressed so we can access its timestamp.
+            // decompressed so we can access its absolute rdtsc timestamp.
             uint32_t nextLogId;
             uint64_t nextLogTimestamp;
 
@@ -504,7 +504,7 @@ namespace Log {
             bool decompressNextLogStatement(FILE *outputFd,
                                  uint64_t &logMsgsPrinted,
                                  uint64_t &lastTimestamp,
-                                 double cyclesPerSecond,
+                                 const Checkpoint &checkpoint,
                                  long aggregationFilterId=-1,
                                  void (*aggregationFn)(const char*, ...)=NULL);
             uint64_t getNextLogTimestamp() const;

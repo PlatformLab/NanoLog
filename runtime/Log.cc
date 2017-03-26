@@ -407,8 +407,8 @@ Log::Decoder::BufferFragment::readBufferExtent(FILE *fd, bool *wrapAround) {
  * \param lastTimestamp
  *      The timestamp of the last log message to be outputted (this is used
  *      to print time differences).
- * \param cyclesPerSecond
- *      The ratio of rdtsc() cycles to wall time seconds
+ * \param checkpoint
+ *      The checkpoint containing rdtsc-to-time mapping this function should use
  * \param aggregationFilterId
  *      The logId to target running aggregationFn on
  * \param aggregationFn
@@ -424,7 +424,7 @@ bool
 Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                                         uint64_t &logMsgsPrinted,
                                         uint64_t &lastTimestamp,
-                                        double cyclesPerSecond,
+                                        const Checkpoint &checkpoint,
                                         long aggregationFilterId,
                                         void (*aggregationFn)(const char*, ...))
 {
@@ -432,19 +432,43 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         return false;
 
     if (outputFd) {
-        double timeDiff;
-        if (nextLogTimestamp >= lastTimestamp)
-            timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
-                                    nextLogTimestamp - lastTimestamp,
-                                    cyclesPerSecond);
-        else
-            timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
-                                    lastTimestamp - nextLogTimestamp,
-                                    cyclesPerSecond);
-        if (logMsgsPrinted == 0)
-            timeDiff = 0;
+        char timeString[32];
 
-        fprintf(outputFd, "%4ld) +%12.2lf ns: ", logMsgsPrinted, timeDiff);
+        // Convert to relative time
+//        double timeDiff;
+//        if (nextLogTimestamp >= lastTimestamp)
+//            timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
+//                                    nextLogTimestamp - lastTimestamp,
+//                                    checkpoint.cyclesPerSecond));
+//        else
+//            timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
+//                                    lastTimestamp - nextLogTimestamp,
+//                                    checkpoint.cyclesPerSecond));
+//        if (logMsgsPrinted == 0)
+//            timeDiff = 0;
+//
+//        fprintf(outputFd, "%4ld) +%12.2lf ns ", logMsgsPrinted, timeDiff);
+
+        // Convert to absolute time
+        double secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
+               nextLogTimestamp - checkpoint.rdtsc, checkpoint.cyclesPerSecond);
+        uint64_t wholeSeconds = static_cast<uint64_t>(secondsSinceCheckpoint);
+        double nanos = 1.0e9*(secondsSinceCheckpoint
+                                        - static_cast<double>(wholeSeconds));
+
+        std::time_t absTime = wholeSeconds + checkpoint.unixTime;
+        std::tm *tm = localtime(&absTime);
+        strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", tm);
+
+        // Output the context
+        struct GeneratedFunctions::LogMetadata meta =
+                                GeneratedFunctions::logId2Metadata[nextLogId];
+        fprintf(outputFd,"%s.%09.0lf %s:%u [%u]: "
+                                        , timeString
+                                        , nanos
+                                        , meta.fileName
+                                        , meta.lineNumber
+                                        , runtimeId);
     }
 
     void (*aggFn)(const char*, ...) = nullptr;
@@ -553,7 +577,7 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
                     hasMore = bf->decompressNextLogStatement(outputFd,
                                                     linesPrinted,
                                                     lastTimestamp,
-                                                    checkpoint.cyclesPerSecond,
+                                                    checkpoint,
                                                     aggregationTargetId,
                                                     aggregationFn);
                     if (callRCDF)
@@ -741,7 +765,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
             bool hasMore = bf->decompressNextLogStatement(outputFd,
                                                             linesPrinted,
                                                             lastTimestamp,
-                                                    checkpoint.cyclesPerSecond);
+                                                            checkpoint);
 
             if (hasMore) {
                 std::sort(minStage->begin(), minStage->end(),

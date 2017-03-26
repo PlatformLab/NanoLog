@@ -45,7 +45,7 @@ run-test: testApp
 		&& echo "" && exit 1)
 
 	@# Run the decompressor and cut out the timestamps before the ':'
-	./decompressor /tmp/testLog | cut -d':' -f2- > output.txt
+	./decompressor /tmp/testLog | cut -d':' -f5- > output.txt
 	diff -w expectedOutput.txt output.txt
 
 	@rm -f /tmp/testLog

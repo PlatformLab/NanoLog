@@ -889,13 +889,14 @@ TEST_F(LogTest, decompressNextLogStatement) {
 
     uint64_t logMsgsPrinted = 0;
     uint64_t lastTimestamp = 0;
-    double cyclesPerSecond = 1;
+    Checkpoint checkpoint;
+    checkpoint.cyclesPerSecond = 1;
     long aggregationFilterId = 1;
     numAggregationsRun = 0;
     EXPECT_TRUE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
                                                 lastTimestamp,
-                                                cyclesPerSecond,
+                                                checkpoint,
                                                 aggregationFilterId,
                                                 &aggregation));
 
@@ -903,7 +904,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
     EXPECT_FALSE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
                                                 lastTimestamp,
-                                                cyclesPerSecond,
+                                                checkpoint,
                                                 aggregationFilterId,
                                                 &aggregation));
     EXPECT_EQ(1, numAggregationsRun);
@@ -912,7 +913,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
     EXPECT_FALSE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
                                                 lastTimestamp,
-                                                cyclesPerSecond,
+                                                checkpoint,
                                                 aggregationFilterId,
                                                 &aggregation));
     EXPECT_EQ(1, numAggregationsRun);
@@ -934,7 +935,12 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     const char *decomp = "/tmp/testFile2";
     char inputBuffer[1000], buffer[1000];
     Encoder encoder(buffer, 1000, false);
-    ((Checkpoint*)(encoder.backing_buffer))->cyclesPerSecond = 1e9; // HACK!!
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint*)encoder.backing_buffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 0;
+    checkpoint->unixTime = 1;
 
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 90;
@@ -1093,17 +1099,17 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     ASSERT_TRUE(iFile.good());
 
     const char* unorderedLines[] = {
-        "   0) +        0.00 ns: Simple log message with 0 parameters\r",
-        "   1) +       15.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   2) +      -12.00 ns: Simple log message with 0 parameters\r",
-        "   3) +        3.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   4) +        4.00 ns: Simple log message with 0 parameters\r",
-        "   5) +       11.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   6) +       24.00 ns: Simple log message with 0 parameters\r",
-        "   7) +       10.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   8) +      -27.00 ns: Simple log message with 0 parameters\r",
-        "   9) +      -27.00 ns: Simple log message with 0 parameters\r",
-        "  10) +       35.00 ns: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000090 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000093 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000111 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000135 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 Benchmark.cc:45 [11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 Benchmark.cc:45 [12]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 11 log messages\r"
@@ -1129,17 +1135,17 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     fclose(outputFd);
 
     const char* orderedLines[] = {
-        "   0) +        0.00 ns: Simple log message with 0 parameters\r",
-        "   1) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   2) +        2.00 ns: Simple log message with 0 parameters\r",
-        "   3) +        3.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   4) +        4.00 ns: Simple log message with 0 parameters\r",
-        "   5) +        5.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   6) +        6.00 ns: This is a string aaaaaaaaaaaaaaa\r",
-        "   7) +        7.00 ns: Simple log message with 0 parameters\r",
-        "   8) +        8.00 ns: Simple log message with 0 parameters\r",
-        "   9) +        9.00 ns: Simple log message with 0 parameters\r",
-        "  10) +       10.00 ns: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000090 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 Benchmark.cc:45 [11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000093 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000111 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 Benchmark.cc:45 [12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 11 log messages\r"
@@ -1177,7 +1183,13 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     /// 2 encoders on the same file.
     uint64_t compressedLogs = 0;
     Encoder encoder(outputBuffer, 1000);
-    ((Checkpoint*)(outputBuffer))->cyclesPerSecond = 1e9; // HACK!!
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint*)outputBuffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 0;
+    checkpoint->unixTime = 1;
+
     uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                                     5*sizeof(UncompressedEntry),
                                                     5,
@@ -1191,7 +1203,13 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     oFile.write(outputBuffer, encoder.getEncodedBytes());
 
     Encoder encoder2(outputBuffer, 1000);
-    ((Checkpoint*)(outputBuffer))->cyclesPerSecond = 1e9; // HACK!!
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint2 = (Checkpoint*)outputBuffer;
+    checkpoint2->cyclesPerSecond = 1e9;
+    checkpoint2->rdtsc = 0;
+    checkpoint2->unixTime = 1;
+
     bytesRead = encoder2.encodeLogMsgs(inputBuffer,
                                                     5*sizeof(UncompressedEntry),
                                                     5,
@@ -1218,18 +1236,18 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "   0) +        0.00 ns: Simple log message with 0 parameters\r",
-        "   1) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   2) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   3) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   4) +        1.00 ns: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
         "\r",
         "# New execution started\r",
-        "   5) +       -4.00 ns: Simple log message with 0 parameters\r",
-        "   6) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   7) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   8) +        1.00 ns: Simple log message with 0 parameters\r",
-        "   9) +        1.00 ns: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 10 log messages\r"
