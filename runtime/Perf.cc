@@ -817,17 +817,16 @@ double snprintfFileLocation()
     return Cycles::toSeconds(stop - start)/count;
 }
 
-
 double snprintfTime()
 {
     struct timespec now;
     int count = 1000000;
     char buffer[1000];
 
+    clock_gettime(CLOCK_REALTIME, &now);
     uint64_t start = Cycles::rdtsc();
     Util::serialize();
     for (int i = 0; i < count; ++i) {
-        clock_gettime(CLOCK_REALTIME, &now);
         snprintf(buffer, 1000, "%010lu.%09lu", now.tv_sec, now.tv_nsec);
     }
     Util::serialize();
@@ -860,10 +859,10 @@ double snprintfRAMCloud()
     int count = 1000000;
     char buffer[1000];
 
+    clock_gettime(CLOCK_REALTIME, &now);
     uint64_t start = Cycles::rdtsc();
     Util::serialize();
     for (int i = 0; i < count; ++i) {
-        clock_gettime(CLOCK_REALTIME, &now);
         snprintf(buffer, 1000,
             "%010lu.%09lu %s:%d in %s %s[%d]: %s %0.6lf",
             now.tv_sec, now.tv_nsec, __FILE__, __LINE__,
@@ -900,6 +899,57 @@ double high_resolution_clockTest() {
         std::chrono::high_resolution_clock::now();
     }
     uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+// Measure the cost of printing via ctime
+double printTime_ctime() {
+    int count = 1000000;
+    char buffer[1000];
+
+    uint64_t start = Cycles::rdtsc();
+    std::time_t result = std::time(nullptr);
+
+    for (int i = 0; i < count; i++) {
+        snprintf(buffer, 1000, "%s", std::ctime(&result));
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(&buffer);
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double printTime_strftime() {
+    int count = 1000000;
+    char buffer[1000];
+
+    std::time_t result = std::time(nullptr);
+    std:tm *tm = localtime(&result);
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        strftime(buffer, 1000, "%y/%m/%d %H:%M:%S", tm);
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(&buffer);
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double printTime_strftime_wConversion() {
+    int count = 1000000;
+    char buffer[1000];
+
+    std::time_t result = std::time(nullptr);
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        std:tm *tm = localtime(&result);
+        strftime(buffer, 1000, "%y/%m/%d %H:%M:%S", tm);
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(&buffer);
 
     return Cycles::toSeconds(stop - start)/count;
 }
@@ -1086,6 +1136,12 @@ TestInfo tests[] = {
      "snprintf a static 100 character string wtih no format specifiers"},
     {"snprintfTime", snprintfTime,
      "snprintf the current time formatted as seconds.nanoseconds"},
+    {"ctime", printTime_ctime,
+     "snprintf the current time formatted using ctime"},
+    {"strftime", printTime_strftime,
+     "snprintf the current time formatted using strftime %y/%m/%d %H:%M:%S"},
+    {"strftime_wConversion", printTime_strftime_wConversion,
+     "snprintf the current time formatted using strftime with tm conversion"},
     {"rdtscTest", rdtscTest,
      "Read the fine-grain cycle counter"},
     {"high_resolution_clock", high_resolution_clockTest,
