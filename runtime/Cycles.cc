@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014 Stanford University
+/* Copyright (c) 2011-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -56,7 +56,8 @@ Cycles::init() {
     // between calling gettimeofday and reading the cycle counter, in which
     // case we won't have corresponding readings.  To handle this (unlikely)
     // case, compute the overall result repeatedly, and wait until we get
-    // two successive calculations that are within 0.1% of each other.
+    // two successive calculations that are within 0.001% of each other (or
+    // in other words, a drift of up to 10µs per second).
     oldCycles = 0;
     while (1) {
         if (gettimeofday(&startTime, NULL) != 0) {
@@ -78,7 +79,7 @@ Cycles::init() {
                 break;
             }
         }
-        double delta = cyclesPerSec/1000.0;
+        double delta = cyclesPerSec/100000.0;
         if ((oldCycles > (cyclesPerSec - delta)) &&
                 (oldCycles < (cyclesPerSec + delta))) {
             goto exit;
