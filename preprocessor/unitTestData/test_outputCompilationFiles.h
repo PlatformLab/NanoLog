@@ -22,14 +22,18 @@ struct LogMetadata {
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
+  LogLevel logLevel;
 };
 
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
 // functions
 namespace {
 
-inline void __syang0__fl__A__mar46h__1__(const char* fmtStr ) {
+inline void __syang0__fl__A__mar46h__1__(LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46h__1__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -99,6 +103,7 @@ decompressPrintArgs__A__mar46h__1__ (const char **in,
     const char *fmtString = "A";
     const char *filename = "mar.h";
     const int linenum = 1;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
@@ -108,8 +113,11 @@ decompressPrintArgs__A__mar46h__1__ (const char **in,
 }
 
 
-inline void __syang0__fl__C__mar46cc__200__(const char* fmtStr ) {
+inline void __syang0__fl__C__mar46cc__200__(LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__C__mar46cc__200__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -179,6 +187,7 @@ decompressPrintArgs__C__mar46cc__200__ (const char **in,
     const char *fmtString = "C";
     const char *filename = "mar.cc";
     const int linenum = 200;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "C" "\r\n" );
@@ -188,8 +197,11 @@ decompressPrintArgs__C__mar46cc__200__ (const char **in,
 }
 
 
-inline void __syang0__fl__B__mar46cc__294__(const char* fmtStr ) {
+inline void __syang0__fl__B__mar46cc__294__(LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__B__mar46cc__294__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -259,6 +271,7 @@ decompressPrintArgs__B__mar46cc__294__ (const char **in,
     const char *fmtString = "B";
     const char *filename = "mar.cc";
     const int linenum = 294;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "B" "\r\n" );
@@ -268,8 +281,11 @@ decompressPrintArgs__B__mar46cc__294__ (const char **in,
 }
 
 
-inline void __syang0__fl__E__del46cc__199__(const char* fmtStr ) {
+inline void __syang0__fl__E__del46cc__199__(LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__E__del46cc__199__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -339,6 +355,7 @@ decompressPrintArgs__E__del46cc__199__ (const char **in,
     const char *fmtString = "E";
     const char *filename = "del.cc";
     const int linenum = 199;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "E" "\r\n" );
@@ -348,8 +365,11 @@ decompressPrintArgs__E__del46cc__199__ (const char **in,
 }
 
 
-inline void __syang0__fl__A__mar46cc__293__(const char* fmtStr ) {
+inline void __syang0__fl__A__mar46cc__293__(LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46cc__293__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -419,6 +439,7 @@ decompressPrintArgs__A__mar46cc__293__ (const char **in,
     const char *fmtString = "A";
     const char *filename = "mar.cc";
     const int linenum = 293;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
@@ -428,8 +449,11 @@ decompressPrintArgs__A__mar46cc__293__ (const char **in,
 }
 
 
-inline void __syang0__fl__D3237d__s46cc__100__(const char* fmtStr , int arg0) {
+inline void __syang0__fl__D3237d__s46cc__100__(LogLevel level, const char* fmtStr , int arg0) {
     extern const uint32_t __fmtId__D3237d__s46cc__100__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize = sizeof(arg0) +   sizeof(Log::UncompressedEntry);
@@ -503,6 +527,7 @@ decompressPrintArgs__D3237d__s46cc__100__ (const char **in,
     const char *fmtString = "D %d";
     const char *filename = "s.cc";
     const int linenum = 100;
+    const LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "D %d" "\r\n" , arg0);
@@ -528,12 +553,12 @@ namespace GeneratedFunctions {
 // Map of numerical ids to log message metadata
 struct LogMetadata logId2Metadata[6] =
 {
-    {"A", "mar.h", 1},
-{"C", "mar.cc", 200},
-{"B", "mar.cc", 294},
-{"E", "del.cc", 199},
-{"A", "mar.cc", 293},
-{"D %d", "s.cc", 100}
+    {"A", "mar.h", 1, DEBUG},
+{"C", "mar.cc", 200, DEBUG},
+{"B", "mar.cc", 294, DEBUG},
+{"E", "del.cc", 199, DEBUG},
+{"A", "mar.cc", 293, DEBUG},
+{"D %d", "s.cc", 100, DEBUG}
 };
 
 // Map of numerical ids to compression functions

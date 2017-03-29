@@ -92,6 +92,16 @@ ie
  In the header, I am 10 x2
  SimpleTest::logSomething: Something = 2
  SimpleTest::logSomething: Something = 3
+ Debug
+ Notice
+ Warning
+ Error
+ Notice
+ Warning
+ Error
+ Warning
+ Error
+ Error
 
 
-# Decompression Complete after printing 77 log messages
+# Decompression Complete after printing 87 log messages

@@ -7,16 +7,18 @@ How it achieves this insane performance is by extracting static log information 
 As alluded to by the introduction text, in addition to using the NanoLog API, one has to integrate with NanoLog at the compilation and post-execution phases.
 
 ### Sample NanoLog Code
-To use the NanoLog system in the code, one just has to ```#include "NanoLog.h"``` and invoke the ```NANO_LOG()``` function in the same fashion as a printf. Example below:
+To use the NanoLog system in the code, one just has to ```#include "NanoLog.h"``` and invoke the ```NANO_LOG()``` function in a similar fashion to printf, with the exception of a log level before it. Example below:
 
 ```cpp
 #include "NanoLog.h"
 
 int main() {
-  NANO_LOG("Hello World! This is an integer %d and a double %lf\r\n", 1, 2.0);
+  NANO_LOG(NOTICE, "Hello World! This is an integer %d and a double %lf\r\n", 1, 2.0);
   return 0;
 }
 ```
+
+Valid log levels are DEBUG, NOTICE, WARNING, and ERROR and the logging level can be set via ```NanoLog::setLogLevel(...)```
 
 ### Compile-time Requirements
 NanoLog requires users to compile their C++ files into *.o files using the NanoLog system.

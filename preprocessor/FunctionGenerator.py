@@ -30,7 +30,9 @@ RECORD_ENTRY = "Log::UncompressedEntry"
 RECORD_PRIMITIVE_FN = "Log::recordPrimitive"
 
 NIBBLE_OBJ = "BufferUtils::TwoNibbles"
+LOG_LEVEL_ENUM = "LogLevel"
 
+LOG_LEVEL_GET_FN = "NanoLog::getLogLevel"
 ALLOC_FN = "NanoLog::__internal_reserveAlloc"
 FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
 
@@ -180,6 +182,7 @@ struct LogMetadata {
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
+  LogLevel logLevel;
 };
 
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
@@ -209,10 +212,11 @@ namespace {
                 if logId == "__INVALID__INVALID__INVALID__":
                     continue
 
-                logId2Metadata.append("{\"%s\", \"%s\", %d}" % (
+                logId2Metadata.append("{\"%s\", \"%s\", %d, %s}" % (
                     code["fmtString"],
                     code["filename"],
-                    code["linenum"]
+                    code["linenum"],
+                    code["logLevel"]
                 ))
 
                 oFile.write("extern const int %s = %d; // %s:%d \"%s\"\n" % (
@@ -295,6 +299,9 @@ size_t numLogIds = {count};
     # and invocation. The defintion for a compilationUnit can be gotten via
     # getRecordFunctionDefinitionsFor(compilationUnit)
     #
+    # \param logLevel
+    #           The LogLevel associated with this NANO_LOG statement
+    #
     # \param fmtString
     #           C++ printf-like format string for the log message
     #           (note "%n"  is not supported)
@@ -312,8 +319,8 @@ size_t numLogIds = {count};
     #
     # \throws ValueError
     #           If there's is a syntax error in the format string
-    def generateLogFunctions(self, fmtString, compilationName, filename,
-                                linenum):
+    def generateLogFunctions(self, logLevel, fmtString, compilationName,
+                                    filename, linenum):
 
         fmtTypes = parseTypesInFmtString(fmtString)
         parameterDeclarationString = "".join([", %s arg%d" % (fmt.type, idx)
@@ -321,8 +328,8 @@ size_t numLogIds = {count};
 
         logId = generateLogIdStr(fmtString, filename, linenum)
         recordFnName = "__syang0__fl" + logId
-        recordDeclaration = "void %s(const char* fmtStr %s)" % (
-            recordFnName, parameterDeclarationString)
+        recordDeclaration = "void %s(%s level, const char* fmtStr %s)" % (
+                    recordFnName, LOG_LEVEL_ENUM, parameterDeclarationString)
 
         # Keep track of instance metrics
         if parameterDeclarationString in self.argLists2Cnt:
@@ -381,6 +388,9 @@ size_t numLogIds = {count};
 inline {function_declaration} {{
     extern const uint32_t {idVariableName};
 
+    if (level > {getLogLevelFn}())
+        return;
+
     {strlen_declaration};
     size_t allocSize = {primitive_size_sum} {strlen_sum} sizeof({entry});
     {entry} *re = reinterpret_cast<{entry}*>({alloc_fn}(allocSize));
@@ -401,6 +411,7 @@ inline {function_declaration} {{
     {finishAlloc_fn}(allocSize);
 }}
 """.format(function_declaration = recordDeclaration,
+       getLogLevelFn=LOG_LEVEL_GET_FN,
        strlen_declaration = "\r\n\t".join(strlenDeclarations),
        primitive_size_sum = nonStringSizeOfPartialSum,
        strlen_sum = stringLenPartialSum,
@@ -522,6 +533,7 @@ inline void
     const char *fmtString = "{fmtString}";
     const char *filename = "{filename}";
     const int linenum = {linenum};
+    const LogLevel logLevel = {logLevel};
 
     if (outputFd)
         fprintf(outputFd, "{fmtString}" "\\r\\n" {printfArgs});
@@ -537,6 +549,7 @@ inline void
         fmtString=fmtString,
         filename=filename,
         linenum=linenum,
+        logLevel=logLevel,
         printfArgs="".join([", arg%d" % i for i, type in enumerate(fmtTypes)])
 )
 
@@ -545,6 +558,7 @@ inline void
             "fmtString"         : fmtString,
             "filename"          : filename,
             "linenum"           : linenum,
+            "logLevel"          : logLevel,
             "compilationUnit"   : compilationName,
             "recordFnDef"       : recordCode,
             "compressFnDef"     : compressionCode,

@@ -23,6 +23,13 @@
 #include "GeneratedCode.h"
 
 /**
+  * Friendly names for each #LogLevel value.
+  * Keep this in sync with the LogLevel enum in NanoLog.h.
+  */
+static const char* logLevelNames[] = {"(none)", "ERROR", "WARNING",
+                                       "NOTICE", "DEBUG"};
+
+/**
  * Encoder constructor. The construction of an Encoder should logically
  * correlate with the start of a new log file as it will embed unique metadata
  * information at the beginning of log file/buffer.
@@ -463,11 +470,12 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         // Output the context
         struct GeneratedFunctions::LogMetadata meta =
                                 GeneratedFunctions::logId2Metadata[nextLogId];
-        fprintf(outputFd,"%s.%09.0lf %s:%u [%u]: "
+        fprintf(outputFd,"%s.%09.0lf %s:%u %s[%u]: "
                                         , timeString
                                         , nanos
                                         , meta.fileName
                                         , meta.lineNumber
+                                        , logLevelNames[meta.logLevel]
                                         , runtimeId);
     }
 

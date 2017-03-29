@@ -1,4 +1,4 @@
-# Copyright (c) 2016 Stanford University
+# Copyright (c) 2016-2017 Stanford University
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -445,12 +445,13 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         self.maxDiff = None
         fg = FunctionGenerator()
 
-        ret = fg.generateLogFunctions("Empty Print", "gar.cc", "mar.cc", 293)
+        ret = fg.generateLogFunctions("DEBUG", "Empty Print", "gar.cc",
+                                        "mar.cc", 293)
 
         logId = generateLogIdStr("Empty Print", "mar.cc", 293)
         expectedFnName = "__syang0__fl" + logId
-        expectedResult = ("void " + expectedFnName + "(const char* fmtStr )",
-                                expectedFnName)
+        expectedResult = ("void " + expectedFnName + "(LogLevel level, "
+                                "const char* fmtStr )", expectedFnName)
         self.assertEqual(expectedResult, ret)
 
         code = fg.logId2Code[logId]
@@ -468,13 +469,14 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         fg = FunctionGenerator()
 
         fmtStr = "Hello World! %u %s %lf %s"
-        ret = fg.generateLogFunctions(fmtStr, "testFile.cc", "testFile.cc", 100)
+        ret = fg.generateLogFunctions("ERROR", fmtStr, "testFile.cc",
+                                            "testFile.cc", 100)
         logId = generateLogIdStr(fmtStr, "testFile.cc", 100)
         expectedFnName = "__syang0__fl" + logId
 
-        expectedResult = ("void " + expectedFnName + "(const char* fmtStr , "
-                            "unsigned int arg0, const char* arg1, double arg2, "
-                            "const char* arg3)",
+        expectedResult = ("void " + expectedFnName + "(LogLevel level, "
+                            "const char* fmtStr , unsigned int arg0, "
+                            "const char* arg1, double arg2, const char* arg3)",
                             expectedFnName)
 
         self.assertEqual(expectedResult, ret)
@@ -498,19 +500,19 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         # filename and line number are saved
 
         # Original
-        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
 
         # Different log
-        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 293)
 
         # Same log + file, different location
-        fg.generateLogFunctions("A", "mar.cc",  "mar.cc", 200)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc",  "mar.cc", 200)
 
         # same log, diff file + location
-        fg.generateLogFunctions("A", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("DEBUG", "A", "s.cc", "s.cc", 100)
 
         # same log, diff compilation unit, but same originating file
-        fg.generateLogFunctions("A", "s.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "A", "s.cc", "mar.cc", 293)
 
         ids = fg.logId2Code.keys()
         self.assertEqual(['__A__mar46cc__293__',
@@ -524,8 +526,11 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
         emptyRec = \
 """
-inline void __syang0__fl{logId}(const char* fmtStr ) {{
+inline void __syang0__fl{logId}(LogLevel level, const char* fmtStr ) {{
     extern const uint32_t __fmtId{logId};
+
+    if (level > NanoLog::getLogLevel())
+        return;
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
@@ -549,10 +554,10 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
 """ % ("", "")
         fg = FunctionGenerator()
 
-        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
-        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 293)
-        fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
-        fg.generateLogFunctions("D", "s.cc", "mar.cc", 100)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "C", "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("DEBUG", "D", "s.cc", "mar.cc", 100)
 
         self.assertEqual(3, len(fg.getRecordFunctionDefinitionsFor("mar.cc")))
         self.assertEqual(1, len(fg.getRecordFunctionDefinitionsFor("s.cc")))
@@ -576,10 +581,10 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
     def test_outputMappingFile(self):
         fg = FunctionGenerator()
 
-        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
-        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 294)
-        fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
-        fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("DEBUG", "C", "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("DEBUG", "D %d", "s.cc", "s.cc", 100)
 
         # Test serialization and deserialization
         fg.outputMappingFile("test.json")
@@ -593,10 +598,10 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
     def test_outputMappingFile_withFolders(self):
         fg = FunctionGenerator()
 
-        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
-        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 294)
-        fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
-        fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("DEBUG", "C", "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("DEBUG", "D %d", "s.cc", "s.cc", 100)
 
         # Test what happens when the directory does not exist
         try:
@@ -619,18 +624,18 @@ inline void __syang0__fl{logId}(const char* fmtStr ) {{
         self.maxDiff = None
         fg = FunctionGenerator()
 
-        fg.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
-        fg.generateLogFunctions("B", "mar.cc", "mar.cc", 294)
-        fg.generateLogFunctions("C", "mar.cc", "mar.cc", 200)
-        fg.generateLogFunctions("D %d", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
+        fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 294)
+        fg.generateLogFunctions("DEBUG", "C", "mar.cc", "mar.cc", 200)
+        fg.generateLogFunctions("DEBUG", "D %d", "s.cc", "s.cc", 100)
 
         fg.outputMappingFile("map1.map")
 
         # Also test the merging
         fg2 = FunctionGenerator()
-        fg2.generateLogFunctions("A", "mar.cc", "mar.cc", 293)
-        fg2.generateLogFunctions("A", "mar.cc", "mar.h", 1)
-        fg2.generateLogFunctions("E", "del.cc", "del.cc", 199)
+        fg2.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.cc", 293)
+        fg2.generateLogFunctions("DEBUG", "A", "mar.cc", "mar.h", 1)
+        fg2.generateLogFunctions("DEBUG", "E", "del.cc", "del.cc", 199)
 
         fg2.outputMappingFile("map2.map")
 

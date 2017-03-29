@@ -542,6 +542,6 @@ namespace Log {
         // will be freed upon destruction of the Decoder object.
         std::vector<BufferFragment*> freeBuffers;
     };
-}; /* Buffer Utils */
+}; /* LOG_H */
 
 #endif /* BUFFERUTILS_H */

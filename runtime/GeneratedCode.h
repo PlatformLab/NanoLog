@@ -38,6 +38,7 @@ struct LogMetadata {
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
+  LogLevel logLevel;
 };
 
 /**

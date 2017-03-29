@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -40,9 +40,17 @@ int main(int argc, char** argv) {
     // thread that will use the NanoLog system.
     NanoLog::preallocate();
 
+    // Optional: Set the minimum LogLevel that log messages must have to be
+    // persisted. Valid from least to greatest values are
+    // DEBUG, NOTICE, WARNING, ERROR
+    NanoLog::setLogLevel(NOTICE);
+
+    NANO_LOG(DEBUG, "This message wont be logged since it is lower than "
+                        "the current log level.");
+
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i)
-        NANO_LOG("Simple log message with 0 parameters");
+        NANO_LOG(NOTICE, "Simple log message with 0 parameters");
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);

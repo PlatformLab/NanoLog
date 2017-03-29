@@ -45,6 +45,7 @@ NanoLog::NanoLog()
     , aioCb()
     , compressingBuffer(nullptr)
     , outputDoubleBuffer(nullptr)
+    , currentLogLevel(NOTICE)
     , cycleAtThreadStart(0)
     , cyclesAwake(0)
     , cyclesCompressing(0)
@@ -562,6 +563,23 @@ void
 NanoLog::setLogFile(const char* filename)
 {
     nanoLogSingleton.setLogFile_internal(filename);
+}
+
+/**
+ * Sets the minimum log level new NANO_LOG messages will have to meet before
+ * they are saved. Anything lower will be dropped.
+ *
+ * \param logLevel
+ *      LogLevel enum that specifies the minimum log level.
+ */
+void
+NanoLog::setLogLevel(LogLevel logLevel)
+{
+    if (logLevel < 0)
+        logLevel = static_cast<LogLevel>(0);
+    else if (logLevel >= NUM_LOG_LEVELS)
+        logLevel = static_cast<LogLevel>(NUM_LOG_LEVELS - 1);
+    nanoLogSingleton.currentLogLevel = logLevel;
 }
 
 /**

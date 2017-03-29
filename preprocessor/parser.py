@@ -74,10 +74,6 @@ from FunctionGenerator import *
 # and stripping of format strings.
 LOG_FUNCTION = "NANO_LOG"
 
-# Marks which argument of the record function is the static format string
-# and assumes the arguments come after this point.
-FORMAT_ARG_NUM = 0
-
 # A special C++ line at the end of NanoLog.h that marks where the parser
 # can start injecting inline function definitions. The key to it being at the
 # end of NanoLog.h is that it ensures all required #includes have been
@@ -432,28 +428,37 @@ def processFile(inputFile, mapOutputFilename):
             # Okay at this point we are pretty sure we have a genuine
             # log statement, parse it and start modifying the code!
             logStatement = parseLogStatement(lines, (lineIndex, charOffset))
-            fmtArg = logStatement['arguments'][FORMAT_ARG_NUM]
+            lastLogStatementLine = logStatement['semiColonPos'].lineNum
+
+            if len(logStatement['arguments']) < 2:
+              raise ValueError("NANO_LOG statement expects at least 2 arguments"
+                                 ": a LogLevel and a literal format string",
+                                 lines[lineIndex:lastLogStatementLine + 1])
+
+            # We expect the log invocation to have the following format:
+            # LOG_FN(LogLevel, FormatString, ...), hence the magic indexes
+            logLevel = logStatement['arguments'][0].source
+            fmtArg = logStatement['arguments'][1]
             fmtString = extractCString(fmtArg.source)
 
             # At this point, we should check that NanoLog was #include-d
             # and that the format string was a static string
-            lastLogStatementLine = logStatement['semiColonPos'].lineNum
             if not inlineCodeInjectionLineIndex:
               raise ValueError("NANO_LOG statement occurred before "
                                 "#include-ing the NanoLog header!",
                                lines[lineIndex:lastLogStatementLine + 1])
 
             if not fmtString:
-              raise ValueError("The NanoLog system does not support "
-                                "non-constant format strings",
+              raise ValueError("NANO_LOG statement expects a literal format "
+                               "string for its second argument",
                                 lines[lineIndex:lastLogStatementLine + 1])
 
             # Invoke the FunctionGenerator and if it throws a ValueError,
             # tack on an extra argument to print out the log function itself
             try:
               (recordDecl, recordFn) = functionGenerator.generateLogFunctions(
-                                                    fmtString, firstFilename,
-                                                    ppFileName, ppLineNum)
+                                            logLevel, fmtString, firstFilename,
+                                            ppFileName, ppLineNum)
             except ValueError as e:
               raise ValueError(e.args[0],
                                lines[lineIndex:lastLogStatementLine + 1])

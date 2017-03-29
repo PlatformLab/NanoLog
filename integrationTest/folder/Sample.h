@@ -38,7 +38,8 @@
 static void
 hiddenInHeaderFilePrint()
 {
-    NANO_LOG("Messages in the Header"
+    NANO_LOG(NOTICE,
+      "Messages in the Header"
         " File"
         );
 }

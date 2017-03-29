@@ -34,8 +34,14 @@ libgtest.a:
 	ar -rv libgtest.a gtest-all.o
 	@rm gtest-all.o
 
+testHelper/GeneratedCode.cc: testHelper/client.cc
+	g++ $(CXX_ARGS) -E -I. testHelper/client.cc -o testHelper/client.cc.i
+	python ../preprocessor/parser.py --mapOutput="testHelper/client.map" testHelper/client.cc.i
+	python ../preprocessor/parser.py --combinedOutput="testHelper/GeneratedCode.cc" testHelper/client.map
+	@rm -f testHelper/client.map testHelper/client.cc.*
+
 clean:
-	rm -f Perf test compressedLog testHelper/*.o *.o *.gch *.log
+	rm -f Perf test compressedLog testHelper/GeneratedCode.o *.o *.gch *.log
 
 clean-all: clean
-	rm -f libgtest.a
+	rm -f libgtest.a testHelper/GeneratedCode.cc

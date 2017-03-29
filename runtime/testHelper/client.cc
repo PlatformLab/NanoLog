@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2017 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -13,31 +13,15 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-/**
- * This file is a supplement to simpleTests.cc that is primarily used for
- * testing parallel builds.
- */
-
-#include <string>
-
 #include "NanoLog.h"
-#include "Cycles.h"
 
-#include "folder/Sample.h"
+int main() {
+	NANO_LOG(NOTICE, "Simple log message with 0 parameters");
+	NANO_LOG(NOTICE, "This is a string %s", "aaa");
 
-class SimpleTest {
-    int number;
-
-public:
-    SimpleTest(int number)
-        : number(number)
-    {}
-
-    void logSomething();
-    void wholeBunchOfLogStatements();
-    inline void logStatementsInHeader() {
-        /// These should be assigned different ids due to line number
-        NANO_LOG(NOTICE, "In the header, I am %d", number);
-        NANO_LOG(NOTICE, "In the header, I am %d x2", number);
-    }
-};
+	NANO_LOG(DEBUG, "Debug level");
+	NANO_LOG(NOTICE, "Notice Level");
+	NANO_LOG(WARNING, "Warning Level");
+	NANO_LOG(ERROR, "Error Level");
+	return 0;
+}

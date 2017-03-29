@@ -29,6 +29,10 @@
 #include "Log.h"
 #include "GeneratedCode.h"
 
+
+extern int __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
+extern int __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
+
 namespace {
 
 using namespace PerfUtils;
@@ -36,6 +40,12 @@ using namespace PerfUtils;
 // The fixture for testing class Foo.
 class LogTest : public ::testing::Test {
  protected:
+    // Note, if the tests ever fail to compile due to these symbols not being
+    // found, it's most likely that someone updated the testHelper/main.cc file.
+    // In this case, check testHelper/GeneratedCode.cc for updated values and
+    // change the declarations above and uses below to match.
+    int noParamsId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
+    int stringParamId = __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
   LogTest()
   {
   }
@@ -298,12 +308,12 @@ TEST_F(LogTest, encodeLogMsgs) {
     // We have one valid log id with 0 arguments.
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 101;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -411,12 +421,12 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     // We have one valid log id with 0 arguments.
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 100;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -460,7 +470,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     // extent but nothing else.
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     compressedLogs = 1;
 
@@ -488,12 +498,12 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughInputSpace) {
     // We have one valid log id with 0 arguments.
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 100;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -692,12 +702,12 @@ TEST_F(LogTest, Decoder_readBufferExtent_end2end) {
     // Here we use encoder to prefill the output file
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 101;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -735,7 +745,7 @@ TEST_F(LogTest, Decoder_readBufferExtent_end2end) {
 
     EXPECT_EQ(5, bf->runtimeId);
     EXPECT_EQ(100UL, bf->nextLogTimestamp);
-    EXPECT_EQ(0, bf->nextLogId);
+    EXPECT_EQ(noParamsId, bf->nextLogId);
     EXPECT_FALSE(wrapAround);
 
     delete bf;
@@ -749,12 +759,12 @@ TEST_F(LogTest, Decoder_readBufferExtent_notEnoughSpace) {
     // Here we use encoder to prefill the output file
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 101;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -853,12 +863,12 @@ TEST_F(LogTest, decompressNextLogStatement) {
     // Here we use encoder to prefill the output file
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 100;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 101;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
@@ -891,7 +901,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
     uint64_t lastTimestamp = 0;
     Checkpoint checkpoint;
     checkpoint.cyclesPerSecond = 1;
-    long aggregationFilterId = 1;
+    long aggregationFilterId = stringParamId;
     numAggregationsRun = 0;
     EXPECT_TRUE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
@@ -944,12 +954,12 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 90;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
     ++ue;
     ue->timestamp = 105;
-    ue->fmtId = 1;
+    ue->fmtId = stringParamId;
     ue->entrySize = 2*sizeof(UncompressedEntry);
 
     // Okay, this is really starting to dig deep into the implementation of
@@ -1016,7 +1026,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 118;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
 
     bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                            sizeof(UncompressedEntry),
@@ -1028,7 +1038,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 91;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
 
     bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                            sizeof(UncompressedEntry),
@@ -1040,7 +1050,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 126;
-    ue->fmtId = 0;
+    ue->fmtId = noParamsId;
 
     bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                            sizeof(UncompressedEntry),
@@ -1099,17 +1109,17 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     ASSERT_TRUE(iFile.good());
 
     const char* unorderedLines[] = {
-        "1969-12-31 16:00:01.000000090 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000105 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000093 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000096 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000100 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000111 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000135 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000145 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000118 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000091 Benchmark.cc:45 [11]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 Benchmark.cc:45 [12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000090 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000093 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 testHelper/client.cc:19 NOTICE[11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 11 log messages\r"
@@ -1135,17 +1145,17 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     fclose(outputFd);
 
     const char* orderedLines[] = {
-        "1969-12-31 16:00:01.000000090 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000091 Benchmark.cc:45 [11]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000093 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000096 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000100 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000105 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000111 Benchmark.cc:48 [10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000118 Benchmark.cc:45 [10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 Benchmark.cc:45 [12]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000135 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000145 Benchmark.cc:48 [5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000090 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 testHelper/client.cc:19 NOTICE[11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000093 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 11 log messages\r"
@@ -1174,7 +1184,7 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     for (int i = 0; i < 5; ++i) {
         ue->timestamp = i;
-        ue->fmtId = 0;
+        ue->fmtId = noParamsId;
         ue->entrySize = sizeof(UncompressedEntry);
         ++ue;
     }
@@ -1236,18 +1246,18 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "1969-12-31 16:00:01.000000000 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000001 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000002 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000003 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000004 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
         "\r",
         "# New execution started\r",
-        "1969-12-31 16:00:01.000000000 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000001 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000002 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000003 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000004 Benchmark.cc:45 [5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 10 log messages\r"

@@ -267,5 +267,4 @@ TEST_F(NanoLogTest, StagingBuffer_peek) {
     sb->peek(&bytesAvailable);
     EXPECT_EQ(10U, bytesAvailable);
 }
-
 }; //namespace
