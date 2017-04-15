@@ -49,8 +49,9 @@ int main(int argc, char** argv) {
                         "the current log level.");
 
     start = PerfUtils::Cycles::rdtsc();
-    for (int i = 0; i < RECORDS; ++i)
+    for (int i = 0; i < RECORDS; ++i) {
         NANO_LOG(NOTICE, "Simple log message with 0 parameters");
+    }
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
