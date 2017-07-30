@@ -243,6 +243,7 @@ Log::Encoder::swapBuffer(char *inBuffer, size_t inSize, char **outBuffer,
 Log::Decoder::Decoder()
     : filename(nullptr)
     , inputFd(nullptr)
+    , logMsgsPrinted(0)
     , checkpoint()
     , freeBuffers()
 {}

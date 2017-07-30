@@ -181,7 +181,7 @@ namespace Log {
             return sizeof(BufferExtent) + sizeof(uint32_t);
         }
     } __attribute__((packed));
-    
+
     /**
      * Synchronization data structure in the compressed log that correlates the
      * runtime machine's rdtsc() with a wall time and the translation between
@@ -394,7 +394,7 @@ namespace Log {
      * Encapsulates the knowledge on how to transform UncompresedLogMessage's
      * created by the generated code into a compressed log for a Decoder
      * object to interpret later.
-     * 
+     *
      * The intended usage pattern is for the user to create an Encoder object
      * per compressed log file that they intend to create, feed it a character
      * buffer array to operate on, and repeatedly invoke encodeLogMsgs() until
@@ -446,7 +446,7 @@ namespace Log {
         // Saves the last timestamp encoded in the current BufferExtent
         uint64_t lastTimestamp;
     };
- 
+
     /**
      * Encapsulates the knowledge for interpreting a compressed file produced
      * by an Encoder and producing a human-readable representation of the log
@@ -541,6 +541,8 @@ namespace Log {
         // Maintains a list of BufferFragments that are unused. These buffers
         // will be freed upon destruction of the Decoder object.
         std::vector<BufferFragment*> freeBuffers;
+
+        DISALLOW_COPY_AND_ASSIGN(Decoder);
     };
 }; /* LOG_H */
 

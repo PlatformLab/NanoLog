@@ -95,10 +95,7 @@ COMWARNS := -Wall -Wformat=2 -Wextra \
 CWARNS   := $(COMWARNS) -Wmissing-prototypes -Wmissing-declarations -Wshadow \
 		-Wbad-function-cast
 CXXWARNS := $(COMWARNS) -Wno-non-template-friend -Woverloaded-virtual \
-		-Wcast-qual -Wcast-align -Wconversion
-ifeq ($(COMPILER),gnu)
-CXXWARNS += -Weffc++
-endif
+		-Wcast-qual -Wcast-align -Wconversion -Weffc++
 
 generated/BufferStuffer.o: $(USER_OBJS)
 	mkdir -p generated
