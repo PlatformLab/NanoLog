@@ -450,8 +450,8 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
         logId = generateLogIdStr("Empty Print", "mar.cc", 293)
         expectedFnName = "__syang0__fl" + logId
-        expectedResult = ("void " + expectedFnName + "(LogLevel level, "
-                                "const char* fmtStr )", expectedFnName)
+        expectedResult = ("void " + expectedFnName + "(NanoLog::LogLevel level"
+                                ", const char* fmtStr )", expectedFnName)
         self.assertEqual(expectedResult, ret)
 
         code = fg.logId2Code[logId]
@@ -474,8 +474,8 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         logId = generateLogIdStr(fmtStr, "testFile.cc", 100)
         expectedFnName = "__syang0__fl" + logId
 
-        expectedResult = ("void " + expectedFnName + "(LogLevel level, "
-                            "const char* fmtStr , unsigned int arg0, "
+        expectedResult = ("void " + expectedFnName + "(NanoLog::LogLevel level"
+                            ", const char* fmtStr , unsigned int arg0, "
                             "const char* arg1, double arg2, const char* arg3)",
                             expectedFnName)
 
@@ -526,7 +526,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
         emptyRec = \
 """
-inline void __syang0__fl{logId}(LogLevel level, const char* fmtStr ) {{
+inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
     extern const uint32_t __fmtId{logId};
 
     if (level > NanoLog::getLogLevel())
@@ -534,7 +534,7 @@ inline void __syang0__fl{logId}(LogLevel level, const char* fmtStr ) {{
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId{logId};
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -549,7 +549,7 @@ inline void __syang0__fl{logId}(LogLevel level, const char* fmtStr ) {{
     %s
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }}
 """ % ("", "")
         fg = FunctionGenerator()

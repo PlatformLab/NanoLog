@@ -22,22 +22,24 @@ struct LogMetadata {
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
-  LogLevel logLevel;
+  NanoLog::LogLevel logLevel;
 };
 
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
-// functions
+// and support functions
 namespace {
 
-inline void __syang0__fl__Error32Level__testHelper47client46cc__25__(LogLevel level, const char* fmtStr ) {
+using namespace NanoLog::LogLevels;
+
+inline void __syang0__fl__Error32Level__testHelper47client46cc__25__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__Error32Level__testHelper47client46cc__25__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Error32Level__testHelper47client46cc__25__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -52,12 +54,12 @@ inline void __syang0__fl__Error32Level__testHelper47client46cc__25__(LogLevel le
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__Error32Level__testHelper47client46cc__25__(Log::UncompressedEntry *re, char* out) {
+compressArgs__Error32Level__testHelper47client46cc__25__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -75,7 +77,7 @@ compressArgs__Error32Level__testHelper47client46cc__25__(Log::UncompressedEntry 
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -103,7 +105,7 @@ decompressPrintArgs__Error32Level__testHelper47client46cc__25__ (const char **in
     const char *fmtString = "Error Level";
     const char *filename = "testHelper/client.cc";
     const int linenum = 25;
-    const LogLevel logLevel = ERROR;
+    const NanoLog::LogLevel logLevel = ERROR;
 
     if (outputFd)
         fprintf(outputFd, "Error Level" "\r\n" );
@@ -113,15 +115,15 @@ decompressPrintArgs__Error32Level__testHelper47client46cc__25__ (const char **in
 }
 
 
-inline void __syang0__fl__Warning32Level__testHelper47client46cc__24__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__Warning32Level__testHelper47client46cc__24__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__Warning32Level__testHelper47client46cc__24__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Warning32Level__testHelper47client46cc__24__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -136,12 +138,12 @@ inline void __syang0__fl__Warning32Level__testHelper47client46cc__24__(LogLevel 
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__Warning32Level__testHelper47client46cc__24__(Log::UncompressedEntry *re, char* out) {
+compressArgs__Warning32Level__testHelper47client46cc__24__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -159,7 +161,7 @@ compressArgs__Warning32Level__testHelper47client46cc__24__(Log::UncompressedEntr
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -187,7 +189,7 @@ decompressPrintArgs__Warning32Level__testHelper47client46cc__24__ (const char **
     const char *fmtString = "Warning Level";
     const char *filename = "testHelper/client.cc";
     const int linenum = 24;
-    const LogLevel logLevel = WARNING;
+    const NanoLog::LogLevel logLevel = WARNING;
 
     if (outputFd)
         fprintf(outputFd, "Warning Level" "\r\n" );
@@ -197,15 +199,15 @@ decompressPrintArgs__Warning32Level__testHelper47client46cc__24__ (const char **
 }
 
 
-inline void __syang0__fl__Notice32Level__testHelper47client46cc__23__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__Notice32Level__testHelper47client46cc__23__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__Notice32Level__testHelper47client46cc__23__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Notice32Level__testHelper47client46cc__23__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -220,12 +222,12 @@ inline void __syang0__fl__Notice32Level__testHelper47client46cc__23__(LogLevel l
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__Notice32Level__testHelper47client46cc__23__(Log::UncompressedEntry *re, char* out) {
+compressArgs__Notice32Level__testHelper47client46cc__23__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -243,7 +245,7 @@ compressArgs__Notice32Level__testHelper47client46cc__23__(Log::UncompressedEntry
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -271,7 +273,7 @@ decompressPrintArgs__Notice32Level__testHelper47client46cc__23__ (const char **i
     const char *fmtString = "Notice Level";
     const char *filename = "testHelper/client.cc";
     const int linenum = 23;
-    const LogLevel logLevel = NOTICE;
+    const NanoLog::LogLevel logLevel = NOTICE;
 
     if (outputFd)
         fprintf(outputFd, "Notice Level" "\r\n" );
@@ -281,15 +283,15 @@ decompressPrintArgs__Notice32Level__testHelper47client46cc__23__ (const char **i
 }
 
 
-inline void __syang0__fl__Debug32level__testHelper47client46cc__22__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__Debug32level__testHelper47client46cc__22__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__Debug32level__testHelper47client46cc__22__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Debug32level__testHelper47client46cc__22__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -304,12 +306,12 @@ inline void __syang0__fl__Debug32level__testHelper47client46cc__22__(LogLevel le
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__Debug32level__testHelper47client46cc__22__(Log::UncompressedEntry *re, char* out) {
+compressArgs__Debug32level__testHelper47client46cc__22__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -327,7 +329,7 @@ compressArgs__Debug32level__testHelper47client46cc__22__(Log::UncompressedEntry 
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -355,7 +357,7 @@ decompressPrintArgs__Debug32level__testHelper47client46cc__22__ (const char **in
     const char *fmtString = "Debug level";
     const char *filename = "testHelper/client.cc";
     const int linenum = 22;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "Debug level" "\r\n" );
@@ -365,15 +367,15 @@ decompressPrintArgs__Debug32level__testHelper47client46cc__22__ (const char **in
 }
 
 
-inline void __syang0__fl__Simple32log32message32with32032parameters__testHelper47client46cc__19__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__Simple32log32message32with32032parameters__testHelper47client46cc__19__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -388,12 +390,12 @@ inline void __syang0__fl__Simple32log32message32with32032parameters__testHelper4
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__Simple32log32message32with32032parameters__testHelper47client46cc__19__(Log::UncompressedEntry *re, char* out) {
+compressArgs__Simple32log32message32with32032parameters__testHelper47client46cc__19__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -411,7 +413,7 @@ compressArgs__Simple32log32message32with32032parameters__testHelper47client46cc_
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -439,7 +441,7 @@ decompressPrintArgs__Simple32log32message32with32032parameters__testHelper47clie
     const char *fmtString = "Simple log message with 0 parameters";
     const char *filename = "testHelper/client.cc";
     const int linenum = 19;
-    const LogLevel logLevel = NOTICE;
+    const NanoLog::LogLevel logLevel = NOTICE;
 
     if (outputFd)
         fprintf(outputFd, "Simple log message with 0 parameters" "\r\n" );
@@ -449,15 +451,15 @@ decompressPrintArgs__Simple32log32message32with32032parameters__testHelper47clie
 }
 
 
-inline void __syang0__fl__This32is32a32string3237s__testHelper47client46cc__20__(LogLevel level, const char* fmtStr , const char* arg0) {
+inline void __syang0__fl__This32is32a32string3237s__testHelper47client46cc__20__(NanoLog::LogLevel level, const char* fmtStr , const char* arg0) {
     extern const uint32_t __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     size_t str0Len = strlen(arg0);;
-    size_t allocSize =  str0Len + 1 +  sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    size_t allocSize =  str0Len + 1 +  sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -472,12 +474,12 @@ inline void __syang0__fl__This32is32a32string3237s__testHelper47client46cc__20__
     memcpy(buffer, arg0, str0Len); buffer += str0Len; *buffer = '\0'; buffer++;
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
 inline ssize_t
-compressArgs__This32is32a32string3237s__testHelper47client46cc__20__(Log::UncompressedEntry *re, char* out) {
+compressArgs__This32is32a32string3237s__testHelper47client46cc__20__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -495,7 +497,7 @@ compressArgs__This32is32a32string3237s__testHelper47client46cc__20__(Log::Uncomp
     if (true) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -526,7 +528,7 @@ decompressPrintArgs__This32is32a32string3237s__testHelper47client46cc__20__ (con
     const char *fmtString = "This is a string %s";
     const char *filename = "testHelper/client.cc";
     const int linenum = 20;
-    const LogLevel logLevel = NOTICE;
+    const NanoLog::LogLevel logLevel = NOTICE;
 
     if (outputFd)
         fprintf(outputFd, "This is a string %s" "\r\n" , arg0);
@@ -562,7 +564,7 @@ struct LogMetadata logId2Metadata[6] =
 
 // Map of numerical ids to compression functions
 ssize_t
-(*compressFnArray[6]) (Log::UncompressedEntry *re, char* out)
+(*compressFnArray[6]) (NanoLogInternal::Log::UncompressedEntry *re, char* out)
 {
     compressArgs__Error32Level__testHelper47client46cc__25__,
 compressArgs__Warning32Level__testHelper47client46cc__24__,

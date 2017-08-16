@@ -27,7 +27,7 @@
 // compression and decompression functions.
 #include "GeneratedCode.h"
 
-using namespace Log;
+using namespace NanoLogInternal::Log;
 
 /**
  * Find all the original NANO_LOG format strings in the user sources that
@@ -51,7 +51,8 @@ printLogMetadataContainingSubstring(std::string searchString)
     printf("%4s | %-20s | %-4s | %s\r\n", "id", "filename", "line",
                                                             "format string");
     for (auto id : matchingLogIds) {
-        GeneratedFunctions::LogMetadata lm = GeneratedFunctions::logId2Metadata[id];
+        GeneratedFunctions::LogMetadata lm =
+                GeneratedFunctions::logId2Metadata[id];
         printf("%4lu | %-20s | %-4u | %s\r\n", id, lm.fileName, lm.lineNumber,
                                                                 lm.fmtString);
     }
@@ -94,7 +95,7 @@ int main(int argc, char** argv) {
     if (msgsToPrint == 0)
         msgsToPrint = -1;
 
-    Log::Decoder decoder;
+    Decoder decoder;
     if(!decoder.open(argv[1])) {
         printf("Unable to open file %s\r\n", argv[1]);
     } else {

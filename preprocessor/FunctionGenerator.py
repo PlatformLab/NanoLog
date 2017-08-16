@@ -26,15 +26,15 @@ from collections import namedtuple
 # Various globals mapping symbolic names to the object/function names in
 # the supporting C++ library. This is done so that changes in namespaces don't
 # result in large sweeping changes of this file.
-RECORD_ENTRY = "Log::UncompressedEntry"
-RECORD_PRIMITIVE_FN = "Log::recordPrimitive"
+RECORD_ENTRY = "NanoLogInternal::Log::UncompressedEntry"
+RECORD_PRIMITIVE_FN = "NanoLogInternal::Log::recordPrimitive"
 
 NIBBLE_OBJ = "BufferUtils::TwoNibbles"
-LOG_LEVEL_ENUM = "LogLevel"
+LOG_LEVEL_ENUM = "NanoLog::LogLevel"
 
 LOG_LEVEL_GET_FN = "NanoLog::getLogLevel"
-ALLOC_FN = "NanoLog::__internal_reserveAlloc"
-FINISH_ALLOC_FN = "NanoLog::__internal_finishAlloc"
+ALLOC_FN = "NanoLogInternal::RuntimeLogger::reserveAlloc"
+FINISH_ALLOC_FN = "NanoLogInternal::RuntimeLogger::finishAlloc"
 
 PACK_FN = "BufferUtils::pack"
 UNPACK_FN = "BufferUtils::unpack"
@@ -178,17 +178,19 @@ class FunctionGenerator(object):
  * Describes a log message found in the user sources by the original format
  * string provided, the file where the log message occurred, and the line number
  */
-struct LogMetadata {
+struct LogMetadata {{
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
-  LogLevel logLevel;
-};
+  {logLevelEnum} logLevel;
+}};
 
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
-// functions
-namespace {
-""")
+// and support functions
+namespace {{
+
+using namespace NanoLog::LogLevels;
+""".format(logLevelEnum=LOG_LEVEL_ENUM))
             for logId, code in mergedCode.iteritems():
                 if logId == "__INVALID__INVALID__INVALID__":
                     continue
@@ -533,7 +535,7 @@ inline void
     const char *fmtString = "{fmtString}";
     const char *filename = "{filename}";
     const int linenum = {linenum};
-    const LogLevel logLevel = {logLevel};
+    const {logLevelEnum} logLevel = {logLevel};
 
     if (outputFd)
         fprintf(outputFd, "{fmtString}" "\\r\\n" {printfArgs});
@@ -549,6 +551,7 @@ inline void
         fmtString=fmtString,
         filename=filename,
         linenum=linenum,
+        logLevelEnum=LOG_LEVEL_ENUM,
         logLevel=logLevel,
         printfArgs="".join([", arg%d" % i for i, type in enumerate(fmtTypes)])
 )

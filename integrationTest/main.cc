@@ -26,6 +26,8 @@
 #include "folder/Sample.h"
 #include "SimpleTestObject.h"
 
+using namespace NanoLog::LogLevels;
+
 // forward decl
 struct NANO_LOG;
 static void

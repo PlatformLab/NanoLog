@@ -22,6 +22,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+namespace NanoLogInternal {
+
 #ifdef EXPOSE_PRIVATES
 #define PRIVATE public
 #define PROTECTED public
@@ -53,5 +55,6 @@ downCast(const Large& large)
     assert(large-small == 0);
     return small;
 }
+}; // namespace NanoLogInternal
 
 #endif

@@ -16,11 +16,12 @@
 #include <algorithm>
 
 #include <bits/algorithmfwd.h>
-#include <fcntl.h>
 #include <vector>
 
 #include "Log.h"
 #include "GeneratedCode.h"
+
+namespace NanoLogInternal {
 
 /**
   * Friendly names for each #LogLevel value.
@@ -850,3 +851,5 @@ bool
 Log::Decoder::decompressUnordered(FILE* outputFd, uint64_t logMsgsToPrint) {
     return internalDecompressUnordered(outputFd, logMsgsToPrint);
 }
+
+}; /* NanoLogInternal */

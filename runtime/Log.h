@@ -25,7 +25,6 @@
 #include "Packer.h"
 #include "TestUtil.h"
 #include "Util.h"
-#include "NanoLog.h"
 
 #ifndef LOG_H
 #define LOG_H
@@ -56,11 +55,12 @@
  * Here, the format of UncompressedLogEntry is controlled by this file, but the
  * Uncompressed arguments are variable size and its format is controlled by
  * the generated code. We can only interact with them via the compressFnArray
- * and dceompressAndPrintFnArray's defined in BufferStuffer.h
+ * and decompressAndPrintFnArray's defined in BufferStuffer.h
  *
  * The format of the Compressed Log File is determined by the Encoder and
  * Decoder classes below.
  */
+namespace NanoLogInternal {
 namespace Log {
     /**
      * Marks the beginning of a log entry within the StagingBuffer waiting
@@ -544,6 +544,7 @@ namespace Log {
 
         DISALLOW_COPY_AND_ASSIGN(Decoder);
     };
-}; /* LOG_H */
+}; /* namespace Log */
+}; /* namespace NanoLogInternal */
 
-#endif /* BUFFERUTILS_H */
+#endif /* LOG_H */

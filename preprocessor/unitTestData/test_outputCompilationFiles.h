@@ -22,14 +22,16 @@ struct LogMetadata {
   const char *fmtString;
   const char *fileName;
   uint32_t lineNumber;
-  LogLevel logLevel;
+  NanoLog::LogLevel logLevel;
 };
 
 // Start an empty namespace to enclose all the record(debug)/compress/decompress
-// functions
+// and support functions
 namespace {
 
-inline void __syang0__fl__A__mar46h__1__(LogLevel level, const char* fmtStr ) {
+using namespace NanoLog::LogLevels;
+
+inline void __syang0__fl__A__mar46h__1__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46h__1__;
 
     if (level > NanoLog::getLogLevel())
@@ -37,7 +39,7 @@ inline void __syang0__fl__A__mar46h__1__(LogLevel level, const char* fmtStr ) {
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46h__1__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -52,7 +54,7 @@ inline void __syang0__fl__A__mar46h__1__(LogLevel level, const char* fmtStr ) {
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -103,7 +105,7 @@ decompressPrintArgs__A__mar46h__1__ (const char **in,
     const char *fmtString = "A";
     const char *filename = "mar.h";
     const int linenum = 1;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
@@ -113,7 +115,7 @@ decompressPrintArgs__A__mar46h__1__ (const char **in,
 }
 
 
-inline void __syang0__fl__C__mar46cc__200__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__C__mar46cc__200__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__C__mar46cc__200__;
 
     if (level > NanoLog::getLogLevel())
@@ -121,7 +123,7 @@ inline void __syang0__fl__C__mar46cc__200__(LogLevel level, const char* fmtStr )
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__C__mar46cc__200__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -136,7 +138,7 @@ inline void __syang0__fl__C__mar46cc__200__(LogLevel level, const char* fmtStr )
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -187,7 +189,7 @@ decompressPrintArgs__C__mar46cc__200__ (const char **in,
     const char *fmtString = "C";
     const char *filename = "mar.cc";
     const int linenum = 200;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "C" "\r\n" );
@@ -197,7 +199,7 @@ decompressPrintArgs__C__mar46cc__200__ (const char **in,
 }
 
 
-inline void __syang0__fl__B__mar46cc__294__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__B__mar46cc__294__;
 
     if (level > NanoLog::getLogLevel())
@@ -205,7 +207,7 @@ inline void __syang0__fl__B__mar46cc__294__(LogLevel level, const char* fmtStr )
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__B__mar46cc__294__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -220,7 +222,7 @@ inline void __syang0__fl__B__mar46cc__294__(LogLevel level, const char* fmtStr )
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -271,7 +273,7 @@ decompressPrintArgs__B__mar46cc__294__ (const char **in,
     const char *fmtString = "B";
     const char *filename = "mar.cc";
     const int linenum = 294;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "B" "\r\n" );
@@ -281,7 +283,7 @@ decompressPrintArgs__B__mar46cc__294__ (const char **in,
 }
 
 
-inline void __syang0__fl__E__del46cc__199__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__E__del46cc__199__;
 
     if (level > NanoLog::getLogLevel())
@@ -289,7 +291,7 @@ inline void __syang0__fl__E__del46cc__199__(LogLevel level, const char* fmtStr )
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__E__del46cc__199__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -304,7 +306,7 @@ inline void __syang0__fl__E__del46cc__199__(LogLevel level, const char* fmtStr )
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -355,7 +357,7 @@ decompressPrintArgs__E__del46cc__199__ (const char **in,
     const char *fmtString = "E";
     const char *filename = "del.cc";
     const int linenum = 199;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "E" "\r\n" );
@@ -365,7 +367,7 @@ decompressPrintArgs__E__del46cc__199__ (const char **in,
 }
 
 
-inline void __syang0__fl__A__mar46cc__293__(LogLevel level, const char* fmtStr ) {
+inline void __syang0__fl__A__mar46cc__293__(NanoLog::LogLevel level, const char* fmtStr ) {
     extern const uint32_t __fmtId__A__mar46cc__293__;
 
     if (level > NanoLog::getLogLevel())
@@ -373,7 +375,7 @@ inline void __syang0__fl__A__mar46cc__293__(LogLevel level, const char* fmtStr )
 
     ;
     size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46cc__293__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -388,7 +390,7 @@ inline void __syang0__fl__A__mar46cc__293__(LogLevel level, const char* fmtStr )
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -439,7 +441,7 @@ decompressPrintArgs__A__mar46cc__293__ (const char **in,
     const char *fmtString = "A";
     const char *filename = "mar.cc";
     const int linenum = 293;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "A" "\r\n" );
@@ -449,7 +451,7 @@ decompressPrintArgs__A__mar46cc__293__ (const char **in,
 }
 
 
-inline void __syang0__fl__D3237d__s46cc__100__(LogLevel level, const char* fmtStr , int arg0) {
+inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const char* fmtStr , int arg0) {
     extern const uint32_t __fmtId__D3237d__s46cc__100__;
 
     if (level > NanoLog::getLogLevel())
@@ -457,7 +459,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(LogLevel level, const char* fmtSt
 
     ;
     size_t allocSize = sizeof(arg0) +   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLog::__internal_reserveAlloc(allocSize));
+    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__D3237d__s46cc__100__;
     re->timestamp = PerfUtils::Cycles::rdtsc();
@@ -473,7 +475,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(LogLevel level, const char* fmtSt
     
 
     // Make the entry visible
-    NanoLog::__internal_finishAlloc(allocSize);
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
 }
 
 
@@ -527,7 +529,7 @@ decompressPrintArgs__D3237d__s46cc__100__ (const char **in,
     const char *fmtString = "D %d";
     const char *filename = "s.cc";
     const int linenum = 100;
-    const LogLevel logLevel = DEBUG;
+    const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
         fprintf(outputFd, "D %d" "\r\n" , arg0);

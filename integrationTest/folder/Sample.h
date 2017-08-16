@@ -27,6 +27,7 @@
 #include <stdint.h>
 
 #include "NanoLog.h"
+using namespace NanoLog::LogLevels;
 
 #ifndef __Sample__h__
 #define __Sample__h__

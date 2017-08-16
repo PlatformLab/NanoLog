@@ -73,7 +73,7 @@ NANO_LOG_LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
-		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc
+		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc $(RUNTIME_DIR)/RuntimeLogger.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \

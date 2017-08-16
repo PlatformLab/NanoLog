@@ -24,6 +24,11 @@
 // Required to use the NanoLog system
 #include "NanoLog.h"
 
+// Optional: Import the NanoLog log levels into the current namespace; this
+// allows the log levels (DEBUG, NOTICE, WARNING, ERROR) to be used without
+// using the NanoLog namespace (i.e. NanoLog::DEBUG).
+using namespace NanoLog::LogLevels;
+
 int main(int argc, char** argv) {
     // Number of messages to log repeatedly and take the average latency
     const uint64_t RECORDS = 100000000;
@@ -36,7 +41,7 @@ int main(int argc, char** argv) {
     NanoLog::setLogFile("/tmp/logFile");
 
     // Optional optimization: pre-allocates thread-local data structures
-    // needed by NanoLog. This should be invoked once per new
+    // needed by NanoLog. This can be invoked once per new
     // thread that will use the NanoLog system.
     NanoLog::preallocate();
 
@@ -45,8 +50,12 @@ int main(int argc, char** argv) {
     // DEBUG, NOTICE, WARNING, ERROR
     NanoLog::setLogLevel(NOTICE);
 
-    NANO_LOG(DEBUG, "This message wont be logged since it is lower than "
-                        "the current log level.");
+    NANO_LOG(DEBUG, "This message wont be logged since it is lower "
+                        "than the current log level.");
+
+    // Log levels can be named explicitly if one does not import the LogLevels
+    // namespace with 'using'
+    NANO_LOG(NanoLog::DEBUG, "Another message.");
 
     start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < RECORDS; ++i) {
@@ -65,8 +74,8 @@ int main(int argc, char** argv) {
     stop = PerfUtils::Cycles::rdtsc();
 
     time = PerfUtils::Cycles::toSeconds(stop - start);
-    printf("Flushing the log statements to disk took an additional %0.2lf secs\r\n",
-            time);
+    printf("Flushing the log statements to disk took an additional "
+                "%0.2lf secs\r\n", time);
 
     // Prints various statistics gathered by the NanoLog system to stdout
     NanoLog::printStats();

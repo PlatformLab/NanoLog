@@ -17,10 +17,10 @@
 
 #include "TestUtil.h"
 
-#include "NanoLog.h"
+#include "RuntimeLogger.h"
 
 namespace {
-
+using namespace NanoLogInternal;
 using namespace PerfUtils;
 
 // The fixture for testing class Foo.
@@ -30,12 +30,12 @@ class NanoLogTest : public ::testing::Test {
   // is empty.
   uint32_t bufferSize;
   uint32_t halfSize;
-  NanoLog::StagingBuffer *sb;
+  RuntimeLogger::StagingBuffer *sb;
 
   NanoLogTest()
     : bufferSize(NanoLogConfig::STAGING_BUFFER_SIZE)
     , halfSize(bufferSize/2)
-    , sb(new NanoLog::StagingBuffer(0))
+    , sb(new RuntimeLogger::StagingBuffer(0))
   {
       static_assert(1024 <= NanoLogConfig::STAGING_BUFFER_SIZE,
                                 "Test requires at least 1KB of buffer space");
@@ -228,7 +228,7 @@ TEST_F(NanoLogTest, StagingBuffer_peek) {
 
     // Case 3: Roll over, need double peeks.
     delete sb;
-    sb = new NanoLog::StagingBuffer(1);
+    sb = new RuntimeLogger::StagingBuffer(1);
 
     sb->reserveProducerSpace(bufferSize - 100);
     sb->finishReservation(bufferSize - 100);

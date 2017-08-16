@@ -16,6 +16,7 @@
 #ifndef FENCE_H
 #define FENCE_H
 
+namespace NanoLogInternal {
 /**
  * This class is used to restrict instruction reordering within a CPU in
  * order to maintain synchronization properties between threads.  Is a thin
@@ -84,5 +85,6 @@ class Fence {
         lfence();
     }
 };
+}; // namespace NanoLogInternal
 
 #endif  // FENCE_H

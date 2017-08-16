@@ -24,7 +24,7 @@
 
 #include "TestUtil.h"
 
-#include "NanoLog.h"
+#include "RuntimeLogger.h"
 #include "Packer.h"
 #include "Log.h"
 #include "GeneratedCode.h"
@@ -36,6 +36,7 @@ extern int __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
 namespace {
 
 using namespace PerfUtils;
+using namespace NanoLogInternal;
 
 // The fixture for testing class Foo.
 class LogTest : public ::testing::Test {

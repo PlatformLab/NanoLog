@@ -50,6 +50,7 @@
 #include "Fence.h"
 
 using namespace PerfUtils;
+using namespace NanoLogInternal;
 /**
  * Ask the operating system to pin the current thread to a given CPU.
  *
@@ -1030,7 +1031,7 @@ double uncompressedLogEntryIterationWithFence() {
         junk += in[j].fmtId;
         junk += in[j].timestamp;
 
-        Fence::lfence();
+        NanoLogInternal::Fence::lfence();
     }
     uint64_t stop = Cycles::rdtsc();
 
