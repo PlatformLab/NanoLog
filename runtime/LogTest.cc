@@ -1012,9 +1012,9 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
 
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
-    ue->timestamp = 135;
-    ++ue;
     ue->timestamp = 145;
+    ++ue;
+    ue->timestamp = 156;
 
     bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
@@ -1050,7 +1050,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
 
     ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
-    ue->timestamp = 126;
+    ue->timestamp = 135;
     ue->fmtId = noParamsId;
 
     bytesRead = encoder.encodeLogMsgs(inputBuffer,
@@ -1059,6 +1059,18 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
                                            true,
                                            &compressedLogs);
     EXPECT_EQ(11, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
+    ue->timestamp = 126;
+    ue->fmtId = noParamsId;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      sizeof(UncompressedEntry),
+                                      7,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(12, compressedLogs);
     EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
 
     /**
@@ -1077,14 +1089,16 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
      *      LogMsg1 at time = 111  (order 6)
      *          'aaaaaaaaaa\0'
      * BufferExtent 5 ===== newRound ======
-     *      LogMsg0 at time = 135 (order 9)
-     *      LogMsg1 at time = 145 (order 10)
+     *      LogMsg0 at time = 145 (order 10)
+     *      LogMsg1 at time = 156 (order 11)
      *          'aaaaaaaaaa\0'
      * BufferExtent 10
      *      LogMsg0 at time = 118 (order 7)
      * BuferExtent  11
      *      LogMsg0 at time = 91  (order 1)
      * BufferExtent 12 ===== newRound ======
+     *      LogMsg0 at time = 135 (order 9)
+     * BufferExtent 7 ===== newRound ======
      *      LogMsg0 at time = 126 (order 8)
      */
 
@@ -1101,7 +1115,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     ASSERT_NE(nullptr, outputFd);
     uint64_t msgsPrinted;
     EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, &msgsPrinted));
-    EXPECT_EQ(11, msgsPrinted);
+    EXPECT_EQ(12, msgsPrinted);
     fclose(outputFd);
 
     // Read it back and compare
@@ -1116,14 +1130,15 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
         "1969-12-31 16:00:01.000000096 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
         "1969-12-31 16:00:01.000000100 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000156 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
         "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000091 testHelper/client.cc:19 NOTICE[11]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[7]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
-        "# Decompression Complete after printing 11 log messages\r"
+        "# Decompression Complete after printing 12 log messages\r"
     };
 
     std::string iLine;
@@ -1142,7 +1157,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
     dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
-    EXPECT_EQ(11, msgsPrinted);
+    EXPECT_EQ(12, msgsPrinted);
     fclose(outputFd);
 
     const char* orderedLines[] = {
@@ -1154,12 +1169,13 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
         "1969-12-31 16:00:01.000000105 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
         "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
         "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[7]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000156 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
         "\r",
         "\r",
-        "# Decompression Complete after printing 11 log messages\r"
+        "# Decompression Complete after printing 12 log messages\r"
     };
 
     iFile.open(decomp);

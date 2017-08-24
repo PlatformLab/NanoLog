@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
     if(!decoder.open(argv[1])) {
         printf("Unable to open file %s\r\n", argv[1]);
     } else {
-        decoder.decompressUnordered(stdout, msgsToPrint);
+        decoder.decompressTo(stdout, msgsToPrint);
     }
 
     return 0;

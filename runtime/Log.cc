@@ -662,8 +662,8 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
     // implementation detail in StagingBuffer whereby one peek() does not
     // return all the data and at least 2 peek()'s are needed to deplete a
     // buffer.
-    static const uint32_t numStages = 3;
-    std::vector<BufferFragment*> stages[numStages];
+    static const uint32_t stagesToBuffer = 3;
+    std::vector<BufferFragment*> stages[stagesToBuffer];
 
     // Running number of stages being kept in stages
     uint32_t stagesBuffered = 0;
@@ -686,8 +686,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
     uint64_t linesPrinted = 0;
 
     while (!feof(inputFd) && !malformed && linesPrinted < logMsgsToPrint) {
-
-        // Step 1: Read in up to 3 stages of BufferFragments
+        // Step 1: Read in up to a certain number of BufferFragments
         mustDepleteAllStages = false;
         while (!feof(inputFd) && !malformed && !mustDepleteAllStages) {
             EntryType entry = peekEntryType(inputFd);
@@ -730,7 +729,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                     break;
             }
 
-            if (newStage && (++stagesBuffered) == numStages) {
+            if (newStage && (++stagesBuffered) == stagesToBuffer) {
                 break;
             }
 
@@ -753,7 +752,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
 
         // Step 3: Deplete the first stage
         while (true) {
-            // Step a: Find the minimum amongst the stages
+            // Step 3a: Find the minimum amongst the stages
             std::vector<BufferFragment*> *minStage = nullptr;
             for (uint32_t i = 0; i < stagesBuffered; ++i) {
                 if (stages[i].empty())
@@ -770,7 +769,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
             if (minStage == nullptr)
                 break;
 
-            // Step b: Output the log message
+            // Step 3b: Output the log message
             BufferFragment *bf = minStage->back();
             bool hasMore = bf->decompressNextLogStatement(outputFd,
                                                             linesPrinted,
@@ -790,7 +789,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                 freeBufferFragment(bf);
             }
 
-            // Step c: Check for exit conditions
+            // Step 3c: Check for exit condition
             if (stages[0].empty()) {
                 for (uint32_t i = 0; i < stagesBuffered - 1; ++i) {
                     stages[i] = stages[i+1];
@@ -798,7 +797,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                 stages[stagesBuffered - 1].clear();
 
                 --stagesBuffered;
-                if (stages[0].empty() && !mustDepleteAllStages)
+                if (!mustDepleteAllStages)
                     break;
             }
         }
