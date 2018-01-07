@@ -266,7 +266,7 @@ namespace Log {
      *          Number of bytes written to out
      */
     inline size_t
-    compressLogHeader(UncompressedEntry *re, char** out,
+    compressLogHeader(const UncompressedEntry *re, char** out,
                         uint64_t lastTimestamp) {
         CompressedEntry *mo = reinterpret_cast<CompressedEntry*>(*out);
         *out += sizeof(CompressedEntry);
