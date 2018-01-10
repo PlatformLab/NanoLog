@@ -1206,8 +1206,8 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
         ++ue;
     }
 
-    /// Simulate a file that's been written to 2x by using
-    /// 2 encoders on the same file.
+    /// Simulate a file that's been written to 3x by using
+    /// 3 encoders on the same file.
     uint64_t compressedLogs = 0;
     Encoder encoder(outputBuffer, 1000);
 
@@ -1220,7 +1220,7 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                                     5*sizeof(UncompressedEntry),
                                                     5,
-                                                    true,
+                                                    false,
                                                     &compressedLogs);
     EXPECT_EQ(5, compressedLogs);
     EXPECT_EQ(5*sizeof(UncompressedEntry), bytesRead);
@@ -1229,22 +1229,32 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     oFile.open(testFile);
     oFile.write(outputBuffer, encoder.getEncodedBytes());
 
+    // Encoder 2 does nothing except output a checkpoint
     Encoder encoder2(outputBuffer, 1000);
-
     // Hack to load fake Checkpoint values to get a consistent time output
     Checkpoint *checkpoint2 = (Checkpoint*)outputBuffer;
     checkpoint2->cyclesPerSecond = 1e9;
     checkpoint2->rdtsc = 0;
     checkpoint2->unixTime = 1;
 
-    bytesRead = encoder2.encodeLogMsgs(inputBuffer,
+    oFile.write(outputBuffer, encoder2.getEncodedBytes());
+
+    Encoder encoder3(outputBuffer, 1000);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint3 = (Checkpoint*)outputBuffer;
+    checkpoint3->cyclesPerSecond = 1e9;
+    checkpoint3->rdtsc = 0;
+    checkpoint3->unixTime = 1;
+
+    bytesRead = encoder3.encodeLogMsgs(inputBuffer,
                                                     5*sizeof(UncompressedEntry),
                                                     5,
                                                     true,
                                                     &compressedLogs);
     EXPECT_EQ(10, compressedLogs);
     EXPECT_EQ(5*sizeof(UncompressedEntry), bytesRead);
-    oFile.write(outputBuffer, encoder2.getEncodedBytes());
+    oFile.write(outputBuffer, encoder3.getEncodedBytes());
     oFile.close();
 
     // Now let's attempt to parse it back and decompress it to decomp
@@ -1268,6 +1278,8 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
         "1969-12-31 16:00:01.000000002 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000003 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000004 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "\r",
+        "# New execution started\r",
         "\r",
         "# New execution started\r",
         "1969-12-31 16:00:01.000000000 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",

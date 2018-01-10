@@ -686,7 +686,8 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
     uint64_t linesPrinted = 0;
 
     while (!feof(inputFd) && !malformed && linesPrinted < logMsgsToPrint) {
-        // Step 1: Read in up to a certain number of BufferFragments
+
+        // Step 1: Read in up to a certain number of "stages" of BufferFragments
         mustDepleteAllStages = false;
         while (!feof(inputFd) && !malformed && !mustDepleteAllStages) {
             EntryType entry = peekEntryType(inputFd);
@@ -696,49 +697,56 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                 case EntryType::BUFFER_EXTENT:
                 {
                     BufferFragment *bf = allocateBufferFragment();
-                    if (bf->readBufferExtent(inputFd, &newStage)) {
+                    malformed = !bf->readBufferExtent(inputFd, &newStage);
+
+                    if (!malformed)
                         stages[stagesBuffered].push_back(bf);
-                    }
-                    else
-                        malformed = true;
+
                     break;
                 }
                 case EntryType::CHECKPOINT:
-                    // New log start detected! Deplete all the logs and then
-                    // parse the checkpoint
-                    if (stages[0].empty()) {
-                        // We're safe, all the stages are empty
-                        if(readCheckpoint(checkpoint, inputFd)) {
-                            fprintf(outputFd,"\r\n# New execution started\r\n");
-                        } else {
-                            malformed = true;
-                        }
-                    } else {
+                    // New logical start to the logs detected, at this point
+                    // we should make sure we've printed all the buffered logs
+                    // before continuing to parse the next logical start.
+                    if (!stages[0].empty()) {
                         mustDepleteAllStages = true;
+                        break;
                     }
+
+                    // We're safe, all the stages are empty
+                    malformed = !readCheckpoint(checkpoint, inputFd);
+
+                    if (!malformed)
+                        fprintf(outputFd,"\r\n# New execution started\r\n");
+
                     break;
+
                 case EntryType::LOG_MSG:
                     printf("Internal Error: Found a log message outside a "
                             "BufferFragment. Log may be malformed!\r\n");
                     malformed = true;
                     break;
                 case EntryType::INVALID:
-                    // Consume whitespace
+                    // Consume padding
                     while (!feof(inputFd) && peekEntryType(inputFd) == INVALID)
                         fgetc(inputFd);
                     break;
             }
 
-            if (newStage && (++stagesBuffered) == stagesToBuffer) {
-                break;
+            if (feof(inputFd))
+                mustDepleteAllStages = true;
+
+            // If we reach a logical end to the current stage,
+            // make the current stage available for consumption
+            if (((mustDepleteAllStages || malformed) && !stages[0].empty()) ||
+                    newStage)
+            {
+                ++stagesBuffered;
             }
 
-            if (feof(inputFd))
-                ++stagesBuffered;
+            if (stagesBuffered == stagesToBuffer)
+                break;
         }
-
-        if (feof(inputFd))
-            mustDepleteAllStages = true;
 
         // Step 2: Sort all BufferFragments within the stages from
         // front=max to back=min
