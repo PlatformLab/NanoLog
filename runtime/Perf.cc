@@ -36,12 +36,14 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <thread>
 
 #include <unistd.h>
 #include <sched.h>
 #include <stdlib.h>
 #include <syscall.h>
 #include <stdio.h>
+#include <xmmintrin.h>
 
 #include "Cycles.h"
 #include "Log.h"
@@ -260,6 +262,22 @@ double fgetcFn() {
     std::remove("/tmp/testLog.dat");
 
     return Cycles::toSeconds(stop - start)/(dataLen);
+}
+
+double sched_getcpu_rdtscp_test() {
+    int count = 1000000;
+    int cpuSum = 0;
+    uint64_t timeSum = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        timeSum += Cycles::rdtsc();
+        cpuSum += sched_getcpu();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&cpuSum);
+    return Cycles::toSeconds(stop - start)/count;
 }
 
 double compressBinarySearch() {
@@ -741,6 +759,75 @@ double memcpyCold1000()
     return memcpyShared(1000, true, true);
 }
 
+
+double mm_stream_pi_test()
+{
+    int count = 10000000;
+    char backing_buffer[128];
+
+    char *buffer = (backing_buffer + 64);
+    __m64 *ptr = reinterpret_cast<__m64*>(buffer);
+
+    uint64_t start = Cycles::rdtsc();
+    for (uint64_t i = 0; i < count; i++) {
+        _mm_stream_pi(ptr, (__m64)i);
+    }
+    uint64_t stop = Cycles::rdtsc();
+    discard(ptr);
+
+    return Cycles::toSeconds(stop - start)/(count);
+}
+
+
+static uint64_t variable = 0;
+void readerThread(uint64_t *variableToRead,
+                    volatile bool *run,
+                    pthread_barrier_t *barrier,
+                    int core=0)
+{
+    bindThreadToCpu(core);
+    pthread_barrier_wait(barrier);
+
+    uint64_t sum = 0;
+    while(*run) {
+        sum += variable;
+        NanoLogInternal::Fence::lfence();
+    }
+
+    discard(&sum);
+}
+
+double mm_stream_pi_contended()
+{
+    int count = 1000;
+    char *backing_buffer = static_cast<char*>(malloc(128));
+    char *buffer = (backing_buffer + 64);
+    __m64 *ptr = reinterpret_cast<__m64*>(buffer);
+    uint64_t *writeLocation = (uint64_t*)ptr;
+
+    bool run = true;
+    pthread_barrier_t barrier;
+    pthread_barrier_init(&barrier, NULL, 2);
+    std::thread contenderThread(readerThread, (uint64_t*)(ptr), &run, &barrier, 0);
+    pthread_barrier_wait(&barrier);
+
+    uint64_t start = Cycles::rdtsc();
+    for (uint64_t i = 0; i < count; i++) {
+        // variable += i;
+        // *writeLocation += i;
+        _mm_stream_pi((__m64*)&variable, (__m64)i);
+        NanoLogInternal::Fence::sfence();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(writeLocation);
+    free(backing_buffer);
+    run = false;
+    contenderThread.join();
+    pthread_barrier_destroy(&barrier);
+    return Cycles::toSeconds(stop - start)/(count);
+}
+
 // Cost of notifying a condition variable
 double notify_all() {
     int count = 1000000;
@@ -797,6 +884,21 @@ double perfCyclesToSeconds()
     }
     uint64_t stop = Cycles::rdtsc();
 
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+double sched_getcpu_test()
+{
+    int count = 1000000;
+    int cpuSum = 0;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        cpuSum += sched_getcpu();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    discard(&cpuSum);
     return Cycles::toSeconds(stop - start)/count;
 }
 
@@ -1097,6 +1199,8 @@ TestInfo tests[] = {
      "Cost of reading 10 bytes via fread"},
     {"fread100", fread100,
      "Cost of reading 100 bytes via fread"},
+    {"getcpu_rdtscp", sched_getcpu_rdtscp_test,
+     "Cost of sched_getcpu + rdtscp"},
     {"ifstreamRead1", ifstreamRead1,
      "Cost of reading 1 byte from an ifstream"},
     {"ifstreamRead10", ifstreamRead10,
@@ -1125,10 +1229,16 @@ TestInfo tests[] = {
      "memcpy 100 bytes with cold dst and src"},
     {"memcpyCold1000", memcpyCold1000,
      "memcpy 1000 bytes with cold dst and src"},
+    {"mm_stream_pi", mm_stream_pi_test,
+     "Cost to write 8-bytes without polluting cache"},
+    {"mm_stream_pi_contended", mm_stream_pi_contended,
+     "mm_stream_pi with a second thread reading the variable"},
     {"notify_all", notify_all,
      "condition_variable.notify_all()"},
     {"notify_one", notify_one,
      "condition_variable.notify_one()"},
+    {"sched_getcpu", sched_getcpu_test,
+     "Cost of sched_getcpu"},
     {"snprintfFileLocation", snprintfFileLocation,
      "snprintf only the __FILE__:__LINE__:__func___"},
     {"snprintfRAMCloud", snprintfRAMCloud,
@@ -1189,17 +1299,17 @@ main(int argc, char *argv[])
         }
     } else {
         // Run only the tests that were specified on the command line.
-        for (int i = 1; i < argc; i++) {
+        for (int j = 1; j < argc; j++) {
             bool foundTest = false;
             for (int i = 0; i < sizeof(tests)/sizeof(TestInfo); ++i) {
-                if (strcmp(argv[i], tests[i].name) == 0) {
+                if (strcmp(argv[j], tests[i].name) == 0) {
                     foundTest = true;
                     runTest(tests[i]);
                     break;
                 }
             }
             if (!foundTest) {
-                int width = printf("%-20s ??", argv[i]);
+                int width = printf("%-20s ??", argv[j]);
                 printf("%*s No such test\n", 26-width, "");
             }
         }

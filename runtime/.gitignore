@@ -1,4 +1,3 @@
-e 
 *.o
 *.a
 *.log
@@ -10,3 +9,7 @@ nbproject
 Bench.sh
 Benchmark
 Perf
+
+# IDE project files
+.idea/
+cmake-build-debug/
