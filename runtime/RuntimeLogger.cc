@@ -699,7 +699,10 @@ RuntimeLogger::sync() {
 char *
 RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking) {
     const char *endOfBuffer = storage + NanoLogConfig::STAGING_BUFFER_SIZE;
+
+#ifdef RECORD_PRODUCER_STATS
     uint64_t start = PerfUtils::Cycles::rdtsc();
+#endif
 
     // There's a subtle point here, all the checks for remaining
     // space are strictly < or >, not <= or => because if we allow
@@ -745,8 +748,8 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
     size_t index = std::min(cyclesBlocked/cyclesIn10Ns, maxIndex);
     ++(cyclesProducerBlockedDist[index]);
 #endif
-    ++numTimesProducerBlocked;
 
+    ++numTimesProducerBlocked;
     return producerPos;
 }
 
