@@ -393,12 +393,13 @@ inline {function_declaration} {{
     if (level > {getLogLevelFn}())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     {strlen_declaration};
     size_t allocSize = {primitive_size_sum} {strlen_sum} sizeof({entry});
     {entry} *re = reinterpret_cast<{entry}*>({alloc_fn}(allocSize));
 
     re->fmtId = {idVariableName};
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;

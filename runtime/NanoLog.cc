@@ -7,8 +7,8 @@
 namespace NanoLog {
     using namespace NanoLogInternal;
 
-    void printStats() {
-        RuntimeLogger::printStats();
+    std::string getStats() {
+        return RuntimeLogger::getStats();
     }
 
     void printConfig() {
@@ -44,5 +44,9 @@ namespace NanoLog {
 
     void sync() {
         RuntimeLogger::sync();
+    }
+
+    int getCoreIdOfBackgroundThread() {
+        return RuntimeLogger::getCoreIdOfBackgroundThread();
     }
 };

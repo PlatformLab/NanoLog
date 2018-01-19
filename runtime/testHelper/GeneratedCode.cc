@@ -37,12 +37,13 @@ inline void __syang0__fl__Error32Level__testHelper47client46cc__25__(NanoLog::Lo
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Error32Level__testHelper47client46cc__25__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -121,12 +122,13 @@ inline void __syang0__fl__Warning32Level__testHelper47client46cc__24__(NanoLog::
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Warning32Level__testHelper47client46cc__24__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -205,12 +207,13 @@ inline void __syang0__fl__Notice32Level__testHelper47client46cc__23__(NanoLog::L
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Notice32Level__testHelper47client46cc__23__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -289,12 +292,13 @@ inline void __syang0__fl__Debug32level__testHelper47client46cc__22__(NanoLog::Lo
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Debug32level__testHelper47client46cc__22__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -373,12 +377,13 @@ inline void __syang0__fl__Simple32log32message32with32032parameters__testHelper4
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -457,12 +462,13 @@ inline void __syang0__fl__This32is32a32string3237s__testHelper47client46cc__20__
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     size_t str0Len = strlen(arg0);;
     size_t allocSize =  str0Len + 1 +  sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;

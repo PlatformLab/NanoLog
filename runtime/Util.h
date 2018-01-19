@@ -30,7 +30,7 @@
 #include <string>
 #include <stdexcept>
 
-namespace PerfUtils {
+namespace NanoLogInternal {
 
 /**
  * Miscellaneous methods that seem like they might be useful in several
@@ -71,7 +71,7 @@ rdpmc(int ecx)
 /**
   * Returns the thread id of the calling thread
   * As long as the thread continues to run, this id is unique across all threads
-  * running ont he system so it can be used to uniquely name per-thread 
+  * running on the system so it can be used to uniquely name per-thread
   * resources
   */
 static
@@ -128,7 +128,7 @@ void setCpuAffinity(cpu_set_t cpuset) {
 /**
  * This function is used to seralize machine instructions so that no
  * instructions that appear after it in the current thread can run before any
- * instructions that appear before it. 
+ * instructions that appear before it.
  *
  * It is useful for putting around rdpmc instructions (to pinpoint cache
  * misses) as well as before rdtsc instructions, to prevent time pollution from
@@ -179,9 +179,13 @@ serialReadPmc(int ecx)
 // Number of bytes in a cache-line in our x86 machines.
 static const uint32_t BYTES_PER_CACHE_LINE = 64;
 
+// Returns the number of elements in a statically allocated array.
+template<class T, size_t N>
+constexpr size_t arraySize(T (&)[N]) { return N; }
+
 } // end Util
 
 } // end PerfUtils
 
 #undef FORCE_INLINE
-#endif  // PERFUTIL_UTIL_H
+#endif  // NanoLogInternal

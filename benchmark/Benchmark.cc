@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
                 "%0.2lf secs\r\n", time);
 
     // Prints various statistics gathered by the NanoLog system to stdout
-    NanoLog::printStats();
+    printf("%s", NanoLog::getStats().c_str());
     NanoLog::printConfig();
 }
 

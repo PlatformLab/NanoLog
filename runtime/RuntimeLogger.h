@@ -16,13 +16,14 @@
 #ifndef RUNTIME_NANOLOG_H
 #define RUNTIME_NANOLOG_H
 
-#include <condition_variable>
-#include <mutex>
-#include <thread>
-#include <vector>
-
 #include <aio.h>
 #include <cassert>
+
+#include <condition_variable>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "Config.h"
 #include "Common.h"
@@ -78,7 +79,8 @@ using namespace NanoLog;
             stagingBuffer->finishReservation(nbytes);
         }
 
-        static void printStats();
+        static std::string getStats();
+        static std::string getHistograms();
         static void preallocate();
         static void setLogFile(const char *filename);
         static void setLogLevel(LogLevel logLevel);
@@ -86,6 +88,10 @@ using namespace NanoLog;
 
         static inline LogLevel getLogLevel() {
             return nanoLogSingleton.currentLogLevel;
+        }
+
+        static inline int getCoreIdOfBackgroundThread() {
+            return nanoLogSingleton.coreId;
         }
     PRIVATE:
 
@@ -201,6 +207,11 @@ using namespace NanoLog;
         // Metric: Amount of time spent compressing the dynamic log data
         uint64_t cyclesCompressing;
 
+        // Metric: Stores the distribution of StagingBuffer peek sizes in 5%
+        // increments relative to the full size. This distribution should show
+        // how well the background thread keeps up with the logging threads.
+        uint64_t stagingBufferPeekDist[20];
+
         // Metric: Amount of time spent scanning the buffers for work and
         // compressing events found.
         uint64_t cyclesScanningAndCompressing;
@@ -224,6 +235,9 @@ using namespace NanoLog;
 
         // Metric: Number of times an AIO write was completed.
         uint32_t numAioWritesCompleted;
+
+        // Stores the last coreId that the background thread ran in.
+        int coreId;
 
         /**
          * Implements a circular FIFO producer/consumer byte queue that is used
@@ -253,6 +267,8 @@ using namespace NanoLog;
              */
             inline char *
             reserveProducerSpace(size_t nbytes) {
+                ++numAllocations;
+
                 // Fast in-line path
                 if (nbytes < minFreeSpace)
                     return producerPos;
@@ -317,7 +333,12 @@ using namespace NanoLog;
                     , endOfRecordedSpace(storage
                                            + NanoLogConfig::STAGING_BUFFER_SIZE)
                     , minFreeSpace(NanoLogConfig::STAGING_BUFFER_SIZE)
-                    , cyclesProducerBlocked(0), cacheLineSpacer()
+                    , cyclesProducerBlocked(0)
+                    , numTimesProducerBlocked(0)
+                    , numAllocations(0)
+                    , cyclesProducerBlockedDist()
+                    , cyclesIn10Ns(PerfUtils::Cycles::fromNanoseconds(10))
+                    , cacheLineSpacer()
                     , consumerPos(storage)
                     , shouldDeallocate(false)
                     , id(bufferId)
@@ -325,6 +346,12 @@ using namespace NanoLog;
                 // Empty function, but causes the C++ runtime to instantiate the
                 // sbc thread_local (see documentation in function).
                 sbc.stagingBufferCreated();
+
+                for (size_t i = 0; i < Util::arraySize(
+                                              cyclesProducerBlockedDist); ++i)
+                {
+                    cyclesProducerBlockedDist[i] = 0;
+                }
             }
 
             ~StagingBuffer() {
@@ -349,10 +376,27 @@ using namespace NanoLog;
             // free up in the StagingBuffer for an allocation.
             uint64_t cyclesProducerBlocked;
 
+            // Number of times the producer was blocked while waiting for space
+            // to free up in the StagingBuffer for an allocation
+            uint32_t numTimesProducerBlocked;
+
+            // Number of alloc()'s performed
+            uint64_t numAllocations;
+
+            // Distribution of the number of times Producer was blocked
+            // allocating space in 10ns increments. The last slot includes
+            // all times greater than the last increment.
+            uint32_t cyclesProducerBlockedDist[20];
+
+            // Number of Cycles in 10ns. This is used to avoid the expensive
+            // Cycles::toNanoseconds() call to calculate the bucket in the
+            // cyclesProducerBlockedDist distribution.
+            uint64_t cyclesIn10Ns;
+
             // An extra cache-line to separate the variables that are primarily
             // updated/read by the producer (above) from the ones by the
             // consumer(below)
-            char cacheLineSpacer[PerfUtils::Util::BYTES_PER_CACHE_LINE];
+            char cacheLineSpacer[2*Util::BYTES_PER_CACHE_LINE];
 
             // Position within the storage buffer where the consumer will consume
             // the next bytes from. This value is only updated by the consumer.
@@ -371,6 +415,7 @@ using namespace NanoLog;
             // Backing store used to implement the circular queue
             char storage[NanoLogConfig::STAGING_BUFFER_SIZE];
 
+            friend RuntimeLogger;
             friend StagingBufferDestroyer;
 
             DISALLOW_COPY_AND_ASSIGN(StagingBuffer);

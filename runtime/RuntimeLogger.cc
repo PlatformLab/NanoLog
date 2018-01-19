@@ -16,13 +16,17 @@
 
 #include <fcntl.h>
 #include <iosfwd>
+#include <iostream>
 #include <locale>
+#include <sstream>
+#include <string>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "Cycles.h"         /* Cycles::rdtsc() */
 #include "RuntimeLogger.h"
 #include "Config.h"
+#include "Util.h"
 
 namespace NanoLogInternal {
 
@@ -51,6 +55,7 @@ RuntimeLogger::RuntimeLogger()
         , cycleAtThreadStart(0)
         , cyclesActive(0)
         , cyclesCompressing(0)
+        , stagingBufferPeekDist()
         , cyclesScanningAndCompressing(0)
         , cyclesDiskIO_upperBound(0)
         , totalBytesRead(0)
@@ -58,7 +63,11 @@ RuntimeLogger::RuntimeLogger()
         , padBytesWritten(0)
         , logsProcessed(0)
         , numAioWritesCompleted(0)
+        , coreId(-1)
 {
+    for (size_t i = 0; i < Util::arraySize(stagingBufferPeekDist); ++i)
+        stagingBufferPeekDist[i] = 0;
+
     outputFd = open("/tmp/compressedLog", NanoLogConfig::FILE_PARAMS, 0666);
     if (outputFd < 0) {
         fprintf(stderr, "NanoLog could not open the default file location "
@@ -121,8 +130,10 @@ RuntimeLogger::~RuntimeLogger() {
 }
 
 // Documentation in NanoLog.h
-void
-RuntimeLogger::printStats() {
+std::string
+RuntimeLogger::getStats() {
+    std::ostringstream out;
+    char buffer[1024];
     // Leaks abstraction, but basically flush so we get all the time
     uint64_t start = PerfUtils::Cycles::rdtsc();
     fdatasync(nanoLogSingleton.outputFd);
@@ -144,49 +155,63 @@ RuntimeLogger::printStats() {
     double numEventsProcessedDouble = static_cast<double>(
             nanoLogSingleton.logsProcessed);
 
-    printf("\r\nWrote %lu events (%0.2lf MB) in %0.3lf seconds "
+    snprintf(buffer, 1024,
+               "\r\nWrote %lu events (%0.2lf MB) in %0.3lf seconds "
                    "(%0.3lf seconds spent compressing)\r\n",
-           nanoLogSingleton.logsProcessed,
-           totalBytesWrittenDouble / 1.0e6,
-           workTime,
-           compressTime);
+               nanoLogSingleton.logsProcessed,
+               totalBytesWrittenDouble / 1.0e6,
+               workTime,
+               compressTime);
+    out << buffer;
 
-    printf("There were %u file flushes and the final sync time was %lf sec\r\n",
+    snprintf(buffer, 1024,
+           "There were %u file flushes and the final sync time was %lf sec\r\n",
            nanoLogSingleton.numAioWritesCompleted,
            PerfUtils::Cycles::toSeconds(stop - start));
+    out << buffer;
 
     double secondsAwake =
             PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesActive);
     double secondsThreadHasBeenAlive = PerfUtils::Cycles::toSeconds(
             PerfUtils::Cycles::rdtsc() - nanoLogSingleton.cycleAtThreadStart);
-    printf("Compression Thread was active for %0.3lf out of %0.3lf seconds "
+    snprintf(buffer, 1024,
+               "Compression Thread was active for %0.3lf out of %0.3lf seconds "
                    "(%0.2lf %%)\r\n",
-           secondsAwake,
-           secondsThreadHasBeenAlive,
-           100.0 * secondsAwake / secondsThreadHasBeenAlive);
+               secondsAwake,
+               secondsThreadHasBeenAlive,
+               100.0 * secondsAwake / secondsThreadHasBeenAlive);
+    out << buffer;
 
-    printf("On average, that's\r\n");
-
-    printf("\t%0.2lf MB/s or %0.2lf ns/byte w/ processing\r\n",
-           (totalBytesWrittenDouble / 1.0e6) / (workTime),
-           (workTime * 1.0e9) / totalBytesWrittenDouble);
+    snprintf(buffer, 1024,
+                "On average, that's\r\n\t%0.2lf MB/s or "
+                    "%0.2lf ns/byte w/ processing\r\n",
+               (totalBytesWrittenDouble / 1.0e6) / (workTime),
+               (workTime * 1.0e9) / totalBytesWrittenDouble);
+    out << buffer;
 
     // Since we sleep at 1µs intervals and check for completion at wake up,
     // it's possible the IO finished before we woke-up, thus enlarging the time.
-    printf("\t%0.2lf MB/s or %0.2lf ns/byte disk throughput (min)\r\n",
-           (totalBytesWrittenDouble / 1.0e6) / outputTime,
-           (outputTime * 1.0e9) / totalBytesWrittenDouble);
+    snprintf(buffer, 1024,
+                "\t%0.2lf MB/s or %0.2lf ns/byte disk throughput (min)\r\n",
+                (totalBytesWrittenDouble / 1.0e6) / outputTime,
+                (outputTime * 1.0e9) / totalBytesWrittenDouble);
+    out << buffer;
 
-    printf("\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
-           (totalBytesWrittenDouble / 1.0e6) / nanoLogSingleton.numAioWritesCompleted,
-           totalBytesWrittenDouble * 1.0 / numEventsProcessedDouble);
+    snprintf(buffer, 1024,
+                "\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
+                (totalBytesWrittenDouble / 1.0e6) /
+                                         nanoLogSingleton.numAioWritesCompleted,
+                totalBytesWrittenDouble * 1.0 / numEventsProcessedDouble);
+    out << buffer;
 
-    printf("\t%0.2lf ns/event in total\r\n"
+    snprintf(buffer, 1024,
+                "\t%0.2lf ns/event in total\r\n"
                    "\t%0.2lf ns/event compressing\r\n",
-           (workTime) * 1.0e9 / numEventsProcessedDouble,
-           compressTime * 1.0e9 / numEventsProcessedDouble);
+                (workTime) * 1.0e9 / numEventsProcessedDouble,
+                compressTime * 1.0e9 / numEventsProcessedDouble);
+    out << buffer;
 
-    printf("The compression ratio was %0.2lf-%0.2lfx "
+    snprintf(buffer, 1024, "The compression ratio was %0.2lf-%0.2lfx "
                    "(%lu bytes in, %lu bytes out, %lu pad bytes)\n",
            1.0 * totalBytesReadDouble / (totalBytesWrittenDouble
                                          + padBytesWrittenDouble),
@@ -194,6 +219,83 @@ RuntimeLogger::printStats() {
            nanoLogSingleton.totalBytesRead,
            nanoLogSingleton.totalBytesWritten,
            nanoLogSingleton.padBytesWritten);
+    out << buffer;
+
+    return out.str();
+}
+
+/**
+ * Returns a string detailing the distribution of how long vs. how many times
+ * the log producers had to wait for free space and how big vs. how many times
+ * the consumer (background thread) read.
+ *
+ * Note: The distribution stats for the producer must be enabled via
+ * -DRECORD_PRODUCER_STATS during compilation, otherwise only the consumer
+ * stats will be printed.
+ */
+std::string
+RuntimeLogger::getHistograms()
+{
+    std::ostringstream out;
+    char buffer[1024];
+
+    snprintf(buffer, 1024, "Distribution of StagingBuffer.peek() sizes\r\n");
+    out << buffer;
+    size_t numIntervals =
+            Util::arraySize(nanoLogSingleton.stagingBufferPeekDist);
+    for (size_t i = 0; i < numIntervals; ++i) {
+        snprintf(buffer, 1024
+                , "\t%02lu - %02lu%%: %lu\r\n"
+                , i*100/numIntervals
+                , (i+1)*100/numIntervals
+                , nanoLogSingleton.stagingBufferPeekDist[i]);
+        out << buffer;
+    }
+
+    {
+        std::unique_lock<std::mutex> lock(nanoLogSingleton.bufferMutex);
+        for (size_t i = 0; i < nanoLogSingleton.threadBuffers.size(); ++i) {
+            StagingBuffer *sb = nanoLogSingleton.threadBuffers.at(i);
+            if (sb) {
+                snprintf(buffer, 1024, "Thread %u:\r\n", sb->getId());
+                out << buffer;
+
+                snprintf(buffer, 1024,
+                                 "\tAllocations   : %lu\r\n"
+                                 "\tTimes Blocked : %u\r\n",
+                         sb->numAllocations,
+                         sb->numTimesProducerBlocked);
+                out << buffer;
+
+#ifdef RECORD_PRODUCER_STATS
+                uint64_t averageBlockNs = PerfUtils::Cycles::toNanoseconds(
+                        sb->cyclesProducerBlocked)/sb->numTimesProducerBlocked;
+                snprintf(buffer, 1024,
+                                 "\tAvgBlock (ns) : %lu\r\n"
+                                 "\tBlock Dist\r\n",
+                         averageBlockNs);
+                for (size_t i = 0; i < Util::arraySize(
+                        sb->cyclesProducerBlockedDist); ++i)
+                {
+                    snprintf(buffer, 1024
+                            , "\t\t%4lu - %4lu ns: %u\r\n"
+                            , i*10
+                            , (i+1)*10
+                            , sb->cyclesProducerBlockedDist[i]);
+                    out << buffer;
+                }
+#endif
+            }
+        }
+    }
+
+
+#ifndef RECORD_PRODUCER_STATS
+    out << "Note: Detailed Producer stats were compiled out. Enable "
+            "via -DRECORD_PRODUCER_STATS";
+#endif
+
+    return out.str();
 }
 
 // See documentation in NanoLog.h
@@ -262,6 +364,8 @@ RuntimeLogger::compressionThreadMain() {
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
+        coreId = sched_getcpu();
+
         // Indicates how many bytes we have consumed from the StagingBuffers
         // in a single iteration of the while above. A value of 0 means we
         // were unable to consume anymore data any of the stagingBuffers
@@ -287,6 +391,13 @@ RuntimeLogger::compressionThreadMain() {
                 if (peekBytes > 0) {
                     uint64_t start = PerfUtils::Cycles::rdtsc();
                     lock.unlock();
+
+                    // Record metrics on the peek size
+                    size_t sizeOfDist = Util::arraySize(stagingBufferPeekDist);
+                    size_t distIndex = (sizeOfDist*peekBytes)/
+                                            NanoLogConfig::STAGING_BUFFER_SIZE;
+                    ++(stagingBufferPeekDist[distIndex]);
+
 
                     // Encode the data in RELEASE_THRESHOLD chunks
                     uint32_t remaining = downCast<uint32_t>(peekBytes);
@@ -604,7 +715,7 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
             minFreeSpace = endOfBuffer - producerPos;
 
             if (minFreeSpace > nbytes)
-                return producerPos;
+                break;
 
             // Not enough space at the end of the buffer; wrap around
             endOfRecordedSpace = producerPos;
@@ -626,7 +737,15 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
             return nullptr;
     }
 
-    cyclesProducerBlocked += PerfUtils::Cycles::rdtsc() - start;
+#ifdef RECORD_PRODUCER_STATS
+    uint64_t cyclesBlocked = PerfUtils::Cycles::rdtsc() - start;
+    cyclesProducerBlocked += cyclesBlocked;
+
+    size_t maxIndex = Util::arraySize(cyclesProducerBlockedDist) - 1;
+    size_t index = std::min(cyclesBlocked/cyclesIn10Ns, maxIndex);
+    ++(cyclesProducerBlockedDist[index]);
+#endif
+    ++numTimesProducerBlocked;
 
     return producerPos;
 }

@@ -1,6 +1,8 @@
 #ifndef NANOLOG_H
 #define NANOLOG_H
 
+#include <string>
+
 /**
  * This header serves as the application and generated code interface into
  * the NanoLog Runtime system. This should be included where-ever the NANO_LOG
@@ -88,18 +90,23 @@ void sync();
 // Debugging API
 
 /**
- * Print various statistics gathered by the NanoLog system to stdout. This
- * is primarily intended as a performance debugging aid and the reported
- * performance metrics may not be 100% consistent since they are read without
- * synchronization.
+ * Returns a string containing various statistics gathered by the NanoLog
+ * system to stdout. This is primarily intended as a performance debugging
+ * aid and the reported  performance metrics may not be 100% consistent since
+ * they are read without synchronization.
  */
-void printStats();
+std::string getStats();
 
 /**
  * Prints the configuration parameters being used by NanoLog to stdout. This is
  * primarily used to keep track of configurations for benchmarking.
  */
 void printConfig();
+
+/**
+ * Returns the id of the last CPU that the NanoLog Background thread ran on
+ */
+int getCoreIdOfBackgroundThread();
 
 }; // namespace NanoLog
 

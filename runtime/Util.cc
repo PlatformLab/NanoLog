@@ -22,7 +22,7 @@
 
 using std::string;
 
-namespace PerfUtils {
+namespace NanoLogInternal {
 namespace Util {
 string format(const char* format, ...)
     __attribute__((format(printf, 1, 2)));
@@ -114,4 +114,4 @@ hexDump(const void *buf, uint64_t bytes)
 
 
 } // namespace Util
-} // namespace DDTrace
+} // namespace NanoLogInternal

@@ -532,12 +532,13 @@ inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId{logId};
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;

@@ -37,12 +37,13 @@ inline void __syang0__fl__A__mar46h__1__(NanoLog::LogLevel level, const char* fm
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46h__1__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -59,7 +60,7 @@ inline void __syang0__fl__A__mar46h__1__(NanoLog::LogLevel level, const char* fm
 
 
 inline ssize_t
-compressArgs__A__mar46h__1__(Log::UncompressedEntry *re, char* out) {
+compressArgs__A__mar46h__1__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -77,7 +78,7 @@ compressArgs__A__mar46h__1__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -121,12 +122,13 @@ inline void __syang0__fl__C__mar46cc__200__(NanoLog::LogLevel level, const char*
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__C__mar46cc__200__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -143,7 +145,7 @@ inline void __syang0__fl__C__mar46cc__200__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__C__mar46cc__200__(Log::UncompressedEntry *re, char* out) {
+compressArgs__C__mar46cc__200__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -161,7 +163,7 @@ compressArgs__C__mar46cc__200__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -205,12 +207,13 @@ inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char*
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__B__mar46cc__294__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -227,7 +230,7 @@ inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__B__mar46cc__294__(Log::UncompressedEntry *re, char* out) {
+compressArgs__B__mar46cc__294__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -245,7 +248,7 @@ compressArgs__B__mar46cc__294__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -289,12 +292,13 @@ inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char*
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__E__del46cc__199__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -311,7 +315,7 @@ inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__E__del46cc__199__(Log::UncompressedEntry *re, char* out) {
+compressArgs__E__del46cc__199__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -329,7 +333,7 @@ compressArgs__E__del46cc__199__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -373,12 +377,13 @@ inline void __syang0__fl__A__mar46cc__293__(NanoLog::LogLevel level, const char*
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize =   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__A__mar46cc__293__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
@@ -395,7 +400,7 @@ inline void __syang0__fl__A__mar46cc__293__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__A__mar46cc__293__(Log::UncompressedEntry *re, char* out) {
+compressArgs__A__mar46cc__293__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -413,7 +418,7 @@ compressArgs__A__mar46cc__293__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -457,18 +462,19 @@ inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const ch
     if (level > NanoLog::getLogLevel())
         return;
 
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize = sizeof(arg0) +   sizeof(Log::UncompressedEntry);
-    Log::UncompressedEntry *re = reinterpret_cast<Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+    size_t allocSize = sizeof(arg0) +   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
     re->fmtId = __fmtId__D3237d__s46cc__100__;
-    re->timestamp = PerfUtils::Cycles::rdtsc();
+    re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
 
     // Record the non-string arguments
-    	Log::recordPrimitive(buffer, arg0);
+    	NanoLogInternal::Log::recordPrimitive(buffer, arg0);
 
 
     // Record the strings (if any) at the end of the entry
@@ -480,7 +486,7 @@ inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const ch
 
 
 inline ssize_t
-compressArgs__D3237d__s46cc__100__(Log::UncompressedEntry *re, char* out) {
+compressArgs__D3237d__s46cc__100__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -500,7 +506,7 @@ compressArgs__D3237d__s46cc__100__(Log::UncompressedEntry *re, char* out) {
     if (false) {
         // memcpy all the strings without compression
         size_t stringBytes = re->entrySize - (sizeof(arg0) +  0)
-                                            - sizeof(Log::UncompressedEntry);
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
             out += stringBytes;
@@ -565,7 +571,7 @@ struct LogMetadata logId2Metadata[6] =
 
 // Map of numerical ids to compression functions
 ssize_t
-(*compressFnArray[6]) (Log::UncompressedEntry *re, char* out)
+(*compressFnArray[6]) (NanoLogInternal::Log::UncompressedEntry *re, char* out)
 {
     compressArgs__A__mar46h__1__,
 compressArgs__C__mar46cc__200__,
