@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -87,6 +87,32 @@ static uint64_t cntr = 0;
 
 void function(uint64_t cycles) {
     cntr = cycles*2%100 + PerfUtils::Cycles::rdtsc();
+}
+
+/**
+ * Return the current value of the fine-grain CPU cycle counter
+ * (accessed via the RDTSC instruction).
+ */
+static __inline __attribute__((always_inline))
+uint64_t
+rdtsc()
+{
+    uint32_t lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a" (lo), "=d" (hi));
+    return (((uint64_t)hi << 32) | lo);
+}
+
+/**
+ * Return the current value of the fine-grain CPU cycle counter
+ * (accessed via the RDTSCP instruction).
+ */
+static __inline __attribute__((always_inline))
+uint64_t
+rdtscp()
+{
+    uint32_t lo, hi;
+    __asm__ __volatile__("rdtscp" : "=a" (lo), "=d" (hi) : : "%rcx");
+    return (((uint64_t)hi << 32) | lo);
 }
 
 //----------------------------------------------------------------------
@@ -887,6 +913,39 @@ double perfCyclesToSeconds()
     return Cycles::toSeconds(stop - start)/count;
 }
 
+// Measure the cost of the reading the CPU timestamp counter
+double rdtsc_test()
+{
+    int count = 1000000;
+    double total = 0;
+    uint64_t cycles = 994261;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        total += rdtsc();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
+// Measure the cost of the reading the CPU timestamp counter
+// with serialization
+double rdtscp_test()
+{
+    int count = 1000000;
+    double total = 0;
+    uint64_t cycles = 994261;
+
+    uint64_t start = Cycles::rdtsc();
+    for (int i = 0; i < count; i++) {
+        total += rdtscp();
+    }
+    uint64_t stop = Cycles::rdtsc();
+
+    return Cycles::toSeconds(stop - start)/count;
+}
+
 double sched_getcpu_test()
 {
     int count = 1000000;
@@ -1237,6 +1296,10 @@ TestInfo tests[] = {
      "condition_variable.notify_all()"},
     {"notify_one", notify_one,
      "condition_variable.notify_one()"},
+    {"rdtsc", rdtsc_test,
+     "cost of an rdtsc call"},
+    {"rdtscp", rdtscp_test,
+     "cost of an rdtscp call"},
     {"sched_getcpu", sched_getcpu_test,
      "Cost of sched_getcpu"},
     {"snprintfFileLocation", snprintfFileLocation,

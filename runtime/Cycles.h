@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2017 Stanford University
+/* Copyright (c) 2011-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -43,7 +43,7 @@ class Cycles {
             return mockTscValue;
 #endif
         uint32_t lo, hi;
-        __asm__ __volatile__("rdtscp" : "=a" (lo), "=d" (hi) : : "%rcx");
+        __asm__ __volatile__("rdtsc" : "=a" (lo), "=d" (hi));
         return (((uint64_t)hi << 32) | lo);
     }
 
@@ -92,6 +92,6 @@ class Cycles {
     }
 };
 
-} // end DDTrace
+} // end PerfUtils
 
 #endif  // RAMCLOUD_CYCLES_H
