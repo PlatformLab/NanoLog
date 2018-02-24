@@ -936,8 +936,6 @@ TEST_F(LogTest, decompressNextLogStatement) {
     delete bf;
 }
 
-
-
 // These following tests are more end-to-end like
 
 TEST_F(LogTest, Decoder_internalDecompress_end2end) {
@@ -1309,6 +1307,94 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     ASSERT_NE(nullptr, outputFd);
     dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
     EXPECT_EQ(10, msgsPrinted);
+    fclose(outputFd);
+
+    iFile.open(decomp);
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    std::remove(testFile);
+    std::remove(decomp);
+}
+
+
+TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
+    // Tests what happen when the checkpoint is newer than the log message.
+    char inputBuffer[1000], outputBuffer[1000];
+    const char *testFile = "/tmp/testFile";
+    const char *decomp = "/tmp/testFile2";
+
+    UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
+    ue->timestamp = 10e9;
+    ue->fmtId = noParamsId;
+    ue->entrySize = sizeof(UncompressedEntry);
+
+    uint64_t compressedLogs = 0;
+    Encoder encoder(outputBuffer, 1000);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint*)outputBuffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 20e9;
+    checkpoint->unixTime = 30;
+
+    uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                                    sizeof(UncompressedEntry),
+                                                    1,
+                                                    false,
+                                                    &compressedLogs);
+    EXPECT_EQ(1, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    std::ofstream oFile;
+    oFile.open(testFile);
+    oFile.write(outputBuffer, encoder.getEncodedBytes());
+    oFile.close();
+
+    // Now let's attempt to parse it back and decompress it to decomp
+    Decoder dc;
+    ASSERT_TRUE(dc.open(testFile));
+    FILE *outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    uint64_t msgsPrinted = 0;
+    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, &msgsPrinted));
+    EXPECT_EQ(1, msgsPrinted);
+    fclose(outputFd);
+
+    // Read it back and compare
+    std::ifstream iFile;
+    iFile.open(decomp);
+    ASSERT_TRUE(iFile.good());
+
+    const char* expectedLines[] = {
+        "1969-12-31 16:00:20.000000000 testHelper/client.cc:19 NOTICE[1]: Simple log message with 0 parameters\r",
+        "\r",
+        "\r",
+        "# Decompression Complete after printing 1 log messages\r"
+    };
+
+    std::string iLine;
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    // Try the unordered case
+    dc.open(testFile);
+    msgsPrinted = 0;
+
+    outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
+    EXPECT_EQ(1, msgsPrinted);
     fclose(outputFd);
 
     iFile.open(decomp);

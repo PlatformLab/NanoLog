@@ -52,7 +52,7 @@ class Cycles {
     perSecond(){
         return getCyclesPerSec();
     }
-    static double toSeconds(uint64_t cycles, double cyclesPerSec = 0);
+    static double toSeconds(int64_t cycles, double cyclesPerSec = 0);
     static uint64_t fromSeconds(double seconds, double cyclesPerSec = 0);
     static uint64_t toMicroseconds(uint64_t cycles, double cyclesPerSec = 0);
     static uint64_t toNanoseconds(uint64_t cycles, double cyclesPerSec = 0);

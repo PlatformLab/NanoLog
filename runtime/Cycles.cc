@@ -115,7 +115,7 @@ Cycles::perSecond()
  *      The time in seconds corresponding to cycles.
  */
 double
-Cycles::toSeconds(uint64_t cycles, double cyclesPerSec)
+Cycles::toSeconds(int64_t cycles, double cyclesPerSec)
 {
     if (cyclesPerSec == 0)
         cyclesPerSec = getCyclesPerSec();

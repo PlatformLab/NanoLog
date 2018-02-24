@@ -461,7 +461,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         // Convert to absolute time
         double secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
                nextLogTimestamp - checkpoint.rdtsc, checkpoint.cyclesPerSecond);
-        uint64_t wholeSeconds = static_cast<uint64_t>(secondsSinceCheckpoint);
+        int64_t wholeSeconds = static_cast<int64_t>(secondsSinceCheckpoint);
         double nanos = 1.0e9*(secondsSinceCheckpoint
                                         - static_cast<double>(wholeSeconds));
 
