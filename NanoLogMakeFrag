@@ -1,0 +1,64 @@
+########
+## This file expresses the rules required to compile with NanoLog.
+## It defines a macro (run-cxx) to preprocess and compile user source files,
+## and the rules required to build the NanoLog library.
+##
+## Users are expected to:
+##	 1) Define the macros NANOLOG_DIR to point to the NanoLog directory,
+##      USER_OBJS to mark when compilation is finished.
+##	 2) Use run-cxx to compile their sources (see documentation below)
+##   3) include this MakeFrag in their main GNUMakefile
+#######
+
+RUNTIME_DIR=$(NANOLOG_DIR)/runtime
+PREPROC_DIR=$(NANOLOG_DIR)/preprocessor
+
+# run-cxx:
+# Compile a user C++ source file to an object file using the NanoLog system.
+# The first parameter $(1) should be the output filename (*.o)
+# The second parameter $(2) should be the input filename (*.cc)
+# The optional third parameter $(3) is any additional options compiler options.
+define run-cxx
+	$(CXX) -E -I $(RUNTIME_DIR) $(2) -o $(2).i -std=c++11
+	@mkdir -p generated
+	python $(PREPROC_DIR)/parser.py --mapOutput="generated/$(2).map" $(2).i
+	$(CXX) -I $(RUNTIME_DIR) -c -o $(1) $(2).ii $(3)
+	@rm -f $(2).i $(2).ii generated/GeneratedCode.cc
+endef
+
+RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
+NANO_LOG_LIBRARY_LIBS=-lrt -pthread
+
+RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
+RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
+		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc $(RUNTIME_DIR)/RuntimeLogger.cc
+RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
+
+COMWARNS := -Wall -Wformat=2 -Wextra \
+           -Wwrite-strings -Wno-unused-parameter -Wmissing-format-attribute
+CWARNS   := $(COMWARNS) -Wmissing-prototypes -Wmissing-declarations -Wshadow \
+		-Wbad-function-cast
+CXXWARNS := $(COMWARNS) -Wno-non-template-friend -Woverloaded-virtual \
+		-Wcast-qual -Wcast-align -Wconversion -Weffc++
+
+.PHONY: all
+all:
+
+generated/GeneratedCode.o: $(USER_OBJS)
+	mkdir -p generated
+	python $(PREPROC_DIR)/parser.py --combinedOutput="generated/GeneratedCode.cc" $(shell find generated -type f -name "*.map" -printf ' "%h/%f" ')
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/GeneratedCode.cc -I $(RUNTIME_DIR) -Igenerated
+
+$(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
+
+libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor
+	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
+
+decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/Util.o $(RUNTIME_DIR)/Log.o $(RUNTIME_DIR)/LogDecompressor.cc
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
+
+clean-all: clean
+	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor
+	@rm -rf generated
+

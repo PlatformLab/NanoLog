@@ -2,6 +2,7 @@
 Nanolog is an extremely performant nanosecond scale logging system for C++ that exposes a simple printf-like API and achieves over 80 *million* logs/second at a median latency of just over *7 nanoseconds*.
 
 How it achieves this insane performance is by extracting static log information at runtime, only logging the dynamic components at runtime, and deferring formatting to an offline process. This basically shifts work out of the runtime and into the compilation and post-execution phases.
+
 ## Performance
 
 This section shows the performance of NanoLog with existing logging systems such as [spdlog](https://github.com/gabime/spdlog), [Log4j2](https://logging.apache.org/log4j/2.x/), [Boost 1.55](http://www.boost.org), [glog](https://github.com/google/glog), and Windows Event Tracing with Windows Software Trace Preprocessor [(WPP)](https://docs.microsoft.com/en-us/windows-hardware/drivers/devtest/wpp-software-tracing).
@@ -36,8 +37,15 @@ Log messages used in the benchmarks above. *Italics* indicate dynamic log argume
 |complexFormat | Initialized InfUdDriver buffers: *50000* receive buffers (*97* MB), *50* transmit buffers (*0* MB), took *26.2* ms |
 |stringConcat  | Opened session with coordinator at *basic+udp:host=192.168.1.140,port=12246* |
 
+## Prerequisites
+NanoLog depends on the following:
+* C++11 Compiler: [GNU gcc 4.9.2](https://gcc.gnu.org) or greater
+* [GNU Make 4.0](https://www.gnu.org/software/make/) or greater
+* [Python 2.7.9](https://www.python.org) or greater
+* POSIX AIO and Threads (usually installed with Linux)
+
 ## Usage
-As alluded to by the introduction text, in addition to using the NanoLog API, one has to integrate with NanoLog at the compilation and post-execution phases.
+As alluded to by the introductory text, in addition to using the NanoLog API, one has to integrate with NanoLog at the compilation and post-execution phases.
 
 ### Sample NanoLog Code
 To use the NanoLog system in the code, one just has to ```#include "NanoLog.h"``` and invoke the ```NANO_LOG()``` function in a similar fashion to printf, with the exception of a log level before it. Example below:
@@ -59,16 +67,15 @@ NanoLog requires users to compile their C++ files into *.o files using the NanoL
 #### New Projects
 For new projects, the easiest way to bootstrap this process is to copy the [sample GNUMakefile](./benchmark/GNUmakefile) and make the following changes:
 
-* Change the ```NANOLOG_DIR``` variable to refer to this project's [root directory](./)
+* Change the ```NANOLOG_DIR``` variable to refer to this project's root directory
 
-* Change the ```USER_SRC``` variable to refer to all your sources.
+* Change the ```USER_SRCS``` variable to refer to all your sources.
 
 #### Advanced Configuration
 If you wish to integrate into NanoLog into an existing system with an existing GNUmakefile, perform the following:
-* Copy every line after the "Library Compilation (copy verbatim)" section in the [sample GNUMakefile](./benchmark/GNUmakefile) into your makefile.
-* Add the ```NANOLOG_DIR``` variable to refer to this project's [root directory](./)
+* Copy all the variables in the "Required Library Variables" section in the [sample GNUMakefile](./benchmark/GNUmakefile) into your makefile.
 * Compile your sources into *.o files using the ```run-cxx``` function and ensure that the ```USER_OBJS``` captures all the *.o files.
-* Link the following the NanoLog library, posix aio and pthread libraries i.e. ```-lNanoLog -lrt -pthread```.
+* Link the following the NanoLog library, posix aio and pthread libraries i.e. ```-lNanoLog -lrt -pthread``` or use the variable ```$(NANO_LOG_LIBRARY_LIBS)```.
 
 
 ### Post-Execution Log Decompressor
