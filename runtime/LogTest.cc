@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,7 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <iosfwd>
-#include <stdio.h>
+#include <cstdio>
 #include <vector>
 #include <sstream>
 
@@ -30,8 +30,8 @@
 #include "GeneratedCode.h"
 
 
-extern int __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
-extern int __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
+extern int __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__20__;
+extern int __fmtId__This32is32a32string3237s__testHelper47client46cc__21__;
 
 namespace {
 
@@ -40,34 +40,40 @@ using namespace NanoLogInternal;
 
 // The fixture for testing class Foo.
 class LogTest : public ::testing::Test {
- protected:
-    // Note, if the tests ever fail to compile due to these symbols not being
-    // found, it's most likely that someone updated the testHelper/main.cc file.
-    // In this case, check testHelper/GeneratedCode.cc for updated values and
-    // change the declarations above and uses below to match.
-    int noParamsId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__19__;
-    int stringParamId = __fmtId__This32is32a32string3237s__testHelper47client46cc__20__;
-  LogTest()
-  {
-  }
+protected:
+// Note, if the tests ever fail to compile due to these symbols not being
+// found, it's most likely that someone updated the testHelper/main.cc file.
+// In this case, check testHelper/GeneratedCode.cc for updated values and
+// change the declarations above and uses below to match.
+int noParamsId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__20__;
+int stringParamId = __fmtId__This32is32a32string3237s__testHelper47client46cc__21__;
+LogTest()
+{
+    char dictionary[4096];
+    dictionaryBytes = GeneratedFunctions::writeDictionary(dictionary,
+                                            dictionary + sizeof(dictionary));
+    assert(dictionaryBytes > 0);
+}
 
-  virtual ~LogTest() {
-  }
+virtual ~LogTest() {
+}
 
-  // If the constructor and destructor are not enough for setting up
-  // and cleaning up each test, you can define the following methods:
+// If the constructor and destructor are not enough for setting up
+// and cleaning up each test, you can define the following methods:
 
-  virtual void SetUp() {
+virtual void SetUp() {
     // Code here will be called immediately after the constructor (right
     // before each test).
-  }
+}
 
-  virtual void TearDown() {
-    // Code here will be called immediately after each test (right
-    // before the destructor).
-  }
+virtual void TearDown() {
+// Code here will be called immediately after each test (right
+// before the destructor).
+}
 
-  // Objects declared here can be used by all tests in the test case for Foo.
+// Objects declared here can be used by all tests in the test case for Foo.
+
+uint32_t dictionaryBytes;
 };
 
 using namespace Log;
@@ -229,29 +235,45 @@ TEST_F(LogTest, compressMetadata_end2end)
 }
 
 TEST_F(LogTest, insertCheckpoint) {
-    char backing_buffer[100];
+    char backing_buffer[1000];
     char *writePos = backing_buffer;
-    char *endOfBuffer = backing_buffer + 100;
+    char *endOfBuffer = backing_buffer + 1000;
+    Checkpoint *ck = reinterpret_cast<Checkpoint*>(backing_buffer);
 
     // out of space
-    EXPECT_FALSE(insertCheckpoint(&writePos, backing_buffer));
+    EXPECT_FALSE(insertCheckpoint(&writePos, backing_buffer, false));
+    EXPECT_EQ(writePos, backing_buffer);
+
+    EXPECT_FALSE(insertCheckpoint(&writePos, backing_buffer, true));
     EXPECT_EQ(writePos, backing_buffer);
 
     // Not out of space
-    EXPECT_TRUE(insertCheckpoint(&writePos, endOfBuffer));
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, false));
     EXPECT_EQ(sizeof(Checkpoint), writePos - backing_buffer);
+    EXPECT_EQ(0U, ck->newMetadataBytes);
+    EXPECT_EQ(0U, ck->totalMetadataEntries);
+
+
+    writePos = backing_buffer;
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, true));
+    ck = reinterpret_cast<Checkpoint*>(backing_buffer);
+    EXPECT_EQ(sizeof(Checkpoint) + ck->newMetadataBytes,
+              writePos - backing_buffer);
     EXPECT_EQ(EntryType::CHECKPOINT, peekEntryType(backing_buffer));
 
-    //Out of space at the very end
-    writePos = endOfBuffer - sizeof(Checkpoint) + 1;
-    EXPECT_FALSE(insertCheckpoint(&writePos, endOfBuffer));
+    // Out of space at the very end
+    writePos = endOfBuffer - sizeof(Checkpoint) - 1;
+    EXPECT_FALSE(insertCheckpoint(&writePos, endOfBuffer, true));
+
+    writePos = endOfBuffer - sizeof(Checkpoint) - 1;
+    EXPECT_TRUE(insertCheckpoint(&writePos, endOfBuffer, false));
 }
 
 TEST_F(LogTest, insertCheckpoint_end2end) {
     Checkpoint cp1, cp2, cp3, cp4;
-    char backing_buffer[100];
+    char backing_buffer[2048];
     char *writePos = backing_buffer;
-    char *endOfBuffer = backing_buffer + 100;
+    char *endOfBuffer = backing_buffer + 2048;
     const char *testFile = "/tmp/testFile";
 
     // Write the buffer to a file and read it back
@@ -264,9 +286,9 @@ TEST_F(LogTest, insertCheckpoint_end2end) {
     ASSERT_NE(nullptr, in);
     ASSERT_FALSE(readCheckpoint(cp1, in));
 
-    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer));
-    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer));
-    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer));
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, false));
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, true));
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, false));
 
     // Write the buffer to a file and read it back
     fclose(in);
@@ -278,28 +300,32 @@ TEST_F(LogTest, insertCheckpoint_end2end) {
     ASSERT_NE(nullptr, in);
 
     ASSERT_TRUE(readCheckpoint(cp1, in));
+
+    // The metadata bytes are tested by the preprocessor unit tests and
+    // integration tests.
     ASSERT_TRUE(readCheckpoint(cp2, in));
+    ASSERT_EQ(0U, fseeko(in, cp2.newMetadataBytes, SEEK_CUR));
+
     ASSERT_TRUE(readCheckpoint(cp3, in));
     ASSERT_FALSE(readCheckpoint(cp4, in));
 }
 
 TEST_F(LogTest, encoder_constructor) {
-    char buffer[100];
-
-    Encoder encoder(buffer, 100, false);
+    char buffer[1024];
 
     // Check that a checkpoint was inserted
-    EXPECT_EQ(sizeof(Checkpoint), encoder.writePos - encoder.backing_buffer);
+    Encoder encoder(buffer, sizeof(buffer), false);
+    EXPECT_LE(sizeof(Checkpoint), encoder.writePos - encoder.backing_buffer);
     EXPECT_EQ(buffer, encoder.backing_buffer);
-    EXPECT_EQ(100, encoder.endOfBuffer - encoder.backing_buffer);
+    EXPECT_EQ(sizeof(buffer), encoder.endOfBuffer - encoder.backing_buffer);
     EXPECT_EQ(EntryType::CHECKPOINT, peekEntryType(buffer));
 
     // Check that a checkpoint was not inserted
-    memset(buffer, 0, 100);
-    Encoder e(buffer, 100, true);
+    memset(buffer, 0, sizeof(buffer));
+    Encoder e(buffer, sizeof(buffer), true);
     EXPECT_EQ(0U, e.writePos - e.backing_buffer);
     EXPECT_EQ(buffer, e.backing_buffer);
-    EXPECT_EQ(100, e.endOfBuffer - e.backing_buffer);
+    EXPECT_EQ(sizeof(buffer), e.endOfBuffer - e.backing_buffer);
 }
 
 TEST_F(LogTest, encodeLogMsgs) {
@@ -321,7 +347,7 @@ TEST_F(LogTest, encodeLogMsgs) {
     uint64_t compressedLogs = 1;
     Encoder e(outputBuffer1, 1000);
 
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            true,
@@ -342,7 +368,9 @@ TEST_F(LogTest, encodeLogMsgs) {
      */
     const char *readPos = outputBuffer1;
     EXPECT_EQ(EntryType::CHECKPOINT, peekEntryType(readPos));
+    const Checkpoint *ck = reinterpret_cast<const Checkpoint*>(readPos);
     readPos += sizeof(Checkpoint);
+    readPos += ck->newMetadataBytes;
 
     EXPECT_EQ(EntryType::BUFFER_EXTENT, peekEntryType(readPos));
     const BufferExtent *be = reinterpret_cast<const BufferExtent*>(readPos);
@@ -416,7 +444,7 @@ TEST_F(LogTest, encodeLogMsgs) {
 }
 
 TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
-    char inputBuffer[100], outputBuffer1[100];
+    char inputBuffer[100], outputBuffer1[4096];
 
     // We prefill the buffer with log messages. Note in test helper,
     // We have one valid log id with 0 arguments.
@@ -432,9 +460,9 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
     uint64_t compressedLogs = 1;
-    Encoder e(outputBuffer1, 100);
+    Encoder e(outputBuffer1, 100 + dictionaryBytes);
 
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            true,
@@ -446,16 +474,19 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
 
     // Rough check of what's in the buffer
     EXPECT_EQ(e.writePos - e.backing_buffer, sizeof(Checkpoint)
+                                                + dictionaryBytes
                                                 + sizeof(BufferExtent)
                                                 + sizeof(CompressedEntry) + 2);
-    const char *readPos = e.backing_buffer + sizeof(Checkpoint);
+    const char *readPos = e.backing_buffer  + sizeof(Checkpoint)
+                                            + dictionaryBytes;
     const BufferExtent *be = reinterpret_cast<const BufferExtent*>(readPos);
     EXPECT_EQ(sizeof(BufferExtent) + 3U, be->length);
 
     // Now let's try one more out of space whereby there's not enough space
     // to encode the buffer extent.
     compressedLogs = 1;
-    uint32_t bufferSize = sizeof(Checkpoint) + sizeof(BufferExtent) - 1;
+    uint32_t bufferSize = sizeof(Checkpoint)    + dictionaryBytes
+                                                + sizeof(BufferExtent) - 1;
     Encoder e2(outputBuffer1, bufferSize);
     bytesRead = e2.encodeLogMsgs(inputBuffer,
                                     3*sizeof(UncompressedEntry),
@@ -465,7 +496,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     EXPECT_EQ(0U, bytesRead);
     EXPECT_EQ(1U, compressedLogs);
     EXPECT_NE(100U, e2.lastBufferIdEncoded);
-    EXPECT_EQ(sizeof(Checkpoint), e2.getEncodedBytes());
+    EXPECT_EQ(sizeof(Checkpoint) + dictionaryBytes, e2.getEncodedBytes());
 
     // One last attempt whereby we have enough space to encode the buffer
     // extent but nothing else.
@@ -475,7 +506,8 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     ue->entrySize = 2*sizeof(UncompressedEntry);
     compressedLogs = 1;
 
-    bufferSize = sizeof(Checkpoint) + sizeof(BufferExtent) + sizeof(uint32_t);
+    bufferSize = sizeof(Checkpoint) + dictionaryBytes + sizeof(BufferExtent)
+                                    + sizeof(uint32_t);
     Encoder e3(outputBuffer1, bufferSize);
     bytesRead = e3.encodeLogMsgs(inputBuffer,
                                     3*sizeof(UncompressedEntry),
@@ -485,10 +517,12 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     EXPECT_EQ(0U, bytesRead);
     EXPECT_EQ(1U, compressedLogs);
     EXPECT_EQ(1U, e3.lastBufferIdEncoded);
-    EXPECT_EQ(sizeof(Checkpoint) + sizeof(BufferExtent), e3.getEncodedBytes());
+    EXPECT_EQ(sizeof(Checkpoint) + dictionaryBytes + sizeof(BufferExtent),
+              e3.getEncodedBytes());
 
     be = reinterpret_cast<const BufferExtent*>(e3.backing_buffer
-                                                        + sizeof(Checkpoint));
+                                                        + sizeof(Checkpoint)
+                                                        + dictionaryBytes);
     EXPECT_EQ(sizeof(BufferExtent), be->length);
 }
 
@@ -511,7 +545,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughInputSpace) {
     uint64_t compressedLogs = 1;
     Encoder e(outputBuffer1, 1000);
 
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            2*sizeof(UncompressedEntry),
                                            5,
                                            true,
@@ -597,7 +631,7 @@ TEST_F(LogTest, swapBuffer) {
 
     encoder.swapBuffer(buffer2, 100, &outBuffer, &outLength, &outSize);
     EXPECT_EQ(buffer1, outBuffer);
-    EXPECT_EQ(sizeof(Checkpoint), outLength);
+    EXPECT_EQ(sizeof(Checkpoint) + dictionaryBytes, outLength);
     EXPECT_EQ(1000, outSize);
 
     EXPECT_EQ(buffer2, encoder.backing_buffer);
@@ -614,10 +648,13 @@ TEST_F(LogTest, Decoder_open) {
     Decoder dc;
 
     // Open an invalid file
+    testing::internal::CaptureStderr();
     EXPECT_FALSE(dc.open("/dev/null"));
     EXPECT_EQ(nullptr, dc.filename);
     EXPECT_EQ(0U, dc.inputFd);
-
+    EXPECT_STREQ("Error: Could not read initial checkpoint, "
+                         "the compressed log may be corrupted.\r\n",
+                 testing::internal::GetCapturedStderr().c_str());
 
     // Write back an empty file and try to open it.
     std::ofstream oFile;
@@ -625,9 +662,13 @@ TEST_F(LogTest, Decoder_open) {
     oFile.write(buffer, 0);
     oFile.close();
 
+    testing::internal::CaptureStderr();
     EXPECT_FALSE(dc.open(testFile));
     EXPECT_EQ(nullptr, dc.filename);
     EXPECT_EQ(0U, dc.inputFd);
+    EXPECT_STREQ("Error: Could not read initial checkpoint, "
+                         "the compressed log may be corrupted.\r\n",
+                 testing::internal::GetCapturedStderr().c_str());
 
     // Write back an invalid, but not-empty file
     oFile.open(testFile);
@@ -646,6 +687,318 @@ TEST_F(LogTest, Decoder_open) {
     EXPECT_NE(nullptr, dc.filename);
 
     std::remove(testFile);
+}
+
+TEST_F(LogTest, decoder_insertCheckpoint) {
+    char backing_buffer[4096];
+    char *writePos = backing_buffer;
+    char *endOfBuffer = backing_buffer + sizeof(backing_buffer);
+    uint64_t startCycles = PerfUtils::Cycles::rdtsc();
+    uint32_t metadataBytes = 306;
+    uint32_t numEntries = 6;
+
+    // True Case
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, true));
+    Checkpoint *ck = reinterpret_cast<Checkpoint*>(backing_buffer);
+
+    EXPECT_EQ(Log::EntryType::CHECKPOINT, ck->entryType);
+    EXPECT_LT(startCycles, ck->rdtsc);
+    EXPECT_GT(PerfUtils::Cycles::rdtsc(), ck->rdtsc);
+    EXPECT_EQ(PerfUtils::Cycles::getCyclesPerSec(), ck->cyclesPerSecond);
+
+    EXPECT_EQ(metadataBytes, ck->newMetadataBytes);
+    EXPECT_EQ(numEntries, ck->totalMetadataEntries);
+
+    // False Case
+    writePos = backing_buffer;
+    ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, false));
+    EXPECT_EQ(Log::EntryType::CHECKPOINT, ck->entryType);
+    EXPECT_LT(startCycles, ck->rdtsc);
+    EXPECT_GT(PerfUtils::Cycles::rdtsc(), ck->rdtsc);
+    EXPECT_EQ(PerfUtils::Cycles::getCyclesPerSec(), ck->cyclesPerSecond);
+
+    EXPECT_EQ(0U, ck->newMetadataBytes);
+    EXPECT_EQ(0U, ck->totalMetadataEntries);
+
+    // Out of space case
+    char *newEndOfSpace = backing_buffer + metadataBytes;
+    writePos = backing_buffer;
+    ASSERT_FALSE(insertCheckpoint(&writePos, newEndOfSpace, true));
+    EXPECT_EQ(backing_buffer, writePos);
+
+    writePos = backing_buffer;
+    ASSERT_TRUE(insertCheckpoint(&writePos, newEndOfSpace, false));
+    EXPECT_EQ(backing_buffer + sizeof(Checkpoint), writePos);
+
+    writePos = backing_buffer;
+    newEndOfSpace = backing_buffer + sizeof(Checkpoint) - 1;
+    ASSERT_FALSE(insertCheckpoint(&writePos, newEndOfSpace, false));
+    EXPECT_EQ(backing_buffer, writePos);
+}
+
+
+TEST_F(LogTest, decoder_readDictionary) {
+    const char *testFile = "/tmp/testFile";
+    char backing_buffer[4096];
+    char *writePos = backing_buffer;
+    char *endOfBuffer = backing_buffer + sizeof(backing_buffer);
+    PrintFragment *pf;
+    FormatMetadata *fm, *fm2;
+    uint32_t fmOffset, fm2Offset;
+
+    // The true case is tested in integration tests
+    insertCheckpoint(&writePos, endOfBuffer, false);
+    Checkpoint *ck = reinterpret_cast<Checkpoint*>(backing_buffer);
+
+    // Basic Log that's from asdfasdfasdf:1234 -> "abab %*.*lfabab"
+    fmOffset = writePos - backing_buffer - sizeof(Checkpoint);
+    fm = reinterpret_cast<FormatMetadata*>(writePos);
+    writePos += sizeof(FormatMetadata);
+    fm->numNibbles = 1;
+    fm->numPrintFragments = 2;
+    fm->logLevel = 2;
+    fm->lineNumber = 1234;
+    fm->filenameLength = sizeof("asdfasdfasdf");
+    writePos = stpcpy(fm->filename, "asdfasdfasdf") + 1;
+
+    pf = reinterpret_cast<PrintFragment*>(writePos);
+    writePos += sizeof(PrintFragment);
+    pf->argType = NanoLogInternal::Log::FormatType::double_t;
+    pf->hasDynamicPrecision = true;
+    pf->hasDynamicWidth = true;
+    pf->fragmentLength = sizeof("abab %*.*lf");
+    writePos = stpcpy(writePos, "abab %*.*lf") + 1;
+
+    pf = reinterpret_cast<PrintFragment*>(writePos);
+    writePos += sizeof(PrintFragment);
+    pf->argType = NONE;
+    pf->hasDynamicPrecision = false;
+    pf->hasDynamicWidth = false;
+    pf->fragmentLength = sizeof("abab");
+    writePos = stpcpy(writePos, "abab") + 1;
+
+    // Log that's from asdfasdfasdf:1234 -> "abab %*.*lfabab"
+    fm2Offset = writePos - backing_buffer - sizeof(Checkpoint);
+    fm2 = reinterpret_cast<FormatMetadata*>(writePos);
+    writePos += sizeof(FormatMetadata);
+    fm2->numNibbles = 1;
+    fm2->numPrintFragments = 1;
+    fm2->logLevel = 2;
+    fm2->lineNumber = 1234;
+    fm2->filenameLength = sizeof("asdfasdfasdf");
+    writePos = stpcpy(fm2->filename, "asdfasdfasdf") + 1;
+
+    pf = reinterpret_cast<PrintFragment*>(writePos);
+    writePos += sizeof(PrintFragment);
+    pf->argType = NONE;
+    pf->hasDynamicPrecision = false;
+    pf->hasDynamicWidth = false;
+    pf->fragmentLength = sizeof("asdflkaldfjasfdlasdfjal;sdfjaslkdfas");
+    writePos = stpcpy(writePos, "asdflkaldfjasfdlasdfjal;sdfjaslkdfas") + 1;
+
+    uint32_t dictionaryBytes = writePos - backing_buffer - sizeof(Checkpoint);
+    {
+        // Test normal case
+        ck->totalMetadataEntries = 2;
+        ck->newMetadataBytes = dictionaryBytes;
+
+        std::ofstream oFile;
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer);
+        oFile.close();
+
+        FILE *fd = fopen(testFile, "rb");
+
+        Decoder dc;
+        EXPECT_TRUE(dc.readDictionary(fd, true));
+        EXPECT_EQ(dictionaryBytes, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_EQ(0, memcmp(dc.rawMetadata,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        ASSERT_EQ(2, dc.fmtId2metadata.size());
+        EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
+        EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+
+        fclose(fd);
+        std::remove(testFile);
+    }
+
+    {
+        // Incremental Read
+        ck->totalMetadataEntries = 2;
+        ck->newMetadataBytes = dictionaryBytes;
+
+        std::ofstream oFile;
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer);
+        oFile.close();
+
+        FILE *fd = fopen(testFile, "rb");
+
+        Decoder dc;
+        EXPECT_TRUE(dc.readDictionary(fd, true));
+        EXPECT_EQ(dictionaryBytes, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_EQ(0, memcmp(dc.rawMetadata,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        ASSERT_EQ(2, dc.fmtId2metadata.size());
+        EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
+        EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+
+        fclose(fd);
+
+        // Second read
+        ck->totalMetadataEntries = 4;
+
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer);
+        oFile.close();
+
+        fd = fopen(testFile, "rb");
+
+        EXPECT_TRUE(dc.readDictionary(fd, false));
+        EXPECT_EQ(2*dictionaryBytes, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_EQ(0, memcmp(dc.rawMetadata,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        EXPECT_EQ(0, memcmp(dc.rawMetadata + dictionaryBytes,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        ASSERT_EQ(4, dc.fmtId2metadata.size());
+        EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
+        EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+        EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fmOffset,
+                  dc.fmtId2metadata.at(2));
+        EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fm2Offset,
+                  dc.fmtId2metadata.at(3));
+        fclose(fd);
+
+        // Read no new dictionary
+        ck->totalMetadataEntries = 4;
+        ck->newMetadataBytes = 0;
+
+        oFile.open(testFile);
+        oFile.write(backing_buffer, sizeof(Checkpoint));
+        oFile.close();
+
+        fd = fopen(testFile, "rb");
+
+        EXPECT_TRUE(dc.readDictionary(fd, false));
+        EXPECT_EQ(2*dictionaryBytes, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_EQ(0, memcmp(dc.rawMetadata,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        EXPECT_EQ(0, memcmp(dc.rawMetadata + dictionaryBytes,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        ASSERT_EQ(4, dc.fmtId2metadata.size());
+        EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
+        EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+        EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fmOffset,
+                  dc.fmtId2metadata.at(2));
+        EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fm2Offset,
+                  dc.fmtId2metadata.at(3));
+        fclose(fd);
+
+        // Read a new dictionary, but reset the old one
+        ck->newMetadataBytes = dictionaryBytes;
+        ck->totalMetadataEntries = 2;
+
+        oFile.open(testFile);
+        oFile.write(backing_buffer, sizeof(Checkpoint) + dictionaryBytes);
+        oFile.close();
+
+        fd = fopen(testFile, "rb");
+
+        EXPECT_TRUE(dc.readDictionary(fd, true));
+        EXPECT_EQ(dictionaryBytes, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_EQ(0, memcmp(dc.rawMetadata,
+                            backing_buffer + sizeof(Checkpoint),
+                            dictionaryBytes));
+
+        ASSERT_EQ(2, dc.fmtId2metadata.size());
+        EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
+        EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+        fclose(fd);
+
+        std::remove(testFile);
+    }
+
+    {
+        // Not enough bytes written
+        ck->totalMetadataEntries = 2;
+        ck->newMetadataBytes = dictionaryBytes;
+
+        std::ofstream oFile;
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer - 10);
+        oFile.close();
+
+        FILE *fd = fopen(testFile, "rb");
+
+        Decoder dc;
+        testing::internal::CaptureStderr();
+        EXPECT_FALSE(dc.readDictionary(fd, true));
+        EXPECT_EQ(0, dc.endOfRawMetadata - dc.rawMetadata);
+        EXPECT_STREQ("Error couldn't read metadata header in log file.\r\n",
+                     testing::internal::GetCapturedStderr().c_str());
+
+        fclose(fd);
+        std::remove(testFile);
+    }
+
+    {
+        // Missing data
+        ck->totalMetadataEntries = 3;
+        ck->newMetadataBytes = dictionaryBytes;
+
+        std::ofstream oFile;
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer);
+        oFile.close();
+
+        FILE *fd = fopen(testFile, "rb");
+
+        Decoder dc;
+        testing::internal::CaptureStderr();
+        EXPECT_FALSE(dc.readDictionary(fd, true));
+        EXPECT_STREQ("Error: Missing log metadata detected; "
+                             "expected 3 messages, but only found 2\r\n",
+                     testing::internal::GetCapturedStderr().c_str());
+
+        fclose(fd);
+        std::remove(testFile);
+    }
+
+    {
+        // Corrupt data
+        fm2->filenameLength = 1000;
+        ck->totalMetadataEntries = 2;
+        ck->newMetadataBytes = dictionaryBytes;
+
+        std::ofstream oFile;
+        oFile.open(testFile);
+        oFile.write(backing_buffer, writePos - backing_buffer);
+        oFile.close();
+
+        FILE *fd = fopen(testFile, "rb");
+
+        Decoder dc;
+        testing::internal::CaptureStderr();
+        EXPECT_FALSE(dc.readDictionary(fd, true));
+        EXPECT_STREQ("Error: Metadata is inconsistent; "
+                             "expected 107 bytes but read 1054 bytes\r\n",
+                     testing::internal::GetCapturedStderr().c_str());
+
+        fclose(fd);
+        std::remove(testFile);
+    }
 }
 
 TEST_F(LogTest, decoder_destructor) {
@@ -714,7 +1067,7 @@ TEST_F(LogTest, Decoder_readBufferExtent_end2end) {
 
     uint64_t compressedLogs = 1;
     Encoder e(outputBuffer1, 1000, true);
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            false,
@@ -771,7 +1124,7 @@ TEST_F(LogTest, Decoder_readBufferExtent_notEnoughSpace) {
 
     uint64_t compressedLogs = 1;
     Encoder e(goodBuffer, 1000, true);
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            false,
@@ -875,7 +1228,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
 
     uint64_t compressedLogs = 1;
     Encoder e(goodBuffer, 1000, true);
-    uint32_t bytesRead = e.encodeLogMsgs(inputBuffer,
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            false,
@@ -904,10 +1257,12 @@ TEST_F(LogTest, decompressNextLogStatement) {
     checkpoint.cyclesPerSecond = 1;
     long aggregationFilterId = stringParamId;
     numAggregationsRun = 0;
+    std::vector<void*> fmtId2metadata;
     EXPECT_TRUE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
                                                 lastTimestamp,
                                                 checkpoint,
+                                                fmtId2metadata,
                                                 aggregationFilterId,
                                                 &aggregation));
 
@@ -916,6 +1271,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
                                                 logMsgsPrinted,
                                                 lastTimestamp,
                                                 checkpoint,
+                                                fmtId2metadata,
                                                 aggregationFilterId,
                                                 &aggregation));
     EXPECT_EQ(1, numAggregationsRun);
@@ -925,6 +1281,7 @@ TEST_F(LogTest, decompressNextLogStatement) {
                                                 logMsgsPrinted,
                                                 lastTimestamp,
                                                 checkpoint,
+                                                fmtId2metadata,
                                                 aggregationFilterId,
                                                 &aggregation));
     EXPECT_EQ(1, numAggregationsRun);
@@ -934,6 +1291,9 @@ TEST_F(LogTest, decompressNextLogStatement) {
 
     fclose(in);
     delete bf;
+
+    // Note the large switch statement is a bit difficult to test within the
+    // unit test framework, so that is instead saved for the integration tests
 }
 
 // These following tests are more end-to-end like
@@ -972,7 +1332,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
 
     uint64_t compressedLogs = 0;
-    uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
                                            5,
                                            false,
@@ -1122,18 +1482,18 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     ASSERT_TRUE(iFile.good());
 
     const char* unorderedLines[] = {
-        "1969-12-31 16:00:01.000000090 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000105 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000093 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000096 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000100 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000145 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000156 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000091 testHelper/client.cc:19 NOTICE[11]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[7]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000090 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000093 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 testHelper/client.cc:21 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000111 testHelper/client.cc:21 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000156 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 testHelper/client.cc:20 NOTICE[11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:20 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:20 NOTICE[7]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 12 log messages\r"
@@ -1159,18 +1519,18 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     fclose(outputFd);
 
     const char* orderedLines[] = {
-        "1969-12-31 16:00:01.000000090 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000091 testHelper/client.cc:19 NOTICE[11]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000093 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000096 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000100 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000105 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000111 testHelper/client.cc:20 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
-        "1969-12-31 16:00:01.000000118 testHelper/client.cc:19 NOTICE[10]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 testHelper/client.cc:19 NOTICE[7]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000135 testHelper/client.cc:19 NOTICE[12]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000145 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000156 testHelper/client.cc:20 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000090 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000091 testHelper/client.cc:20 NOTICE[11]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000093 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000096 testHelper/client.cc:21 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000100 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000105 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000111 testHelper/client.cc:21 NOTICE[10]: This is a string aaaaaaaaaaaaaaa\r",
+        "1969-12-31 16:00:01.000000118 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:20 NOTICE[7]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000135 testHelper/client.cc:20 NOTICE[12]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000156 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 12 log messages\r"
@@ -1215,7 +1575,7 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     checkpoint->rdtsc = 0;
     checkpoint->unixTime = 1;
 
-    uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                                     5*sizeof(UncompressedEntry),
                                                     5,
                                                     false,
@@ -1271,20 +1631,20 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "1969-12-31 16:00:01.000000000 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000001 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000002 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000003 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000004 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
         "\r",
         "# New execution started\r",
         "\r",
         "# New execution started\r",
-        "1969-12-31 16:00:01.000000000 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000001 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000002 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000003 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000004 testHelper/client.cc:19 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000001 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000002 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000003 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:01.000000004 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 10 log messages\r"
@@ -1343,7 +1703,7 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     checkpoint->rdtsc = 20e9;
     checkpoint->unixTime = 30;
 
-    uint32_t bytesRead = encoder.encodeLogMsgs(inputBuffer,
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
                                                     sizeof(UncompressedEntry),
                                                     1,
                                                     false,
@@ -1372,7 +1732,7 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "1969-12-31 16:00:20.000000000 testHelper/client.cc:19 NOTICE[1]: Simple log message with 0 parameters\r",
+        "1969-12-31 16:00:20.000000000 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r",
         "\r",
         "\r",
         "# Decompression Complete after printing 1 log messages\r"

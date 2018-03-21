@@ -1,9 +1,13 @@
 
 compressedLog
 decompressor
+basic_decompressor
 generated/
 libNanoLog.a
 
 output.txt
 testApp
 *.o
+
+#IDE files
+nbproject/

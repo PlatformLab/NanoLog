@@ -85,4 +85,3 @@ To get a human readable log out, pass one into the other. Example:
 ```
 ./decompressor /tmp/logFile
 ```
-Note that the decompressor specific to each compliation and cannot be used interchangeably, so save the decompressor with your application.

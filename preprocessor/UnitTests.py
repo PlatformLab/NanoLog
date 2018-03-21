@@ -1,4 +1,4 @@
-# Copyright (c) 2016-2017 Stanford University
+# Copyright (c) 2016-2018 Stanford University
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -274,172 +274,191 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                       """
 
         # No replacements should be performed because all % are escaped
-        self.assertEqual(parseTypesInFmtString(fmtString), [])
+        self.assertEqual(splitAndParseTypesInFmtString(fmtString),
+                         [(None, None, None, fmtString)])
 
         fmtString = ""
-        self.assertEqual(parseTypesInFmtString(fmtString), [])
+        self.assertEqual(splitAndParseTypesInFmtString(fmtString),
+                         [(None, None, None, fmtString)])
 
         fmtString = "Hello"
-        self.assertEqual(parseTypesInFmtString(fmtString), [])
+        self.assertEqual(splitAndParseTypesInFmtString(fmtString),
+                         [(None, None, None, fmtString)])
 
         fmtString = "\% %%ud"
-        self.assertEqual(parseTypesInFmtString(fmtString), [])
+        self.assertEqual(splitAndParseTypesInFmtString(fmtString),
+                         [(None, None, None, fmtString)])
 
         # Invalid types
         fmtString = "%S %qosiwieud"
         with self.assertRaisesRegexp(ValueError,
                                      "Unrecognized Format Specifier"):
-            parseTypesInFmtString(fmtString)
+            splitAndParseTypesInFmtString(fmtString)
 
     def test_parseTypesInFmtString_escapes(self):
         # Tricky
         fmtString = "\\%s %%p %%%s \\\\%s"
-        self.assertEqual(parseTypesInFmtString(fmtString),
-                         [("const char*", None),
-                          ("const char*", None)])
+        self.assertEqual(splitAndParseTypesInFmtString(fmtString),
+                         [FmtType("const char*", None, None, '\\%s %%p %%%s'),
+                          FmtType("const char*", None, None, ' \\\\%s')])
+
+    def test_parseTypesInFmtString_endingStrings(self):
+        self.assertEqual(splitAndParseTypesInFmtString("Hello"),
+                         [FmtType(None, None, None, "Hello")])
+
+        self.assertEqual(splitAndParseTypesInFmtString("Hello %d"),
+                         [FmtType('int', None, None, "Hello %d")])
+
+        self.assertEqual(splitAndParseTypesInFmtString("Hello %d Bye"),
+                         [FmtType('int', None, None, "Hello %d Bye")])
+
+        self.assertEqual(splitAndParseTypesInFmtString("Hello %d Bye %s"),
+                         [FmtType('int', None, None, "Hello %d"),
+                          FmtType('const char*', None, None, " Bye %s")])
 
     def test_parseTypesInFmtString_charTypes(self):
-        self.assertEqual(parseTypesInFmtString("%hhd %hhi"),
-                         [("signed char", None),
-                          ("signed char", None)])
-        self.assertEqual(parseTypesInFmtString(" %d"),
-                         [("int", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%hhd %hhi"),
+                         [FmtType("signed char", None, None, "%hhd"),
+                          FmtType("signed char", None, None, " %hhi")])
+        self.assertEqual(splitAndParseTypesInFmtString(" %d"),
+                         [FmtType("int", None, None, " %d")])
 
         with self.assertRaisesRegexp(ValueError, "not supported"):
-            parseTypesInFmtString("%hhn")
+            splitAndParseTypesInFmtString("%hhn")
 
         with self.assertRaisesRegexp(ValueError, "Unrecognized Format"):
-            parseTypesInFmtString("%hhj")
+            splitAndParseTypesInFmtString("%hhj")
 
     def test_parseTypesInFmtString_jzt(self):
-        self.assertEqual(parseTypesInFmtString("%jd %ji"),
-                         [("intmax_t", None), ("intmax_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%10.12jd %9ji"),
+                         [FmtType('intmax_t', 10, 12, '%10.12jd'),
+                          FmtType('intmax_t', 9, None, ' %9ji')])
 
-        self.assertEqual(parseTypesInFmtString("%ju %jo %jx %jX"),
-                         [("uintmax_t", None),
-                          ("uintmax_t", None),
-                          ("uintmax_t", None),
-                          ("uintmax_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%0*.*ju %jo %jx %jX"),
+                         [FmtType("uintmax_t", '*', '*', '%0*.*ju'),
+                          FmtType("uintmax_t", None, None, " %jo"),
+                          FmtType("uintmax_t", None, None, " %jx"),
+                          FmtType("uintmax_t", None, None, " %jX")])
 
-        self.assertEqual(parseTypesInFmtString("%zu %zd %tu %td"),
-                         [("size_t", None),
-                          ("size_t", None),
-                          ('ptrdiff_t', None),
-                          ("ptrdiff_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%zu %zd %tu %td"),
+                         [FmtType("size_t", None, None, "%zu"),
+                          FmtType("size_t", None, None, " %zd"),
+                          FmtType('ptrdiff_t', None, None, " %tu"),
+                          FmtType("ptrdiff_t", None, None, " %td")])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
-            parseTypesInFmtString("%jn %zn zn %tn")
+            splitAndParseTypesInFmtString("%jn %zn zn %tn")
 
         # Unexpected characters!
         with self.assertRaisesRegexp(ValueError,
                                      "Unrecognized Format Specifier: \"%z"):
-            parseTypesInFmtString("%z\r\n")
+            splitAndParseTypesInFmtString("%z\r\n")
 
         with self.assertRaisesRegexp(ValueError,
                                      "Unrecognized Format Specifier: \"%j"):
-            parseTypesInFmtString("%j\r\n")
+            splitAndParseTypesInFmtString("%j\r\n")
 
         with self.assertRaisesRegexp(ValueError,
                                      "Unrecognized Format Specifier: \"%t"):
-            parseTypesInFmtString("%t\r\n")
+            splitAndParseTypesInFmtString("%t\r\n")
 
     def test_parseTypesInFmtString_doubleTypes(self):
-        self.assertEqual(parseTypesInFmtString(
+        self.assertEqual(splitAndParseTypesInFmtString(
             "%12.0f %12.3F %e %55.3E %-10.5g %G %a %A"),
-            [("double", 0),
-             ("double", 3),
-             ("double", None),
-             ("double", 3),
-             ("double", 5),
-             ("double", None),
-             ("double", None),
-             ("double", None)])
+            [FmtType("double", 12, 0, "%12.0f"),
+             FmtType("double", 12, 3, " %12.3F"),
+             FmtType("double", None, None, " %e"),
+             FmtType("double", 55, 3, " %55.3E"),
+             FmtType("double", 10, 5, " %-10.5g"),
+             FmtType("double", None, None, " %G"),
+             FmtType("double", None, None, " %a"),
+             FmtType("double", None, None, " %A")])
 
-        self.assertEqual(parseTypesInFmtString(
+        self.assertEqual(splitAndParseTypesInFmtString(
             "%12.0Lf %12.3LF %Le %55.3LE %-10.5Lg %LG %La %LA"),
-            [("long double", 0),
-             ("long double", 3),
-             ("long double", None),
-             ("long double", 3),
-             ("long double", 5),
-             ("long double", None),
-             ("long double", None),
-             ("long double", None)])
+            [FmtType("long double", 12, 0, "%12.0Lf"),
+             FmtType("long double", 12, 3, " %12.3LF"),
+             FmtType("long double", None, None, " %Le"),
+             FmtType("long double", 55, 3, " %55.3LE"),
+             FmtType("long double", 10, 5, " %-10.5Lg"),
+             FmtType("long double", None, None, " %LG"),
+             FmtType("long double", None, None, " %La"),
+             FmtType("long double", None, None, " %LA")])
 
         # Check that random modifiers don't change the type
-        self.assertEqual(parseTypesInFmtString("%lf %llf"),
-                         [("double", None), ("double", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%lf %llf"),
+                         [FmtType("double", None, None, "%lf"),
+                          FmtType("double", None, None, " %llf")])
 
         # Check for errors
         with self.assertRaisesRegexp(ValueError, "Invalid arguments for"):
-            parseTypesInFmtString("%Lu")
+            splitAndParseTypesInFmtString("%Lu")
 
     def test_parseTypesInFmtString_basicIntegerTypes(self):
-        self.assertEqual(parseTypesInFmtString("%d %i"),
-                         [("int", None),
-                          ("int", None)])
-        self.assertEqual(parseTypesInFmtString("%u %o"),
-                         [("unsigned int", None),
-                          ("unsigned int", None)])
-        self.assertEqual(parseTypesInFmtString("%x %X"),
-                         [("unsigned int", None),
-                          ("unsigned int", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%d %i"),
+                         [FmtType("int", None, None, "%d"),
+                          FmtType("int", None, None, " %i")])
+        self.assertEqual(splitAndParseTypesInFmtString("%u %o"),
+                         [FmtType("unsigned int", None, None, "%u"),
+                          FmtType("unsigned int", None, None, " %o")])
+        self.assertEqual(splitAndParseTypesInFmtString("%x %X"),
+                         [FmtType("unsigned int", None, None, "%x"),
+                          FmtType("unsigned int", None, None, " %X")])
 
-        self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         [("int", None),
-                          ("const char*", None),
-                          ("const void*", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%c %s %p"),
+                         [FmtType("int", None, None, "%c"),
+                          FmtType("const char*", None, None, " %s"),
+                          FmtType("const void*", None, None, " %p")])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
-            parseTypesInFmtString("%n")
+            splitAndParseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_cspn(self):
-        self.assertEqual(parseTypesInFmtString("%c %s %p"),
-                         [("int", None),
-                          ("const char*", None),
-                          ("const void*", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%c %s %p"),
+                         [FmtType("int", None, None, "%c"),
+                          FmtType("const char*", None, None, " %s"),
+                          FmtType("const void*", None, None, " %p")])
 
-        self.assertEqual(parseTypesInFmtString("%ls %lc"),
-                         [("const wchar_t*", None),
-                          ("wint_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%ls %lc asdf"),
+                         [FmtType("const wchar_t*", None, None, "%ls"),
+                          FmtType("wint_t", None, None, " %lc asdf")])
 
         with self.assertRaisesRegexp(ValueError, "not supported"):
-            parseTypesInFmtString("%n")
+            splitAndParseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_precision(self):
-        self.assertEqual(parseTypesInFmtString("%0.4d %0.2s"),
-                           [('int', 4), ('const char*', 2)])
+        self.assertEqual(splitAndParseTypesInFmtString("%0.4d %0.2s %010.0s"),
+                         [FmtType('int', None, 4, "%0.4d"),
+                          FmtType('const char*', None, 2, " %0.2s"),
+                          FmtType('const char*', 10, 0, " %010.0s")])
 
-        self.assertEqual(parseTypesInFmtString("%*s %.*s %*.*lf"),
-                            [ ('int', None),
-                              ('const char*', None),
-                              ('int', None),
-                              ('const char*', '*'),
-                              ('int', None),
-                              ('int', None),
-                              ('double', '*')])
+        self.assertEqual(splitAndParseTypesInFmtString("%*s %.*s %0*.*lf"),
+                         [ FmtType('const char*', '*', None, "%*s"),
+                           FmtType('const char*', None, '*', " %.*s"),
+                           FmtType('double', '*', '*', " %0*.*lf")
+                         ])
 
     def test_lengthModifiers(self):
-        self.assertEqual(parseTypesInFmtString("%hhd %hd %ld %lld %jd %zd %td"),
-                         [("signed char", None),
-                          ("short int",  None),
-                          ("long int", None),
-                          ("long long int",  None),
-                          ("intmax_t",  None),
-                          ("size_t", None),
-                          ("ptrdiff_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%hhd %hd %ld %lld %jd %zd %09.2td"),
+                         [FmtType("signed char", None, None, "%hhd"),
+                          FmtType("short int",  None, None, " %hd"),
+                          FmtType("long int", None, None, " %ld"),
+                          FmtType("long long int",  None, None, " %lld"),
+                          FmtType("intmax_t",  None, None, " %jd"),
+                          FmtType("size_t", None, None, " %zd"),
+                          FmtType("ptrdiff_t", 9, 2, " %09.2td")])
 
-        self.assertEqual(parseTypesInFmtString("%hhu %hu %lu %llu %ju %zu %tu"),
-                         [("unsigned char", None),
-                          ("unsigned short int", None),
-                          ("unsigned long int", None),
-                          ('unsigned long long int', None),
-                          ("uintmax_t",  None),
-                          ("size_t", None),
-                          ("ptrdiff_t", None)])
+        self.assertEqual(splitAndParseTypesInFmtString("%hhu %hu %lu %llu %ju %zu %09.2tu"),
+                         [FmtType("unsigned char", None, None, "%hhu"),
+                          FmtType("unsigned short int", None, None, " %hu"),
+                          FmtType("unsigned long int", None, None, " %lu"),
+                          FmtType('unsigned long long int', None, None, " %llu"),
+                          FmtType("uintmax_t",  None, None, " %ju"),
+                          FmtType("size_t", None, None, " %zu"),
+                          FmtType("ptrdiff_t", 9, 2, " %09.2tu")])
 
         with self.assertRaisesRegexp(ValueError, "specifier not supported"):
-            parseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn")
+            splitAndParseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn")
 
     def test_generateLogFunctions_empty(self):
         self.maxDiff = None
@@ -468,7 +487,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         self.maxDiff = None
         fg = FunctionGenerator()
 
-        fmtStr = "Hello World! %u %s %lf %s"
+        fmtStr = "Hello World! %0u %*.*s %*.19lf %19.*s"
         ret = fg.generateLogFunctions("ERROR", fmtStr, "testFile.cc",
                                             "testFile.cc", 100)
         logId = generateLogIdStr(fmtStr, "testFile.cc", 100)
@@ -476,7 +495,9 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
         expectedResult = ("void " + expectedFnName + "(NanoLog::LogLevel level"
                             ", const char* fmtStr , unsigned int arg0, "
-                            "const char* arg1, double arg2, const char* arg3)",
+                            "int arg1, int arg2, const char* arg3, "
+                            "int arg4, double arg5, "
+                            "int arg6, const char* arg7)",
                             expectedFnName)
 
         self.assertEqual(expectedResult, ret)
@@ -639,7 +660,6 @@ inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
         fg2.generateLogFunctions("DEBUG", "E", "del.cc", "del.cc", 199)
 
         fg2.outputMappingFile("map2.map")
-
         # Merge the two map files
         FunctionGenerator.outputCompilationFiles("test.h",
                                                  ["map1.map", "map2.map"])
@@ -650,6 +670,27 @@ inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
         os.remove("map1.map")
         os.remove("map2.map")
         os.remove("test.h")
+
+    def test_isStringType(self):
+        self.assertTrue(isStringType("char*"))
+        self.assertTrue(isStringType("wchar_t*"))
+
+        self.assertFalse(isStringType("int*"))
+        self.assertFalse(isStringType("int"))
+        self.assertFalse(isStringType("void*"))
+        self.assertFalse(isStringType(None))
+
+    def test_isStringType_integration(self):
+        fmtSpecifiers = splitAndParseTypesInFmtString("%d %lf %0.2lf %s %ls")
+
+        self.assertFalse(isStringType(fmtSpecifiers[0].type))
+        self.assertFalse(isStringType(fmtSpecifiers[1].type))
+        self.assertFalse(isStringType(fmtSpecifiers[2].type))
+
+        self.assertTrue(isStringType(fmtSpecifiers[3].type))
+        self.assertTrue(isStringType(fmtSpecifiers[4].type))
+
+
 
 if __name__ == '__main__':
     unittest.main()

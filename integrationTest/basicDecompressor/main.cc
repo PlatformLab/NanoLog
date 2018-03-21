@@ -1,4 +1,4 @@
-/* Copyright (c) 2017 Stanford University
+/* Copyright (c) 2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -13,16 +13,19 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+/**
+ * This file is only used to generate a basic decompressor
+ */
+
+#include <string>
+
 #include "NanoLog.h"
 
 using namespace NanoLog::LogLevels;
-int main() {
-	NANO_LOG(NOTICE, "Simple log message with 0 parameters");
-	NANO_LOG(NOTICE, "This is a string %s", "aaa");
 
-	NANO_LOG(DEBUG, "Debug level");
-	NANO_LOG(NOTICE, "Notice Level");
-	NANO_LOG(WARNING, "Warning Level");
-	NANO_LOG(ERROR, "Error Level");
-	return 0;
+int main()
+{
+    printf("\r\nNote: This app is used in the integration tests, but"
+        "is not the test runner. \r\nTo run the actual test, invoke "
+        "\"make run-test\"\r\n\r\n");
 }

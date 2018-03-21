@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,8 +16,9 @@
 
 #include <cstddef>
 #include <cstring>
-
 #include <cstdint>
+
+#include "Common.h"
 
 #ifndef PACKER_H
 #define PACKER_H
@@ -49,7 +50,7 @@
  * back into the unpack() function to interpret the compressed bytes.
  *
  * The value of the special code S indicates different things
- *      (a) S = 0                  => Unused
+ *      (a) S = 0                  => 16-byte value was encoded
  *      (b) S = [1, sizeof(T)]     => integer was represented in S bytes
  *      (c) S = [9, 8 + sizeof(T)) => integer was represented in S-8 bytes and
  *                                    a negation was performed on the integer
@@ -172,6 +173,15 @@ pack(char **buffer, int64_t val)
         return 8 + pack<uint64_t>(buffer, static_cast<uint64_t>(-val));
 }
 
+inline int
+pack(char **buffer, long long int val)
+{
+    if (val >= 0 || val <= int64_t(-(1LL<<56)))
+        return pack<uint64_t>(buffer, static_cast<uint64_t>(val));
+    else
+        return 8 + pack<uint64_t>(buffer, static_cast<uint64_t>(-val));
+}
+
 /**
  * Pointer specialization for the pack template that will copy the value
  * without compression.
@@ -227,22 +237,19 @@ inline typename std::enable_if<!std::is_floating_point<T>::value &&
                                 !std::is_pointer<T>::value, T>::type
 unpack(const char **in, uint8_t packResult)
 {
-    T packed = 0;
-
-    if (packResult == 0)
-        return packed;
+    int64_t packed = 0;
 
     if (packResult <= 8) {
         memcpy(&packed, (*in), packResult);
         (*in) += packResult;
-       return packed;
+       return static_cast<T>(packed);
     }
 
-    int bytes = (0x0f & (packResult - 8));
+    int bytes = packResult == 0 ? 16 : (0x0f & (packResult - 8));
     memcpy(&packed, (*in), bytes);
     (*in) += bytes;
 
-    return -packed;
+    return static_cast<T>(-packed);
 }
 template<typename T>
 inline typename std::enable_if<std::is_pointer<T>::value, T>::type
@@ -253,16 +260,130 @@ unpack(const char **in, uint8_t packNibble) {
 template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
 unpack(const char **in, uint8_t packNibble) {
-    if (packNibble == 0)
-        return 0.0;
-
     T result;
-    uint8_t nib = (0x0f & packNibble);
-    std::memcpy(&result, (*in), nib);
-    (*in) += (0x0f & nib);
+    std::memcpy(&result, (*in), sizeof(T));
+    (*in) += sizeof(T);
     
     return result;
 }
+
+/**
+ * Given a stream of nibbles, return the total number of bytes used to represent
+ * the values encoded with the nibbles.
+ *
+ * \param nibbles
+ *      The start of the nibbles
+ * \param numNibbles
+ *      Number of nibbles to process
+ *
+ * \return
+ *      The number of bytes encoded used to encode the values
+ */
+inline static uint32_t
+getSizeOfPackedValues(const TwoNibbles *nibbles, int numNibbles)
+{
+    uint32_t size = 0;
+    for (int i = 0; i < numNibbles/2; ++i) {
+        size += nibbles[i].first + nibbles[i].second;
+        if (nibbles[i].first == 0)
+            size += 16;
+        if (nibbles[i].first > 0x8)
+            size -= 8;
+        if (nibbles[i].second == 0)
+            size += 16;
+        if (nibbles[i].second > 0x8)
+            size -= 8;
+    }
+
+    if (numNibbles & 0x1) {
+        size += nibbles[numNibbles / 2].first;
+        if (nibbles[numNibbles/2].first == 0)
+            size += 16;
+        if (nibbles[numNibbles/2].first > 0x8)
+            size -= 8;
+    }
+
+    return size;
+}
+
+/**
+ * This class takes in a data stream of pack() Nibbles followed by pack()'ed
+ * values as produced by the compressor and unpack()'s them one by one.
+ */
+class Nibbler {
+PRIVATE:
+    // Position in the nibble stream
+    const TwoNibbles *nibblePosition;
+
+    // Indicates whether whether to use the first nibble or second
+    bool onFirstNibble;
+
+    // Number of nibbles in this stream
+    int numNibbles;
+
+    // Position in the stream marking the next packed value
+    const char *currPackedValue;
+
+    // End of the last valid packed value
+    const char *endOfValues;
+
+public:
+    /**
+     * Nibbler Constructor
+     *
+     * \param nibbleStart
+     *      Data stream consisting of the Nibbles followed by pack()ed values.
+     * \param numNibbles
+     *      Number of nibbles in the data stream
+     */
+    Nibbler(const char *nibbleStart, int numNibbles)
+        : nibblePosition(reinterpret_cast<const TwoNibbles*>(nibbleStart))
+        , onFirstNibble(true)
+        , numNibbles(numNibbles)
+        , currPackedValue(nibbleStart + (numNibbles + 1)/2)
+        , endOfValues(nullptr)
+    {
+        endOfValues = nibbleStart
+                             + (numNibbles + 1)/2
+                             + getSizeOfPackedValues(nibblePosition, numNibbles);
+    }
+
+    /**
+     * Returns the next pack()-ed value in the stream
+     *
+     * \tparam T
+     *      Type of the value in the stream
+     * \return
+     *      Next pack()-ed value in the stream
+     */
+    template<typename T>
+    T getNext() {
+        assert(currPackedValue < endOfValues);
+
+        uint8_t nibble = (onFirstNibble) ? nibblePosition->first
+                                         : nibblePosition->second;
+
+        T ret = unpack<T>(&currPackedValue, nibble);
+
+        if (!onFirstNibble)
+            ++nibblePosition;
+
+        onFirstNibble = !onFirstNibble;
+
+        return ret;
+    }
+
+    /**
+     * Returns a pointer to to the first byte beyond the last pack()-ed value
+     *
+     * \return
+     *      Pointer to the first byte beyond last pack()-ed value.
+     */
+    const char *
+    getEndOfPackedArguments() {
+        return endOfValues;
+    }
+};
 } /* BufferUtils */
 
 #endif /* PACKER_H */

@@ -12,7 +12,7 @@ INCLUDES=-I. -ItestHelper -I${GTEST_DIR}/include
 LIBS=-L. -lgtest -lrt -pthread
 CXX_ARGS=-std=c++11 -g -O3
 
-all: test Perf
+all: test Perf decompressor
 
 %.o:%.cc %.h $(DEPS)
 	g++ $(CXX_ARGS) $(INCLUDES) -c $< -o $@
@@ -39,6 +39,11 @@ testHelper/GeneratedCode.cc: testHelper/client.cc
 	python ../preprocessor/parser.py --mapOutput="testHelper/client.map" testHelper/client.cc.i
 	python ../preprocessor/parser.py --combinedOutput="testHelper/GeneratedCode.cc" testHelper/client.map
 	@rm -f testHelper/client.map testHelper/client.cc.*
+
+# Compiles a generic decompressor; the GeneratedCode.o is only necessary for
+# legacy code compatabilitiy.
+decompressor: testHelper/GeneratedCode.o Cycles.o Util.o Log.o LogDecompressor.cc
+	$(CXX) $(CXX_ARGS) $^ -o decompressor $(INCLUDES) -Igenerated -Werror
 
 clean:
 	rm -f Perf test compressedLog testHelper/GeneratedCode.o *.o *.gch *.log

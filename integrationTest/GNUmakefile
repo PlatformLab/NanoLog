@@ -37,8 +37,11 @@ all: run-test run-empty-test
 testApp: $(USER_OBJS) libNanoLog.a
 	$(CXX) -o testApp $(CXXFLAGS) $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
 
+basic_decompressor:
+	$(MAKE) -C basicDecompressor $(MAKEFLAGS)
+	cp basicDecompressor/decompressor basic_decompressor
 
-run-test: testApp
+run-test: testApp basic_decompressor
 	@rm -f /tmp/testLog
 	./testApp > /dev/null
 	@chmod 666 /tmp/testLog
@@ -52,16 +55,25 @@ run-test: testApp
 	./decompressor /tmp/testLog | cut -d':' -f5- > output.txt
 	diff -w expectedOutput.txt output.txt
 
-	@rm -f /tmp/testLog
+	@# Run the decompressor without embedded functions and cut the timestamps before the ':'
+	./basic_decompressor /tmp/testLog | cut -d':' -f5- > basic_output.txt
+	diff -w expectedOutput.txt basic_output.txt
+
+	@# Run the decompressor one more time as if appending to a log file
+	./testApp > /dev/null
+	./decompressor /tmp/testLog | cut -d':' -f5- > appended_output.txt
+	diff -w expectedOutput_appendedFile.txt appended_output.txt
+
+	@rm -f /tmp/testLog basic_output.txt output.txt appended_output.txt
 
 run-empty-test: testApp
 	@touch emptyFile
 	@printf "Error: Could not read initial checkpoint, the compressed log may be corrupted.\r\n" > expected.txt
 	@printf "Unable to open file emptyFile\r\n" >> expected.txt
 
-	./decompressor emptyFile > output.txt
+	./decompressor emptyFile > output.txt 2>&1
 	diff -w expected.txt output.txt
 	@rm -f output.txt expected.txt emptyFile
 
 clean:
-	@rm -f *.o testApp folder/*.o /tmp/testLog output.txt emptyFile *.pyc
+	@rm -f *.o testApp folder/*.o /tmp/testLog output.txt emptyFile *.pyc decompressor basic_decompressor

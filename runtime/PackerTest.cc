@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -381,6 +381,119 @@ TEST_F(PackerTest, unpack_floating) {
     EXPECT_EQ(0.1, unpack<double>(&readPtr, 8));
     EXPECT_EQ(0.1f, unpack<float>(&readPtr, 4));
     EXPECT_EQ(buffer_space + 2*(sizeof(float) + sizeof(double)), readPtr);
+}
+
+TEST_F(PackerTest, getSizeOfPackedValues) {
+    BufferUtils::TwoNibbles nibbles[1000];
+    char *buffer = buffer_space;
+
+    int nibbleCntr = 0;
+    // Try special types
+    nibbles[nibbleCntr++/2].first = pack(&buffer, (float)(0.1));
+    EXPECT_EQ(4, getSizeOfPackedValues(nibbles, nibbleCntr));
+
+    nibbles[nibbleCntr++/2].second = pack(&buffer, (double)(0.1));
+    EXPECT_EQ(12, getSizeOfPackedValues(nibbles, nibbleCntr));
+
+    // Try unsigned numbers
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(0));
+    EXPECT_EQ(13, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1<<8));
+    EXPECT_EQ(15, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1<<16));
+    EXPECT_EQ(18, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1<<24));
+    EXPECT_EQ(22, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1UL<<32));
+    EXPECT_EQ(27, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1UL<<40));
+    EXPECT_EQ(33, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1UL<<48));
+    EXPECT_EQ(40, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1UL<<56));
+    EXPECT_EQ(48, getSizeOfPackedValues(nibbles, nibbleCntr));
+
+    // Try signed numbers
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, int64_t(-1));
+    EXPECT_EQ(49, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, int64_t(-(1<<8)));
+    EXPECT_EQ(51, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, int64_t(-(1<<16)));
+    EXPECT_EQ(54, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, int64_t(-(1<<24)));
+    EXPECT_EQ(58, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, int64_t(-(1LL<<32)));
+    EXPECT_EQ(63, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, int64_t(-(1LL<<40)));
+    EXPECT_EQ(69, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, int64_t(-(1LL<<48)));
+    EXPECT_EQ(76, getSizeOfPackedValues(nibbles, nibbleCntr));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, int64_t(-(1LL<<56)));
+    EXPECT_EQ(84, getSizeOfPackedValues(nibbles, nibbleCntr));
+}
+
+TEST_F(PackerTest, nibbler) {
+    BufferUtils::TwoNibbles nibbles[1000];
+    char backing_buffer[1024];
+    char *buffer = backing_buffer;
+
+    // Start packing some data
+    int nibbleCntr = 0;
+    // Try special types
+    nibbles[nibbleCntr++/2].first = pack(&buffer, (float)(0.1));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, (double)(0.2));
+
+    // Try unsigned numbers
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(0));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1<<8));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1<<16));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1<<24));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1UL<<32));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1UL<<40));
+    nibbles[nibbleCntr++/2].first  = pack(&buffer, uint64_t(1UL<<48));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, uint64_t(1UL<<56));
+
+    // Try signed numbers
+    nibbles[nibbleCntr++/2].first   = pack(&buffer, int64_t(-(1<<8)));
+    nibbles[nibbleCntr++/2].second  = pack(&buffer, int64_t(-(1<<16)));
+    nibbles[nibbleCntr++/2].first   = pack(&buffer, int64_t(-(1<<24)));
+    nibbles[nibbleCntr++/2].second  = pack(&buffer, int64_t(-(1LL<<32)));
+    nibbles[nibbleCntr++/2].first   = pack(&buffer, int64_t(-(1LL<<40)));
+    nibbles[nibbleCntr++/2].second  = pack(&buffer, int64_t(-(1LL<<48)));
+    nibbles[nibbleCntr++/2].first   = pack(&buffer, int64_t(-(1LL<<56)));
+
+    // Now let's squash the nibbles and pack()-ed values into one stream.
+    uint32_t packedBytes = buffer - backing_buffer;
+    uint32_t nibbleBytes = (nibbleCntr+1)/2;
+
+    memmove(backing_buffer + nibbleBytes, backing_buffer, packedBytes);
+    memcpy(backing_buffer, nibbles, nibbleBytes);
+
+    Nibbler nb(backing_buffer, nibbleCntr);
+    EXPECT_EQ(nibbleBytes, nb.currPackedValue - backing_buffer);
+    EXPECT_EQ(packedBytes, nb.getEndOfPackedArguments() - nb.currPackedValue);
+
+    EXPECT_EQ((float)0.1, nb.getNext<float>());
+    EXPECT_EQ((double)0.2, nb.getNext<double>());
+
+    EXPECT_EQ(0, nb.getNext<uint64_t>());
+    EXPECT_EQ(1<<8, nb.getNext<uint64_t>());
+    EXPECT_EQ(1<<16, nb.getNext<uint64_t>());
+    EXPECT_EQ(1<<24, nb.getNext<uint64_t>());
+    EXPECT_EQ(1UL<<32, nb.getNext<uint64_t>());
+    EXPECT_EQ(1UL<<40, nb.getNext<uint64_t>());
+    EXPECT_EQ(1UL<<48, nb.getNext<uint64_t>());
+    EXPECT_EQ(1UL<<56, nb.getNext<uint64_t>());
+
+    EXPECT_EQ(int64_t(-(1<<8)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1<<16)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1<<24)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1LL<<32)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1LL<<40)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1LL<<48)), nb.getNext<int64_t>());
+    EXPECT_EQ(int64_t(-(1LL<<56)), nb.getNext<int64_t>());
+
+    EXPECT_DEATH(nb.getNext<int>(), "");
 }
 
 }  // namespace

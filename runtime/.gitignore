@@ -4,12 +4,16 @@
 test
 TTTest
 
+decompressor
 compressedLog
 nbproject
 Bench.sh
 Benchmark
 Perf
 
+googletest
+
 # IDE project files
 .idea/
 cmake-build-debug/
+CMakeLists.txt

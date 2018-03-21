@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
 
     Decoder decoder;
     if(!decoder.open(argv[1])) {
-        printf("Unable to open file %s\r\n", argv[1]);
+        fprintf(stderr, "Unable to open file %s\r\n", argv[1]);
     } else {
         decoder.decompressTo(stdout, msgsToPrint);
     }

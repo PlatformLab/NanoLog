@@ -1,4 +1,4 @@
-/* Copyright (c) 2017 Stanford University
+/* Copyright (c) 2017-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -31,6 +31,50 @@ static const char* logLevelNames[] = {"(none)", "ERROR", "WARNING",
                                        "NOTICE", "DEBUG"};
 
 /**
+ * Insert a checkpoint into an output buffer. This operation is fairly
+ * expensive so it is typically performed once per new log file.
+ *
+ * \param out[in/out]
+ *      Output array to insert the checkpoint into
+ * \param outLimit
+ *      Pointer to the end of out (i.e. first invalid byte to write to)
+ *
+ * \return
+ *      True if operation succeed, false if there's not enough space
+ */
+bool
+Log::insertCheckpoint(char **out, char *outLimit, bool writeDictionary) {
+    if (static_cast<uint64_t>(outLimit - *out) < sizeof(Checkpoint))
+        return false;
+
+    Checkpoint *ck = reinterpret_cast<Checkpoint*>(*out);
+    *out += sizeof(Checkpoint);
+
+    ck->entryType = Log::EntryType::CHECKPOINT;
+    ck->rdtsc = PerfUtils::Cycles::rdtsc();
+    ck->unixTime = std::time(nullptr);
+    ck->cyclesPerSecond = PerfUtils::Cycles::getCyclesPerSec();
+    ck->newMetadataBytes = ck->totalMetadataEntries = 0;
+
+    if (!writeDictionary)
+        return true;
+
+    long int bytesWritten = GeneratedFunctions::writeDictionary(*out, outLimit);
+
+    if (bytesWritten == -1) {
+        // roll back and exit
+        *out -= sizeof(Checkpoint);
+        return false;
+    }
+
+    *out += bytesWritten;
+    ck->newMetadataBytes = static_cast<uint32_t>(bytesWritten);
+    ck->totalMetadataEntries = static_cast<uint32_t>(
+            GeneratedFunctions::numLogIds);
+
+    return true;
+}
+/**
  * Encoder constructor. The construction of an Encoder should logically
  * correlate with the start of a new log file as it will embed unique metadata
  * information at the beginning of log file/buffer.
@@ -57,10 +101,16 @@ Log::Encoder::Encoder(char *buffer,
     assert(buffer);
 
     // Start the buffer off with a checkpoint
-    if (!skipCheckpoint) {
-        assert(static_cast<uint64_t>(endOfBuffer - buffer)
-                                                        >= sizeof(Checkpoint));
-        insertCheckpoint(&writePos, endOfBuffer);
+    if (skipCheckpoint)
+        return;
+
+    // In virtually all cases, our output buffer should have enough
+    // space to store the dictionary. If not, we fail in place.
+    if (!insertCheckpoint(&writePos, endOfBuffer, true)) {
+        fprintf(stderr, "Internal Error: Not enough space allocated for "
+                        "dictionary file.\r\n");
+
+        exit(-1);
     }
 }
 
@@ -104,8 +154,7 @@ Log::Encoder::encodeLogMsgs(char *from,
     char *bufferStart = writePos;
 
     while (remaining > 0) {
-        UncompressedEntry *entry
-                = reinterpret_cast<UncompressedEntry*>(from);
+        auto *entry = reinterpret_cast<UncompressedEntry*>(from);
 
         if (entry->entrySize > remaining)
             break;
@@ -247,7 +296,94 @@ Log::Decoder::Decoder()
     , logMsgsPrinted(0)
     , checkpoint()
     , freeBuffers()
-{}
+    , fmtId2metadata()
+    , rawMetadata(nullptr)
+    , endOfRawMetadata(nullptr)
+{
+    // Take advantage of virtual memory an allocate an insanely large (1GB)
+    // buffer to store log metadata read from the logFile. Such a large buffer
+    // is used so that we don't have to explicitly manage the buffer and instead
+    // leave it up to the virtual memory system.
+    rawMetadata = static_cast<char*>(malloc(1024*1024*1024));
+
+    if (rawMetadata == nullptr) {
+        fprintf(stderr, "Could not allocate an internal 1GB buffer to store log"
+                " metadata");
+        exit(-1);
+    }
+
+    endOfRawMetadata = rawMetadata;
+    fmtId2metadata.reserve(1000);
+}
+
+/**
+ * Reads the metadata necessary to decompress log messsages from a log file.
+ * This function can be invoked incrementally to build a larger dictionary from
+ * smaller fragments in the file and it should only be invoked once per fragment
+ *
+ * \param fd
+ *      File descriptor pointing to the dictionary fragment
+ * \param flushOldDictionary
+ *      Removes the old dictionary entries
+ * \return
+ *      true if successful, false if the dictionary was corrupt
+ */
+bool
+Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
+    if (!readCheckpoint(checkpoint, fd)) {
+        fprintf(stderr, "Error: Could not read initial checkpoint, "
+                "the compressed log may be corrupted.\r\n");
+        return false;
+    }
+
+    size_t bytesRead = fread(endOfRawMetadata, 1, checkpoint.newMetadataBytes,
+                             fd);
+    if (bytesRead != checkpoint.newMetadataBytes) {
+        fprintf(stderr, "Error couldn't read metadata header in log file.\r\n");
+        return false;
+    }
+
+    if (flushOldDictionary) {
+        endOfRawMetadata = rawMetadata;
+        fmtId2metadata.clear();
+    }
+
+    // Build an index of format id to metadata
+    const char *start = endOfRawMetadata;
+    const char *newEnd = endOfRawMetadata + bytesRead;
+    while(endOfRawMetadata < newEnd) {
+        fmtId2metadata.push_back(endOfRawMetadata);
+
+        // Skip ahead
+        auto *fm = reinterpret_cast<FormatMetadata*>(endOfRawMetadata);
+        endOfRawMetadata += sizeof(FormatMetadata) + fm->filenameLength;
+
+        for (int i = 0; i < fm->numPrintFragments
+                        && newEnd >= endOfRawMetadata; ++i)
+        {
+            auto *pf = reinterpret_cast<PrintFragment*>(endOfRawMetadata);
+            endOfRawMetadata += sizeof(PrintFragment) + pf->fragmentLength;
+        }
+    }
+
+    if (newEnd != endOfRawMetadata) {
+        fprintf(stderr, "Error: Metadata is inconsistent; expected %lu bytes "
+                        "but read %lu bytes\r\n",
+                newEnd - start,
+                endOfRawMetadata - start);
+        return false;
+    }
+
+    if (fmtId2metadata.size() != checkpoint.totalMetadataEntries) {
+        fprintf(stderr, "Error: Missing log metadata detected; "
+                        "expected %u messages, but only found %lu\r\n",
+                       checkpoint.totalMetadataEntries,
+                       fmtId2metadata.size());
+        return false;
+    }
+
+    return true;
+}
 
 /**
  * Opens a compressed log with contents created by Encoder.
@@ -264,11 +400,9 @@ Log::Decoder::open(const char *filename) {
         return false;
     }
 
-    if(!readCheckpoint(checkpoint, inputFd)) {
-        printf("Error: Could not read initial checkpoint, "
-                "the compressed log may be corrupted.\r\n");
+    if(!readDictionary(inputFd, true)) {
         fclose(inputFd);
-        inputFd = 0;
+        inputFd = nullptr;
         return false;
     }
 
@@ -401,6 +535,50 @@ Log::Decoder::BufferFragment::readBufferExtent(FILE *fd, bool *wrapAround) {
 }
 
 /**
+ * Helper to decompressNextLogStatement to print a single PrintFragment
+ * given an argument and optional width/precision specifiers.
+ *
+ * \tparam T
+ *      Type of the argument (automatically inferred)
+ * \param outputFd
+ *      Where to output the statement
+ * \param formatString
+ *      Partial format string containing exactly 1 format specifier
+ * \param arg
+ *      Argument to pass in with the format string
+ * \param width
+ *      Width parameter of a printf-specifier, a value of -1 specifies none
+ * \param precision
+ *      precision parameter of a printf-specifier, a value of -1 specifies none
+ */
+template<typename T>
+static inline void
+printSingleArg(FILE *outputFd,
+                const char* formatString,
+                T arg,
+                int width = -1,
+                int precision = -1)
+{
+    if (outputFd == nullptr)
+        return;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-security"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+
+    if (width < 0 && precision < 0) {
+        fprintf(outputFd, formatString, arg);
+    } else if (width >= 0 && precision < 0)
+        fprintf(outputFd, formatString, width, arg);
+    else if (width >= 0 && precision >= 0)
+        fprintf(outputFd, formatString, width, precision, arg);
+    else
+        fprintf(outputFd, formatString, precision, arg);
+
+#pragma GCC diagnostic pop
+}
+
+/**
  * Attempt to read back the next log statement contained in the BufferFragment,
  * output the original log message to outputFd, and if applicable, run an
  * aggregation function on the log message.
@@ -434,16 +612,19 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                                         uint64_t &logMsgsPrinted,
                                         uint64_t &lastTimestamp,
                                         const Checkpoint &checkpoint,
+                                        std::vector<void*>& fmtId2metadata,
                                         long aggregationFilterId,
                                         void (*aggregationFn)(const char*, ...))
 {
+    double secondsSinceCheckpoint, nanos = 0.0;
+    char timeString[32];
+
     if (readPos > endOfBuffer || !hasMoreLogs)
         return false;
 
+    // no need to format the time if we're not going to output
     if (outputFd) {
-        char timeString[32];
-
-        // Convert to relative time
+    // Convert to relative time
 //        double timeDiff;
 //        if (nextLogTimestamp >= lastTimestamp)
 //            timeDiff = 1.0e9*PerfUtils::Cycles::toSeconds(
@@ -459,34 +640,280 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 //        fprintf(outputFd, "%4ld) +%12.2lf ns ", logMsgsPrinted, timeDiff);
 
         // Convert to absolute time
-        double secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
-               nextLogTimestamp - checkpoint.rdtsc, checkpoint.cyclesPerSecond);
+        secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
+                                            nextLogTimestamp - checkpoint.rdtsc,
+                                            checkpoint.cyclesPerSecond);
         int64_t wholeSeconds = static_cast<int64_t>(secondsSinceCheckpoint);
-        double nanos = 1.0e9*(secondsSinceCheckpoint
-                                        - static_cast<double>(wholeSeconds));
-
+        nanos = 1.0e9 * (secondsSinceCheckpoint
+                                - static_cast<double>(wholeSeconds));
         std::time_t absTime = wholeSeconds + checkpoint.unixTime;
         std::tm *tm = localtime(&absTime);
         strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", tm);
+    }
 
+    if (fmtId2metadata.empty() || aggregationFn != nullptr) {
         // Output the context
         struct GeneratedFunctions::LogMetadata meta =
                                 GeneratedFunctions::logId2Metadata[nextLogId];
-        fprintf(outputFd,"%s.%09.0lf %s:%u %s[%u]: "
-                                        , timeString
-                                        , nanos
-                                        , meta.fileName
-                                        , meta.lineNumber
-                                        , logLevelNames[meta.logLevel]
-                                        , runtimeId);
+        if (outputFd) {
+            fprintf(outputFd,"%s.%09.0lf %s:%u %s[%u]: "
+                    , timeString
+                    , nanos
+                    , meta.fileName
+                    , meta.lineNumber
+                    , logLevelNames[meta.logLevel]
+                    , runtimeId);
+        }
+
+        void (*aggFn)(const char*, ...) = nullptr;
+        if (aggregationFilterId == nextLogId)
+            aggFn = aggregationFn;
+
+        GeneratedFunctions::decompressAndPrintFnArray[nextLogId](&readPos,
+                                                                 outputFd,
+                                                                 aggFn);
+    } else {
+        using namespace BufferUtils;
+        auto *metadata = reinterpret_cast<FormatMetadata*>(
+                                            fmtId2metadata.at(nextLogId));
+
+        const char *filename = metadata->filename;
+        const char *logLevel = logLevelNames[metadata->logLevel];
+
+        // Output the context
+        if (outputFd) {
+            fprintf(outputFd,"%s.%09.0lf %s:%u %s[%u]: "
+                    , timeString
+                    , nanos
+                    , filename
+                    , metadata->lineNumber
+                    , logLevel
+                    , runtimeId);
+        }
+
+        // Print out the actual log message, piece by piece
+        PrintFragment *pf = reinterpret_cast<PrintFragment*>(
+                reinterpret_cast<char*>(metadata)
+                + sizeof(FormatMetadata)
+                + metadata->filenameLength);
+
+        Nibbler nb(readPos, metadata->numNibbles);
+        const char *nextStringArg = nb.getEndOfPackedArguments();
+
+        for (int i = 0; i < metadata->numPrintFragments; ++i) {
+            const wchar_t *wstrArg;
+
+            int width = -1;
+            if (pf->hasDynamicWidth)
+                width = nb.getNext<int>();
+
+            int precision = -1;
+            if (pf->hasDynamicPrecision)
+                precision = nb.getNext<int>();
+
+            switch(pf->argType) {
+                case NONE:
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-security"
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+                    fprintf(outputFd, pf->formatFragment);
+#pragma GCC diagnostic pop
+                    break;
+
+                case unsigned_char_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<unsigned char>(),
+                                   width, precision);
+                    break;
+
+                case unsigned_short_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<unsigned short int>(),
+                                   width, precision);
+                    break;
+
+                case unsigned_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<unsigned int>(),
+                                   width, precision);
+                    break;
+
+                case unsigned_long_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<unsigned long int>(),
+                                   width, precision);
+                    break;
+
+                case unsigned_long_long_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<unsigned long long int>(),
+                                   width, precision);
+                    break;
+
+                case uintmax_t_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<uintmax_t>(),
+                                   width, precision);
+                    break;
+
+                case size_t_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<size_t>(),
+                                   width, precision);
+                    break;
+
+                case wint_t_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<wint_t>(),
+                                   width, precision);
+                    break;
+
+                case signed_char_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<signed char>(),
+                                   width, precision);
+                    break;
+
+                case short_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<short int>(),
+                                   width, precision);
+                    break;
+
+                case int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<int>(),
+                                   width, precision);
+                    break;
+
+                case long_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<long int>(),
+                                   width, precision);
+                    break;
+
+                case long_long_int_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<long long int>(),
+                                   width, precision);
+                    break;
+
+                case intmax_t_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<intmax_t>(),
+                                   width, precision);
+                    break;
+
+                case ptrdiff_t_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<ptrdiff_t>(),
+                                   width, precision);
+                    break;
+
+                case double_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<double>(),
+                                   width, precision);
+                    break;
+
+                case long_double_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<long double>(),
+                                   width, precision);
+                    break;
+
+                case const_void_ptr_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nb.getNext<const void *>(),
+                                   width, precision);
+                    break;
+
+                // The next two are strings, so handle it accordingly.
+                case const_char_ptr_t:
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   nextStringArg,
+                                   width, precision);
+
+                    nextStringArg += strlen(nextStringArg) + 1; // +1 for NULL
+                    break;
+
+                case const_wchar_t_ptr_t:
+
+                    /**
+                     * I've occasionally encountered the following assertion:
+                     * __wcsrtombs: Assertion `data.__outbuf[-1] == '\0'' failed
+                     *
+                     * I don't know why this occurs, but it appears to be caused
+                     * by a wcslen() call deep inside printf returning the wrong
+                     * value when called on the dynamic buffer. I've found
+                     * that copying the data into a stack buffer first fixes
+                     * the problem (not implemented here).
+                     *
+                     * I don't know why this is the case and I'm inclined to
+                     * believe it's a problem with the library because I've...
+                     *  (1) verified byte by byte that the copied wchar_t
+                     *      strings and the surrounding bytes are exactly the
+                     *      same in the dynamic and stack allocated buffers.
+                     *  (2) copied the wcslen code from the glib sources into
+                     *      to this file and calling it on the dynamic buffer
+                     *      works, but the public wcslen() API still returns an
+                     *      incorrect value.
+                     *  (3) verified that no corruption occurs in the buffers
+                     *      before and after the wcslen() returns the wrong val
+                     *
+                     * If wide character support becomes important and this
+                     * assertion keeps erroring out, I would work around it
+                     * by copying the wide string into a stack buffer before
+                     * passing it to printf.
+                     */
+                    wstrArg = reinterpret_cast<const wchar_t *>(nextStringArg);
+                    printSingleArg(outputFd,
+                                   pf->formatFragment,
+                                   wstrArg,
+                                   width, precision);
+
+                    // +1 for NULL
+                    nextStringArg += (wcslen(wstrArg) + 1)*sizeof(wchar_t);
+                    break;
+
+                case MAX_FORMAT_TYPE:
+                default:
+                    fprintf(outputFd,
+                            "Error: Corrupt log header in header file\r\n");
+                    exit(-1);
+            }
+
+            pf = reinterpret_cast<PrintFragment*>(
+                    reinterpret_cast<char*>(pf)
+                    + pf->fragmentLength
+                    + sizeof(PrintFragment));
+        }
+
+
+        fprintf(outputFd, "\r\n");
+        // We're done, advance the pointer to the end of the last string
+        readPos = nextStringArg;
     }
-
-    void (*aggFn)(const char*, ...) = nullptr;
-    if (aggregationFilterId == nextLogId)
-        aggFn = aggregationFn;
-
-    GeneratedFunctions::decompressAndPrintFnArray[nextLogId](&readPos,
-                                                            outputFd, aggFn);
 
     lastTimestamp = nextLogTimestamp;
     logMsgsPrinted++;
@@ -588,6 +1015,7 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
                                                     linesPrinted,
                                                     lastTimestamp,
                                                     checkpoint,
+                                                    fmtId2metadata,
                                                     aggregationTargetId,
                                                     aggregationFn);
                     if (callRCDF)
@@ -596,7 +1024,7 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
                 break;
             }
             case EntryType::CHECKPOINT:
-                if (!readCheckpoint(checkpoint, inputFd))
+                if (!readDictionary(inputFd, true))
                     good = false;
                 else if (outputFd)
                     fprintf(outputFd, "\r\n# New execution started\r\n");
@@ -679,10 +1107,6 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
 
     // Last timestamp printed (this primarily used to compute differences);
     uint64_t lastTimestamp = 0;
-
-    // Skip past first checkpoint, but just that
-    fseek(inputFd, sizeof(Checkpoint), SEEK_SET);
-
     uint64_t linesPrinted = 0;
 
     while (!feof(inputFd) && !malformed && linesPrinted < logMsgsToPrint) {
@@ -714,7 +1138,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                     }
 
                     // We're safe, all the stages are empty
-                    malformed = !readCheckpoint(checkpoint, inputFd);
+                    malformed = !readDictionary(inputFd, true);
 
                     if (!malformed)
                         fprintf(outputFd,"\r\n# New execution started\r\n");
@@ -782,7 +1206,8 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
             bool hasMore = bf->decompressNextLogStatement(outputFd,
                                                             linesPrinted,
                                                             lastTimestamp,
-                                                            checkpoint);
+                                                            checkpoint,
+                                                            fmtId2metadata);
 
             if (hasMore) {
                 std::sort(minStage->begin(), minStage->end(),

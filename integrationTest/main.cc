@@ -318,10 +318,112 @@ void logLevelTest() {
     NanoLog::setLogLevel(startingLevel);
 }
 
+// Test all possible specifiers (except %n) from
+// http://www.cplusplus.com/reference/cstdio/printf/ (3/20/18)
+void testAllTheTypes() {
+    NANO_LOG(WARNING,
+            "No Length=%d %i %u %o %x %x %f %F %e %E %g %G %a %A %c %s %p",
+            (int)-1,
+            (int)-2,
+            (unsigned int)3,
+            (unsigned int)4,
+            (unsigned int)5,
+            (unsigned int)6,
+            (double)7.0,
+            (double)8.0,
+            (double)9.0,
+            (double)10.0,
+            (double)11.0,
+            (double)12.0,
+            (double)13.0,
+            (double)14.0,
+            'a',
+            "abc",
+            (void*)0x1);
+
+    NANO_LOG(WARNING,
+            "hh=%hhd %hhi %hhu %hho %hhx %hhx",
+            (signed char)-1,
+            (signed char)-2,
+            (unsigned char)3,
+            (unsigned char)4,
+            (unsigned char)5,
+            (unsigned char)6);
+
+    NANO_LOG(WARNING,
+        "h=%hd %hi %hu %ho %hx %hx",
+        (short int)-20000,
+        (short int)-20001,
+        (unsigned short int)20002,
+        (unsigned short int)20003,
+        (unsigned short int)20004,
+        (unsigned short int)20005);
+
+    const wchar_t *longString = L"asdf";
+    NANO_LOG(WARNING,
+        "l=%ld %li %lu %lo %lx %lx %lc %ls",
+        (long int)-(1 << 30),
+        (long int)-(1 << 30) -1 ,
+        (unsigned long int)1<<30 + 2,
+        (unsigned long int)1<<30 + 3,
+        (unsigned long int)1<<30 + 4,
+        (unsigned long int)1<<30 + 5,
+        (wchar_t)'a',
+        (const wchar_t*)longString);
+
+    NANO_LOG(WARNING,
+        "ll=%lld %lli %llu %llo %llx %llx",
+        (long long int)1LL<<60,
+        (long long int)-(1LL<<60),
+        (unsigned long long int)1UL<<60,
+        (unsigned long long int)1UL<<61,
+        (unsigned long long int)1UL<<62,
+        (unsigned long long int)1UL<<63);
+
+    NANO_LOG(WARNING,
+        "j=%jd %ji %ju %jo %jx %jx",
+        (intmax_t)1LL<<60,
+        (intmax_t)-(1LL<<60),
+        (uintmax_t)1UL<<60,
+        (uintmax_t)1UL<<61,
+        (uintmax_t)1UL<<62,
+        (uintmax_t)1UL<<63);
+
+    NANO_LOG(WARNING,
+        "z=%zd %zi %zu %zo %zx %zx",
+        (size_t)1LL<<62,
+        (size_t)1LL<<61,
+        (size_t)1UL<<60,
+        (size_t)1UL<<61,
+        (size_t)1UL<<62,
+        (size_t)1UL<<63);
+
+    NANO_LOG(WARNING,
+        "t=%td %ti %tu %to %tx %tx",
+        (ptrdiff_t)1LL<<62,
+        (ptrdiff_t)1LL<<61,
+        (ptrdiff_t)1UL<<60,
+        (ptrdiff_t)1UL<<61,
+        (ptrdiff_t)1UL<<62,
+        (ptrdiff_t)1UL<<63);
+
+    NANO_LOG(WARNING,
+        "L=%Lf %LF %Le %LE %Lg %LG %La %LA",
+        (long double)7.0,
+        (long double)8.0,
+        (long double)9.0,
+        (long double)10.0,
+        (long double)11.0,
+        (long double)12.0,
+        (long double)13.0,
+        (long double)14.0);
+}
+
 int main()
 {
     NanoLog::setLogFile("/tmp/testLog");
     evilTestCase(NULL);
+    testAllTheTypes();
 
     int count = 10;
     uint64_t start = PerfUtils::Cycles::rdtsc();
