@@ -322,6 +322,7 @@ def peekNextMeaningfulChar(lines, filePos):
 #
 def processFile(inputFile, mapOutputFilename):
   functionGenerator = FunctionGenerator()
+  directiveRegex = re.compile("^# (\d+) \"(.*)\"(.*)")
 
   with open(inputFile) as f, open(inputFile + "i", 'w') as output:
     try:
@@ -357,18 +358,19 @@ def processFile(inputFile, mapOutputFilename):
 
         # Parse special preprocessor directives that follows the format
         # '# lineNumber "filename" flags'
-        directive = re.match("^# (\d+) \"(.*)\"(.*)", line)
-        if directive:
-            # -1 since the line num describes the line after it, not the
-            # current one, so we decrement it here before looping
-            ppLineNum = int(float(directive.group(1))) - 1
+        if line[0] == "#":
+          directive = directiveRegex.match(line)
+          if directive:
+              # -1 since the line num describes the line after it, not the
+              # current one, so we decrement it here before looping
+              ppLineNum = int(float(directive.group(1))) - 1
 
-            ppFileName = directive.group(2)
-            if not firstFilename:
-                firstFilename = ppFileName
+              ppFileName = directive.group(2)
+              if not firstFilename:
+                  firstFilename = ppFileName
 
-            flags = directive.group(3).strip()
-            continue
+              flags = directive.group(3).strip()
+              continue
 
         if INJECTION_MARKER in line:
             inlineCodeInjectionLineIndex = lineIndex
@@ -385,6 +387,10 @@ def processFile(inputFile, mapOutputFilename):
         prevWasEscape = False
         inQuotes = False
         charOffset = -1
+
+        # Optimization: Make sure line has LOG_FUNCTION before doing more work
+        if LOG_FUNCTION not in line:
+          continue
 
         while charOffset < len(line) - 1:
           charOffset = charOffset + 1
