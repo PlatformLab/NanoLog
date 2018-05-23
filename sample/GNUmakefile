@@ -25,7 +25,7 @@
 # USER_OBJS specifies all user object files to be compiled; this is used by
 # NanoLog to determine when all the user sources have been preprocessed
 # and compiled.
-USER_SRCS=Benchmark.cc
+USER_SRCS=main.cc
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
 # Root of the NanoLog Repository
@@ -41,7 +41,7 @@ include $(NANOLOG_DIR)/NanoLogMakeFrag
 CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
 CXX=g++
 
-all: benchmark
+all: sampleApplication
 
 # [Required] run-cxx will compile the user C++ source file into an object file using
 # the NanoLog system. For run-cxx, the first parameter is the output file name (*.o),
@@ -51,8 +51,8 @@ all: benchmark
 	$(call run-cxx, $@, $<, $(CXXFLAGS))
 
 # [Required] $(NANO_LOG_LIBRARY_LIBS) must be used
-benchmark: $(USER_OBJS) libNanoLog.a
-	$(CXX) $(CXXFLAGS) -o benchmark $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
+sampleApplication: $(USER_OBJS) libNanoLog.a
+	$(CXX) $(CXXFLAGS) -o sampleApplication $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
 
 clean:
-	@rm -f *.o benchmark /tmp/logFile
+	@rm -f *.o sampleApplication /tmp/logFile

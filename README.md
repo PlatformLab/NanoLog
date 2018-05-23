@@ -52,6 +52,7 @@ To use the NanoLog system in the code, one just has to ```#include "NanoLog.h"``
 
 ```cpp
 #include "NanoLog.h"
+using namespace NanoLog::LogLevels;
 
 int main() {
   NANO_LOG(NOTICE, "Hello World! This is an integer %d and a double %lf\r\n", 1, 2.0);
@@ -65,7 +66,7 @@ Valid log levels are DEBUG, NOTICE, WARNING, and ERROR and the logging level can
 NanoLog requires users to compile their C++ files into *.o files using the NanoLog system.
 
 #### New Projects
-For new projects, the easiest way to bootstrap this process is to copy the [sample GNUMakefile](./benchmark/GNUmakefile) and make the following changes:
+For new projects, the easiest way to bootstrap this process is to copy the [sample GNUMakefile](./sample/GNUmakefile) and make the following changes:
 
 * Change the ```NANOLOG_DIR``` variable to refer to this project's root directory
 
@@ -73,15 +74,15 @@ For new projects, the easiest way to bootstrap this process is to copy the [samp
 
 #### Advanced Configuration
 If you wish to integrate into NanoLog into an existing system with an existing GNUmakefile, perform the following:
-* Copy all the variables in the "Required Library Variables" section in the [sample GNUMakefile](./benchmark/GNUmakefile) into your makefile.
+* Copy all the variables in the "Required Library Variables" section in the [sample GNUMakefile](./sample/GNUmakefile) into your makefile.
 * Compile your sources into *.o files using the ```run-cxx``` function and ensure that the ```USER_OBJS``` captures all the *.o files.
 * Link the following the NanoLog library, posix aio and pthread libraries i.e. ```-lNanoLog -lrt -pthread``` or use the variable ```$(NANO_LOG_LIBRARY_LIBS)```.
 
 
 ### Post-Execution Log Decompressor
-After compilation, a ./decompressor executable should have been generated in your makefile directory and after execution, you should have a binary log (default location: /tmp/compressedLog or /tmp/logFile).
+After compilation, a ./decompressor executable should have been generated in your makefile directory and after execution, you should have a binary log (default location: ./compressedLog or /tmp/logFile).
 
 To get a human readable log out, pass one into the other. Example:
 ```
-./decompressor /tmp/logFile
+./decompressor ./compressedLog
 ```

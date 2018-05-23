@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,8 +18,7 @@
   * implementation of simple benchmarking application that reports the
   * average latency and throughput of the NanoLog system.
   */
-
-#include "Cycles.h"
+#include <chrono>
 
 // Required to use the NanoLog system
 #include "NanoLog.h"
@@ -33,11 +32,11 @@ int main(int argc, char** argv) {
     // Number of messages to log repeatedly and take the average latency
     const uint64_t RECORDS = 100000000;
 
-    uint64_t start, stop;
-    double time;
+    std::chrono::high_resolution_clock::time_point start, stop;
+    double time_span;
 
     // Optional: Set the output location for the NanoLog system. By default
-    // the log will be output to /tmp/compressedLog
+    // the log will be output to ./compressedLog
     NanoLog::setLogFile("/tmp/logFile");
 
     // Optional optimization: pre-allocates thread-local data structures
@@ -57,25 +56,27 @@ int main(int argc, char** argv) {
     // namespace with 'using'
     NANO_LOG(NanoLog::DEBUG, "Another message.");
 
-    start = PerfUtils::Cycles::rdtsc();
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < RECORDS; ++i) {
         NANO_LOG(NOTICE, "Simple log message with 0 parameters");
     }
-    stop = PerfUtils::Cycles::rdtsc();
+    stop = std::chrono::high_resolution_clock::now();
 
-    time = PerfUtils::Cycles::toSeconds(stop - start);
+    time_span = std::chrono::duration_cast<std::chrono::duration<double>>(
+                                                        stop - start).count();
     printf("The total time spent invoking FAST_LOG with no parameters %lu "
             "times took %0.2lf seconds (%0.2lf ns/message average)\r\n",
-            RECORDS, time, (time/RECORDS)*1e9);
+            RECORDS, time_span, (time_span/RECORDS)*1e9);
 
-    start = PerfUtils::Cycles::rdtsc();
+    start = std::chrono::high_resolution_clock::now();
     // Flush all pending log messages to disk
     NanoLog::sync();
-    stop = PerfUtils::Cycles::rdtsc();
+    stop = std::chrono::high_resolution_clock::now();
 
-    time = PerfUtils::Cycles::toSeconds(stop - start);
+    time_span = std::chrono::duration_cast<std::chrono::duration<double>>(
+                                                        stop - start).count();
     printf("Flushing the log statements to disk took an additional "
-                "%0.2lf secs\r\n", time);
+                "%0.2lf secs\r\n", time_span);
 
     // Prints various statistics gathered by the NanoLog system to stdout
     printf("%s", NanoLog::getStats().c_str());
