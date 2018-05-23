@@ -60,6 +60,8 @@ void preallocate();
  * invoked after this function returns are guaranteed to be in the new file
  * location.
  *
+ * An exception will be thrown if the new log file cannot be opened/created
+ *
  * \param filename
  *      Where to place the log file
  */

@@ -68,12 +68,13 @@ RuntimeLogger::RuntimeLogger()
     for (size_t i = 0; i < Util::arraySize(stagingBufferPeekDist); ++i)
         stagingBufferPeekDist[i] = 0;
 
-    outputFd = open("/tmp/compressedLog", NanoLogConfig::FILE_PARAMS, 0666);
+    const char *filename = NanoLogConfig::DEFAULT_LOG_FILE;
+    outputFd = open(filename, NanoLogConfig::FILE_PARAMS, 0666);
     if (outputFd < 0) {
         fprintf(stderr, "NanoLog could not open the default file location "
                 "for the log file (\"%s\").\r\n Please check the permissions "
                 "or use NanoLog::setLogFile(const char* filename) to "
-                "specify a different log file.\r\n", "/tmp/compressedLog");
+                "specify a different log file.\r\n", filename);
         std::exit(-1);
     }
 
@@ -588,7 +589,7 @@ void
 RuntimeLogger::setLogFile_internal(const char *filename) {
     // Check if it exists and is readable/writeable
     if (access(filename, F_OK) == 0 && access(filename, R_OK | W_OK) != 0) {
-        std::string err = "Unable to read/write from file: ";
+        std::string err = "Unable to read/write from new log file: ";
         err.append(filename);
         throw std::ios_base::failure(err);
     }
@@ -596,7 +597,7 @@ RuntimeLogger::setLogFile_internal(const char *filename) {
     // Try to open the file
     int newFd = open(filename, NanoLogConfig::FILE_PARAMS, 0666);
     if (newFd < 0) {
-        std::string err = "Unable to open file '";
+        std::string err = "Unable to open file new log file: '";
         err.append(filename);
         err.append("': ");
         err.append(strerror(errno));
