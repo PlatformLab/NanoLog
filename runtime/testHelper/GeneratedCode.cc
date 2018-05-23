@@ -52,7 +52,7 @@ inline void __syang0__fl__This32is32a32string3237s__testHelper47client46cc__21__
     
 
     // Record the strings (if any) at the end of the entry
-    memcpy(buffer, arg0, str0Len); printf("memcpying length %lu\r\n", str0Len);buffer += str0Len;*(reinterpret_cast<std::remove_const<typename std::remove_pointer<decltype(arg0)>::type>::type*>(buffer) - 1) = L'\0';
+    memcpy(buffer, arg0, str0Len); buffer += str0Len;*(reinterpret_cast<std::remove_const<typename std::remove_pointer<decltype(arg0)>::type>::type*>(buffer) - 1) = L'\0';
 
     // Make the entry visible
     NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);

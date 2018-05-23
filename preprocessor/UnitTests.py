@@ -650,6 +650,7 @@ inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
         fg.generateLogFunctions("DEBUG", "B", "mar.cc", "mar.cc", 294)
         fg.generateLogFunctions("DEBUG", "C", "mar.cc", "mar.cc", 200)
         fg.generateLogFunctions("DEBUG", "D %d", "s.cc", "s.cc", 100)
+        fg.generateLogFunctions("DEBUG", "E %4s %*.*lf", "s.cc", "s.cc", 100)
 
         fg.outputMappingFile("map1.map")
 

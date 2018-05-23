@@ -452,7 +452,6 @@ size_t numLogIds = {count};
                 (RECORD_PRIMITIVE_FN, idx) for idx in nonStringArgsIdx])
 
         recordStringsArgsCode = ["memcpy(buffer, arg{0}, str{0}Len); "
-               "printf(\"memcpying length %lu\\r\\n\", str{0}Len);"
                "buffer += str{0}Len;"
                "*(reinterpret_cast<std::remove_const<typename std::remove_pointer<decltype(arg{0})>::type>::type*>(buffer) - 1) = L'\\0';".format(
                                                idx) for idx in stringArgsIdx]
