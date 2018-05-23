@@ -1,5 +1,5 @@
 # Common Sources
-SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc RuntimeLogger.cc
+SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc RuntimeLogger.cc TimeTrace.cc
 DEPS=Fence.h Log.h Common.h Packer.h
 OBJECTS:=$(SRCS:.cc=.o)
 

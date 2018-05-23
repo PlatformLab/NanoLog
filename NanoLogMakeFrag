@@ -31,7 +31,7 @@ NANO_LOG_LIBRARY_LIBS=-lrt -pthread
 
 RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
-		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc $(RUNTIME_DIR)/RuntimeLogger.cc
+		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc $(RUNTIME_DIR)/RuntimeLogger.cc $(RUNTIME_DIR)/TimeTrace.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
 
 COMWARNS := -Wall -Wformat=2 -Wextra \
@@ -50,7 +50,7 @@ generated/GeneratedCode.o: $(USER_OBJS)
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ generated/GeneratedCode.cc -I $(RUNTIME_DIR) -Igenerated
 
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror $(EXTRA_NANOLOG_FLAGS)
 
 libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
