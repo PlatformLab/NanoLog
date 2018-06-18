@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -516,9 +516,154 @@ namespace Log {
         // A pointer to the last encoded BufferExtent's length to allow updating
         // the value as the user performs more encodeLogMsgs with the same id.
         uint32_t *currentExtentSize;
+    };
 
-        // Saves the last timestamp encoded in the current BufferExtent
-        uint64_t lastTimestamp;
+    /**
+     * This class embodies a runtime log statement returned from
+     * Decoder::getNextLogStatement(). It stores the static and dynamic
+     * information associated with the log statement. The only information
+     * missing is the type information for the dynamic arguments. Users of this
+     * class must know the dynamic arguments' types to push() and get() them.
+     *
+     * Also, this class stores all the arguments as 8-byte parameters, so
+     * 16-byte dynamic arguments (i.e. long long double) are not supported.
+     */
+    class LogMessage {
+    PRIVATE:
+        // Starting number of arguments that the base structure can store
+        // without allocating more space.
+        static const int INITIAL_SIZE = 10;
+
+        // Pointer to the log statement's static arguments; a value of
+        // nullptr indicates that this LogMessage's contents are invalid.
+        FormatMetadata *metadata;
+
+        // Identifier for the log statement assigned by the preprocessor.
+        // A value of uint32_t(-1) is invalid.
+        uint32_t logId;
+
+        // Runtime timestamp of the log statement.
+        uint64_t rdtsc;
+
+        // Number of runtime arguments currently stored in the structure
+        int numArgs;
+
+        // Total number of arguments that can be stored in this structure
+        // without additional memory allocation
+        int totalCapacity;
+
+        // Initial container for arguments
+        uint64_t rawArgs[INITIAL_SIZE];
+
+        // Extension for the arguments if we run out of space above
+        uint64_t *rawArgsExtension;
+
+        void reserve(int nparams);
+
+    PUBLIC:
+        explicit LogMessage();
+        ~LogMessage();
+
+        bool valid();
+        int getNumArgs();
+        uint32_t getLogId();
+        uint64_t getTimestamp();
+        void reset(FormatMetadata *fm= nullptr, uint32_t logId=uint32_t(-1),
+                        uint64_t rdtsc=0);
+
+        /**
+         * Add a dynamic log argument into the structure.
+         *
+         * Note: only 8-byte arguments are supported; this means that the
+         * "long double" type is not supported.
+         *
+         * \tparam T
+         *      Type of the argument to be added to the structure (deduced)
+         * \param in
+         *      The argument to add to the structure
+         */
+        template<typename T>
+        inline void
+        push(T in) {
+            if (numArgs == totalCapacity)
+                reserve(numArgs + 1);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+            if (numArgs < INITIAL_SIZE)
+                *(reinterpret_cast<T*>(&rawArgs[numArgs])) = in;
+            else
+                *(reinterpret_cast<T*>(
+                        &rawArgsExtension[numArgs - INITIAL_SIZE])) = in;
+            ++numArgs;
+#pragma GCC diagnostic pop
+        }
+
+        /**
+         * Return the n-th argument to the log statement (0-based).
+         *
+         * \tparam T
+         *      Type of the argument to return (required). No type checking is
+         *      performed, so users must be sure the argument type is correct.
+         * \param argNum
+         *      The n-th argument to return (0-based)
+         *
+         * \return
+         *      The argument
+         */
+        template<typename T>
+        inline typename std::enable_if<!std::is_same<T, long double>::value, T>::type
+        get(int argNum) {
+            assert(argNum < totalCapacity);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+            if (argNum < INITIAL_SIZE)
+                return *(reinterpret_cast<T*>(&rawArgs[argNum]));
+            else
+                return *(reinterpret_cast<T*>(&rawArgsExtension[argNum - 10]));
+#pragma GCC diagnostic pop
+        }
+
+        /**
+         * Overload for push() that does nothing for the "long double" type
+         * since it's too wide. Attempting to access this parameter as a long
+         * double will result in an error.
+         *
+         * \param phony
+         *      long double argument
+         */
+        inline void
+        push(long double phony) {
+            push<int>(-1);
+        }
+
+        /**
+        * Specialization for get() that will raise an error when accessing
+        * an argument as a "long double". We do not support this currently
+        * since LogStatement is built with the assumption that types are at
+        * most 8-bytes wide.
+        *
+        * \tparam T
+        *      Type of the argument to return (long double).
+        * \param argNum
+        *      The n-th argument to return (0-based)
+        *
+        * \return
+        *      The argument (but really an error).
+        */
+        template<typename T>
+        inline typename std::enable_if<std::is_same<T, long double>::value,
+                                        T>::type
+        get(int argNum) {
+            fprintf(stderr, "**ERROR** Aggregating on Long Doubles is "
+                            "currently unsupported\r\n");
+#ifndef TESTUTIL_H
+            exit(2);
+#endif
+            return -1.0;
+        }
+
+        DISALLOW_COPY_AND_ASSIGN(LogMessage);
     };
 
     /**
@@ -533,8 +678,12 @@ namespace Log {
         ~Decoder();
 
         bool open(const char *filename);
-        bool decompressUnordered(FILE *outputFd, uint64_t logMsgsToPrint);
-        bool decompressTo(FILE *outputFd, uint64_t linesToPrint);
+
+        int64_t decompressUnordered(FILE *outputFd);
+        int64_t decompressTo(FILE *outputFd);
+
+        bool getNextLogStatement(LogMessage &logMsg,
+                                 FILE *outputFd= nullptr);
 
     PRIVATE:
         /**
@@ -576,8 +725,8 @@ namespace Log {
             bool hasNext();
             bool readBufferExtent(FILE *fd, bool *wrapAround=nullptr);
             bool decompressNextLogStatement(FILE *outputFd,
-                                 uint64_t &logMsgsPrinted,
-                                 uint64_t &lastTimestamp,
+                                 uint64_t &logMsgsProcessed,
+                                 LogMessage &logArguments,
                                  const Checkpoint &checkpoint,
                                  std::vector<void*>& fmtId2metadata,
                                  long aggregationFilterId=-1,
@@ -590,19 +739,12 @@ namespace Log {
         BufferFragment *allocateBufferFragment();
         void freeBufferFragment(BufferFragment *bf);
         bool internalDecompressUnordered(FILE *outputFd,
-                                uint64_t logMsgsToPrint,
-                                uint64_t *logMsgsPrinted=nullptr,
-                                std::vector<uint64_t> *callRCDF=nullptr,
                                 uint32_t aggregationTargetId=-1,
                                 void (*aggregationFn)(const char*,...)=nullptr);
 
-        bool internalDecompressOrdered(FILE *outputFd,
-                                uint64_t logMsgsToPrint,
-                                uint64_t *logsMsgsPrinted=nullptr);
-
-        // The symbolic file being operated on by the decoder. A value of
-        // nullptr indicates that no valid file is currently opened.
-        const char *filename;
+        // The symbolic file being operated on by the decoder. A string of
+        // length 0 indicates that no valid file is currently opened.
+        std::string filename;
 
         // The handle for the log file currently being operated on
         FILE *inputFd;
@@ -610,6 +752,13 @@ namespace Log {
         // The number of log messages that has been outputted from the
         // current file
         uint64_t logMsgsPrinted;
+
+        // Stores the log position in an iterative, unsorted decompression
+        BufferFragment *bufferFragment;
+
+        // Indicates that the file open()-ed is still readable and no errors
+        // have occurred thus far in the execution.
+        bool good;
 
         // Saves the checkpoint header found in inputFd. Values are invalid
         // if inputFd is nullptr.
@@ -619,8 +768,12 @@ namespace Log {
         // will be freed upon destruction of the Decoder object.
         std::vector<BufferFragment*> freeBuffers;
 
-        // Mapping from formatId to byte positions within the rawMetadata
+        // Mapping of id to FormatMetadata*'s within the rawMetadata buffer
         std::vector<void*> fmtId2metadata;
+
+        // Mapping of fmtId to format strings; this is an auxiliary structure
+        // built from FormatMetadata's.
+        std::vector<std::string> fmtId2fmtString;
 
         // Contains the raw metadata to interpret log messages,
         // directly read from the log file
@@ -628,6 +781,12 @@ namespace Log {
 
         // End of the valid bytes in rawMetadata
         char *endOfRawMetadata;
+
+        // Metric: Number of BufferFragment's read in the decompression
+        uint32_t numBufferFragmentsRead;
+
+        // Metric: Number of Checkpoint's read in the decompression
+        uint32_t numCheckpointsRead;
 
         DISALLOW_COPY_AND_ASSIGN(Decoder);
     };

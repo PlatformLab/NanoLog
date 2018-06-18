@@ -24,5 +24,11 @@ int main() {
 	NANO_LOG(NOTICE, "Notice Level");
 	NANO_LOG(WARNING, "Warning Level");
 	NANO_LOG(ERROR, "Error Level");
+
+	NANO_LOG(NOTICE, "I have an integer %d", 2);
+	NANO_LOG(NOTICE, "I have a uint64_t %lu", 2);
+	NANO_LOG(NOTICE, "I have a double %lf", 2.0);
+	NANO_LOG(NOTICE, "I have a couple of things %d, %f, %u, %s",
+			 			1, 2.0, 3, "s4");
 	return 0;
 }

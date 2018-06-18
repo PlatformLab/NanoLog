@@ -52,26 +52,37 @@ run-test: testApp basic_decompressor
 		&& echo "" && exit 1)
 
 	@# Run the decompressor and cut out the timestamps before the ':'
-	./decompressor /tmp/testLog | cut -d':' -f5- > output.txt
-	diff -w expectedOutput.txt output.txt
+	./decompressor decompress /tmp/testLog | cut -d':' -f5- > output.txt
+	diff -w expected/regularRun.txt output.txt
 
 	@# Run the decompressor without embedded functions and cut the timestamps before the ':'
-	./basic_decompressor /tmp/testLog | cut -d':' -f5- > basic_output.txt
-	diff -w expectedOutput.txt basic_output.txt
+	./basic_decompressor decompress /tmp/testLog | cut -d':' -f5- > basic_output.txt
+	diff -w expected/regularRun.txt basic_output.txt
+
+	@# Run the decompressor without embedded functions and cut the timestamps before the ':'
+	./basic_decompressor decompressUnordered /tmp/testLog | cut -d':' -f5- > basic_unordered.txt
+	diff -w expected/regularRun.txt basic_unordered.txt
+
+	@# Lookups
+	./decompressor find /tmp/testLog "" > dictionary_lookup.txt
+	diff -w expected/dictionaryFindAll.txt dictionary_lookup.txt
+
+	./decompressor find /tmp/testLog "Debug" > dictionary_lookup.txt
+	diff -w expected/dictionaryFindDebug.txt dictionary_lookup.txt
 
 	@# Run the decompressor one more time as if appending to a log file
 	./testApp > /dev/null
-	./decompressor /tmp/testLog | cut -d':' -f5- > appended_output.txt
-	diff -w expectedOutput_appendedFile.txt appended_output.txt
+	./decompressor decompress /tmp/testLog | cut -d':' -f5- > appended_output.txt
+	diff -w expected/appendedFile.txt appended_output.txt
 
-	@rm -f /tmp/testLog basic_output.txt output.txt appended_output.txt
+	@rm -f /tmp/testLog basic_output.txt output.txt appended_output.txt dictionary_lookup.txt basic_unordered.txt
 
 run-empty-test: testApp
 	@touch emptyFile
 	@printf "Error: Could not read initial checkpoint, the compressed log may be corrupted.\r\n" > expected.txt
 	@printf "Unable to open file emptyFile\r\n" >> expected.txt
 
-	./decompressor emptyFile > output.txt 2>&1
+	./decompressor decompress emptyFile > output.txt 2>&1 || true
 	diff -w expected.txt output.txt
 	@rm -f output.txt expected.txt emptyFile
 

@@ -33,10 +33,39 @@
 extern int __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__20__;
 extern int __fmtId__This32is32a32string3237s__testHelper47client46cc__21__;
 
+extern int __fmtId__I32have32an32integer3237d__testHelper47client46cc__28__; // testHelper/client.cc:28 "I have an integer %d"
+extern int __fmtId__I32have32a32uint6495t3237lu__testHelper47client46cc__29__; // testHelper/client.cc:29 "I have a uint64_t %lu"
+extern int __fmtId__I32have32a32double3237lf__testHelper47client46cc__30__; // testHelper/client.cc:30 "I have a double %lf"
+extern int __fmtId__I32have32a32couple32of32things3237d443237f443237u443237s__testHelper47client46cc__31__; // testHelper/client.cc:31 "I have a couple of things %d, %f, %u, %s"
+
+
 namespace {
 
 using namespace PerfUtils;
 using namespace NanoLogInternal;
+using namespace Log;
+
+void stopCompressionThread() {
+    {
+        std::lock_guard<std::mutex> lock(
+                RuntimeLogger::nanoLogSingleton.condMutex);
+        RuntimeLogger::nanoLogSingleton.compressionThreadShouldExit = true;
+        RuntimeLogger::nanoLogSingleton.workAdded.notify_all();
+    }
+
+    if (RuntimeLogger::nanoLogSingleton.compressionThread.joinable()) {
+        RuntimeLogger::nanoLogSingleton.compressionThread.join();
+    }
+}
+
+void restartCompressionThread() {
+    stopCompressionThread();
+
+    RuntimeLogger::nanoLogSingleton.compressionThreadShouldExit = false;
+    RuntimeLogger::nanoLogSingleton.compressionThread =
+            std::thread(&RuntimeLogger::compressionThreadMain,
+                        &RuntimeLogger::nanoLogSingleton);
+}
 
 // The fixture for testing class Foo.
 class LogTest : public ::testing::Test {
@@ -47,6 +76,11 @@ protected:
 // change the declarations above and uses below to match.
 int noParamsId = __fmtId__Simple32log32message32with32032parameters__testHelper47client46cc__20__;
 int stringParamId = __fmtId__This32is32a32string3237s__testHelper47client46cc__21__;
+
+int integerParamId = __fmtId__I32have32an32integer3237d__testHelper47client46cc__28__;
+int uint64_tParamId = __fmtId__I32have32a32uint6495t3237lu__testHelper47client46cc__29__;
+int doubleParamId = __fmtId__I32have32a32double3237lf__testHelper47client46cc__30__;
+int mixParamId = __fmtId__I32have32a32couple32of32things3237d443237f443237u443237s__testHelper47client46cc__31__;
 LogTest()
 {
     char dictionary[4096];
@@ -75,8 +109,6 @@ virtual void TearDown() {
 
 uint32_t dictionaryBytes;
 };
-
-using namespace Log;
 
 TEST_F(LogTest, maxSizeOfHeader) {
     char buffer[100];
@@ -356,7 +388,6 @@ TEST_F(LogTest, encodeLogMsgs) {
     EXPECT_EQ(1 + 2, compressedLogs);
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
     EXPECT_EQ(5U, e.lastBufferIdEncoded);
-    EXPECT_EQ(101UL, e.lastTimestamp);
 
     /**
      * Now let's check the log, it should roughly follow the format of
@@ -426,7 +457,7 @@ TEST_F(LogTest, encodeLogMsgs) {
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
     EXPECT_EQ(6U, e.lastBufferIdEncoded);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPos));
+    EXPECT_EQ(EntryType::BUFFER_EXTENT, peekEntryType(readPos));
 
     // One last time, with the same buffer but a newPass
     readPos = e.writePos;
@@ -586,7 +617,6 @@ TEST_F(LogTest, encodeBufferExtentStart) {
 
     EXPECT_EQ(&(be->length), encoder.currentExtentSize);
     EXPECT_EQ(15, encoder.lastBufferIdEncoded);
-    EXPECT_EQ(0U, encoder.lastTimestamp);
 
 
     // Let's try another one whereby id is larger than what can fit internally
@@ -600,7 +630,6 @@ TEST_F(LogTest, encodeBufferExtentStart) {
 
     EXPECT_EQ(&(be->length), encoder.currentExtentSize);
     EXPECT_EQ(111111111, encoder.lastBufferIdEncoded);
-    EXPECT_EQ(0U, encoder.lastTimestamp);
 
     const char *pos = buffer + 2*sizeof(BufferExtent);
     uint32_t encodedId = BufferUtils::unpack<uint32_t>(&pos,
@@ -618,7 +647,6 @@ TEST_F(LogTest, encodeBufferExtentStart_outtaSpace) {
 
     EXPECT_EQ(0U, encoder.getEncodedBytes());
     EXPECT_EQ(nullptr, encoder.currentExtentSize);
-    EXPECT_EQ(0U, encoder.lastTimestamp);
 }
 
 TEST_F(LogTest, swapBuffer) {
@@ -639,7 +667,6 @@ TEST_F(LogTest, swapBuffer) {
     EXPECT_EQ(buffer2 + 100, encoder.endOfBuffer);
     EXPECT_EQ(uint32_t(-1), encoder.lastBufferIdEncoded);
     EXPECT_EQ(nullptr, encoder.currentExtentSize);
-    EXPECT_EQ(0U, encoder.lastTimestamp);
 }
 
 TEST_F(LogTest, Decoder_open) {
@@ -650,7 +677,7 @@ TEST_F(LogTest, Decoder_open) {
     // Open an invalid file
     testing::internal::CaptureStderr();
     EXPECT_FALSE(dc.open("/dev/null"));
-    EXPECT_EQ(nullptr, dc.filename);
+    EXPECT_TRUE(dc.filename.empty());
     EXPECT_EQ(0U, dc.inputFd);
     EXPECT_STREQ("Error: Could not read initial checkpoint, "
                          "the compressed log may be corrupted.\r\n",
@@ -664,7 +691,7 @@ TEST_F(LogTest, Decoder_open) {
 
     testing::internal::CaptureStderr();
     EXPECT_FALSE(dc.open(testFile));
-    EXPECT_EQ(nullptr, dc.filename);
+    EXPECT_TRUE(dc.filename.empty());
     EXPECT_EQ(0U, dc.inputFd);
     EXPECT_STREQ("Error: Could not read initial checkpoint, "
                          "the compressed log may be corrupted.\r\n",
@@ -684,7 +711,7 @@ TEST_F(LogTest, Decoder_open) {
 
     EXPECT_TRUE(dc.open(testFile));
     EXPECT_NE(nullptr, dc.inputFd);
-    EXPECT_NE(nullptr, dc.filename);
+    EXPECT_STREQ(testFile, dc.filename.c_str());
 
     std::remove(testFile);
 }
@@ -694,8 +721,9 @@ TEST_F(LogTest, decoder_insertCheckpoint) {
     char *writePos = backing_buffer;
     char *endOfBuffer = backing_buffer + sizeof(backing_buffer);
     uint64_t startCycles = PerfUtils::Cycles::rdtsc();
-    uint32_t metadataBytes = 306;
-    uint32_t numEntries = 6;
+    uint32_t metadataBytes = GeneratedFunctions::writeDictionary(writePos,
+                                                                 endOfBuffer);
+    uint32_t numEntries = GeneratedFunctions::numLogIds;
 
     // True Case
     ASSERT_TRUE(insertCheckpoint(&writePos, endOfBuffer, true));
@@ -777,7 +805,7 @@ TEST_F(LogTest, decoder_readDictionary) {
     pf->fragmentLength = sizeof("abab");
     writePos = stpcpy(writePos, "abab") + 1;
 
-    // Log that's from asdfasdfasdf:1234 -> "abab %*.*lfabab"
+    // Log that's from asdfasdfasdf:1234 -> "asdflkaldfjasfdlasdfjal;sdfjaslkdfas"
     fm2Offset = writePos - backing_buffer - sizeof(Checkpoint);
     fm2 = reinterpret_cast<FormatMetadata*>(writePos);
     writePos += sizeof(FormatMetadata);
@@ -820,6 +848,11 @@ TEST_F(LogTest, decoder_readDictionary) {
         EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
         EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
 
+        ASSERT_EQ(2, dc.fmtId2fmtString.size());
+        EXPECT_STREQ("abab %*.*lfabab", dc.fmtId2fmtString.at(0).c_str());
+        EXPECT_STREQ("asdflkaldfjasfdlasdfjal;sdfjaslkdfas",
+                     dc.fmtId2fmtString.at(1).c_str());
+
         fclose(fd);
         std::remove(testFile);
     }
@@ -846,6 +879,11 @@ TEST_F(LogTest, decoder_readDictionary) {
         ASSERT_EQ(2, dc.fmtId2metadata.size());
         EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
         EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+
+        ASSERT_EQ(2, dc.fmtId2fmtString.size());
+        EXPECT_STREQ("abab %*.*lfabab", dc.fmtId2fmtString.at(0).c_str());
+        EXPECT_STREQ("asdflkaldfjasfdlasdfjal;sdfjaslkdfas",
+                     dc.fmtId2fmtString.at(1).c_str());
 
         fclose(fd);
 
@@ -875,6 +913,15 @@ TEST_F(LogTest, decoder_readDictionary) {
                   dc.fmtId2metadata.at(2));
         EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fm2Offset,
                   dc.fmtId2metadata.at(3));
+
+        ASSERT_EQ(4, dc.fmtId2fmtString.size());
+        EXPECT_STREQ("abab %*.*lfabab", dc.fmtId2fmtString.at(0).c_str());
+        EXPECT_STREQ("asdflkaldfjasfdlasdfjal;sdfjaslkdfas",
+                     dc.fmtId2fmtString.at(1).c_str());
+        EXPECT_STREQ("abab %*.*lfabab", dc.fmtId2fmtString.at(2).c_str());
+        EXPECT_STREQ("asdflkaldfjasfdlasdfjal;sdfjaslkdfas",
+                     dc.fmtId2fmtString.at(3).c_str());
+
         fclose(fd);
 
         // Read no new dictionary
@@ -904,6 +951,8 @@ TEST_F(LogTest, decoder_readDictionary) {
                   dc.fmtId2metadata.at(2));
         EXPECT_EQ(dc.rawMetadata + dictionaryBytes + fm2Offset,
                   dc.fmtId2metadata.at(3));
+
+        ASSERT_EQ(4, dc.fmtId2fmtString.size());
         fclose(fd);
 
         // Read a new dictionary, but reset the old one
@@ -925,6 +974,11 @@ TEST_F(LogTest, decoder_readDictionary) {
         ASSERT_EQ(2, dc.fmtId2metadata.size());
         EXPECT_EQ(dc.rawMetadata + fmOffset, dc.fmtId2metadata.at(0));
         EXPECT_EQ(dc.rawMetadata + fm2Offset, dc.fmtId2metadata.at(1));
+
+        ASSERT_EQ(2, dc.fmtId2fmtString.size());
+        EXPECT_STREQ("abab %*.*lfabab", dc.fmtId2fmtString.at(0).c_str());
+        EXPECT_STREQ("asdflkaldfjasfdlasdfjal;sdfjaslkdfas",
+                     dc.fmtId2fmtString.at(1).c_str());
         fclose(fd);
 
         std::remove(testFile);
@@ -992,8 +1046,8 @@ TEST_F(LogTest, decoder_readDictionary) {
         Decoder dc;
         testing::internal::CaptureStderr();
         EXPECT_FALSE(dc.readDictionary(fd, true));
-        EXPECT_STREQ("Error: Metadata is inconsistent; "
-                             "expected 107 bytes but read 1054 bytes\r\n",
+        EXPECT_STREQ("Error: Log dictionary is inconsistent; "
+                     "expected 107 bytes, but read 1054 bytes\r\n",
                      testing::internal::GetCapturedStderr().c_str());
 
         fclose(fd);
@@ -1018,7 +1072,6 @@ TEST_F(LogTest, decoder_destructor) {
     dc->~Decoder();
 
     // I'm touching deallocated memory >=3
-    EXPECT_EQ(nullptr, dc->filename);
     EXPECT_EQ(nullptr, dc->inputFd);
     EXPECT_TRUE(dc->freeBuffers.empty());
 
@@ -1076,7 +1129,6 @@ TEST_F(LogTest, Decoder_readBufferExtent_end2end) {
     EXPECT_EQ(1 + 2, compressedLogs);
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
     EXPECT_EQ(5U, e.lastBufferIdEncoded);
-    EXPECT_EQ(101UL, e.lastTimestamp);
 
     std::ofstream oFile;
     oFile.open(testFile);
@@ -1133,7 +1185,6 @@ TEST_F(LogTest, Decoder_readBufferExtent_notEnoughSpace) {
     EXPECT_EQ(1 + 2, compressedLogs);
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
     EXPECT_EQ(5U, e.lastBufferIdEncoded);
-    EXPECT_EQ(101UL, e.lastTimestamp);
 
     // Now we do our real test
     Decoder::BufferFragment *bf = new Decoder::BufferFragment();
@@ -1237,7 +1288,6 @@ TEST_F(LogTest, decompressNextLogStatement) {
     EXPECT_EQ(1 + 2, compressedLogs);
     EXPECT_EQ(3*sizeof(UncompressedEntry), bytesRead);
     EXPECT_EQ(5U, e.lastBufferIdEncoded);
-    EXPECT_EQ(101UL, e.lastTimestamp);
 
     // Write it out and read it back in.
     std::ofstream oFile;
@@ -1252,42 +1302,43 @@ TEST_F(LogTest, decompressNextLogStatement) {
     EXPECT_TRUE(bf->readBufferExtent(in));
 
     uint64_t logMsgsPrinted = 0;
-    uint64_t lastTimestamp = 0;
     Checkpoint checkpoint;
     checkpoint.cyclesPerSecond = 1;
     long aggregationFilterId = stringParamId;
     numAggregationsRun = 0;
     std::vector<void*> fmtId2metadata;
+    LogMessage logArguments;
     EXPECT_TRUE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
-                                                lastTimestamp,
+                                                logArguments,
                                                 checkpoint,
                                                 fmtId2metadata,
                                                 aggregationFilterId,
                                                 &aggregation));
-
     EXPECT_EQ(0, numAggregationsRun);
-    EXPECT_FALSE(bf->decompressNextLogStatement(NULL,
-                                                logMsgsPrinted,
-                                                lastTimestamp,
-                                                checkpoint,
-                                                fmtId2metadata,
-                                                aggregationFilterId,
-                                                &aggregation));
-    EXPECT_EQ(1, numAggregationsRun);
+    EXPECT_TRUE(bf->hasNext());
 
-    // There should be no mores
-    EXPECT_FALSE(bf->decompressNextLogStatement(NULL,
+    EXPECT_TRUE(bf->decompressNextLogStatement(NULL,
                                                 logMsgsPrinted,
-                                                lastTimestamp,
+                                                logArguments,
                                                 checkpoint,
                                                 fmtId2metadata,
                                                 aggregationFilterId,
                                                 &aggregation));
     EXPECT_EQ(1, numAggregationsRun);
-    EXPECT_FALSE(bf->hasMoreLogs);
+    EXPECT_FALSE(bf->hasNext());
+
+    // There should be no more
+    EXPECT_FALSE(bf->decompressNextLogStatement(NULL,
+                                                logMsgsPrinted,
+                                                logArguments,
+                                                checkpoint,
+                                                fmtId2metadata,
+                                                aggregationFilterId,
+                                                &aggregation));
+    EXPECT_EQ(1, numAggregationsRun);
+    EXPECT_FALSE(bf->hasNext());
     EXPECT_EQ(2U, logMsgsPrinted);
-    EXPECT_EQ(101UL, lastTimestamp);
 
     fclose(in);
     delete bf;
@@ -1468,16 +1519,19 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
 
     // Now let's attempt to parse it back and decompress it to testfile2
     Decoder dc;
+    FILE *outputFd;
+    std::ifstream iFile;
+
     ASSERT_TRUE(dc.open(testFile));
-    FILE *outputFd = fopen(decomp, "w");
+    outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    uint64_t msgsPrinted;
-    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, &msgsPrinted));
-    EXPECT_EQ(12, msgsPrinted);
+    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd));
+    EXPECT_EQ(12, dc.logMsgsPrinted);
+    EXPECT_EQ(8, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
     fclose(outputFd);
 
     // Read it back and compare
-    std::ifstream iFile;
     iFile.open(decomp);
     ASSERT_TRUE(iFile.good());
 
@@ -1493,10 +1547,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
         "1969-12-31 16:00:01.000000118 testHelper/client.cc:20 NOTICE[10]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000091 testHelper/client.cc:20 NOTICE[11]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000135 testHelper/client.cc:20 NOTICE[12]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000126 testHelper/client.cc:20 NOTICE[7]: Simple log message with 0 parameters\r",
-        "\r",
-        "\r",
-        "# Decompression Complete after printing 12 log messages\r"
+        "1969-12-31 16:00:01.000000126 testHelper/client.cc:20 NOTICE[7]: Simple log message with 0 parameters\r"
     };
 
     std::string iLine;
@@ -1508,14 +1559,38 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
     EXPECT_FALSE(iFile.eof());
     iFile.close();
 
-    // Try the unordered case
+    // try iterative interface
+    LogMessage msg;
+    ASSERT_TRUE(dc.open(testFile));
+    outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    while (dc.getNextLogStatement(msg, outputFd));
+    EXPECT_EQ(12, dc.logMsgsPrinted);
+    EXPECT_EQ(8, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
+    fclose(outputFd);
+
+    // Read it back and compare
+    iFile.open(decomp);
+    ASSERT_TRUE(iFile.good());
+
+    for (const char *line : unorderedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    // Try the ordered case
     dc.open(testFile);
-    msgsPrinted = 0;
 
     outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
-    EXPECT_EQ(12, msgsPrinted);
+    dc.decompressTo(outputFd);
+    EXPECT_EQ(12, dc.logMsgsPrinted);
+    EXPECT_EQ(8, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
     fclose(outputFd);
 
     const char* orderedLines[] = {
@@ -1530,10 +1605,7 @@ TEST_F(LogTest, Decoder_internalDecompress_end2end) {
         "1969-12-31 16:00:01.000000126 testHelper/client.cc:20 NOTICE[7]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000135 testHelper/client.cc:20 NOTICE[12]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000145 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000156 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r",
-        "\r",
-        "\r",
-        "# Decompression Complete after printing 12 log messages\r"
+        "1969-12-31 16:00:01.000000156 testHelper/client.cc:21 NOTICE[5]: This is a string aaaaaaaaaaaaaaa\r"
     };
 
     iFile.open(decomp);
@@ -1620,9 +1692,10 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     ASSERT_TRUE(dc.open(testFile));
     FILE *outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    uint64_t msgsPrinted = 0;
-    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, &msgsPrinted));
-    EXPECT_EQ(10, msgsPrinted);
+    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd));
+    EXPECT_EQ(10, dc.logMsgsPrinted);
+    EXPECT_EQ(2, dc.numBufferFragmentsRead);
+    EXPECT_EQ(3, dc.numCheckpointsRead);
     fclose(outputFd);
 
     // Read it back and compare
@@ -1644,10 +1717,7 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
         "1969-12-31 16:00:01.000000001 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000002 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
         "1969-12-31 16:00:01.000000003 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
-        "1969-12-31 16:00:01.000000004 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
-        "\r",
-        "\r",
-        "# Decompression Complete after printing 10 log messages\r"
+        "1969-12-31 16:00:01.000000004 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r"
     };
 
     std::string iLine;
@@ -1659,14 +1729,36 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     EXPECT_FALSE(iFile.eof());
     iFile.close();
 
-    // Try the unordered case
+    // Try iterative interface
+    LogMessage logMsg;
     dc.open(testFile);
-    msgsPrinted = 0;
 
     outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
-    EXPECT_EQ(10, msgsPrinted);
+    while (dc.getNextLogStatement(logMsg, outputFd));
+    EXPECT_EQ(10, dc.logMsgsPrinted);
+    EXPECT_EQ(2, dc.numBufferFragmentsRead);
+    EXPECT_EQ(3, dc.numCheckpointsRead);
+    fclose(outputFd);
+
+    iFile.open(decomp);
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    // Try the ordered case
+    dc.open(testFile);
+
+    outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    dc.decompressTo(outputFd);
+    EXPECT_EQ(10, dc.logMsgsPrinted);
+    EXPECT_EQ(2, dc.numBufferFragmentsRead);
+    EXPECT_EQ(3, dc.numCheckpointsRead);
     fclose(outputFd);
 
     iFile.open(decomp);
@@ -1682,12 +1774,12 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     std::remove(decomp);
 }
 
-
 TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     // Tests what happen when the checkpoint is newer than the log message.
     char inputBuffer[1000], outputBuffer[1000];
     const char *testFile = "/tmp/testFile";
     const char *decomp = "/tmp/testFile2";
+    LogMessage logMsg;
 
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
     ue->timestamp = 10e9;
@@ -1721,9 +1813,8 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     ASSERT_TRUE(dc.open(testFile));
     FILE *outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    uint64_t msgsPrinted = 0;
-    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, &msgsPrinted));
-    EXPECT_EQ(1, msgsPrinted);
+    EXPECT_TRUE(dc.internalDecompressUnordered(outputFd));
+    EXPECT_EQ(1, dc.logMsgsPrinted);
     fclose(outputFd);
 
     // Read it back and compare
@@ -1732,10 +1823,7 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "1969-12-31 16:00:20.000000000 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r",
-        "\r",
-        "\r",
-        "# Decompression Complete after printing 1 log messages\r"
+        "1969-12-31 16:00:20.000000000 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r"
     };
 
     std::string iLine;
@@ -1747,14 +1835,35 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     EXPECT_FALSE(iFile.eof());
     iFile.close();
 
-    // Try the unordered case
+    // Try iterative interface
     dc.open(testFile);
-    msgsPrinted = 0;
 
     outputFd = fopen(decomp, "w");
     ASSERT_NE(nullptr, outputFd);
-    dc.internalDecompressOrdered(outputFd, -1, &msgsPrinted);
-    EXPECT_EQ(1, msgsPrinted);
+    while (dc.getNextLogStatement(logMsg, outputFd));
+    EXPECT_EQ(1, dc.logMsgsPrinted);
+    EXPECT_EQ(1, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
+    fclose(outputFd);
+
+    iFile.open(decomp);
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    // Try the ordered case
+    dc.open(testFile);
+
+    outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    dc.decompressTo(outputFd);
+    EXPECT_EQ(1, dc.logMsgsPrinted);
+    EXPECT_EQ(1, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
     fclose(outputFd);
 
     iFile.open(decomp);
@@ -1768,5 +1877,532 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
 
     std::remove(testFile);
     std::remove(decomp);
+}
+
+TEST_F(LogTest, Decoder_getNextLogStatement) {
+    // First we have to create a log file with encoder.
+    const char *testFile = "/tmp/testFile";
+    const char *decomp = "/tmp/testFile2";
+    char inputBuffer[1000], buffer[1000];
+    Encoder encoder(buffer, 1000, false);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint *) encoder.backing_buffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 0;
+    checkpoint->unixTime = 1;
+
+    char *writePos = inputBuffer;
+    UncompressedEntry *ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 10;
+    ue->fmtId = integerParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(int);
+    writePos += ue->entrySize;
+    *((int*)(ue->argData)) = 1;
+
+    ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 20;
+    ue->fmtId = integerParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(int);
+    writePos += ue->entrySize;
+    *((int*)(ue->argData)) = -2;
+
+    ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 30;
+    ue->fmtId = uint64_tParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(uint64_t);
+    writePos += ue->entrySize;
+    *((uint64_t*)(ue->argData)) = 3;
+
+    ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 40;
+    ue->fmtId = doubleParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(double);
+    writePos += ue->entrySize;
+    *((double*)(ue->argData)) = 4.0;
+
+    // Note; this one is special since it has multiple args
+    const char *strParam = "eight point oh";
+    ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 50;
+    ue->fmtId = mixParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(int) + sizeof(double) + sizeof(uint32_t) + strlen(strParam) + 1;
+    writePos += sizeof(UncompressedEntry);
+
+    *(reinterpret_cast<int*>(writePos)) = 5;
+    writePos += sizeof(int);
+
+    *(reinterpret_cast<double*>(writePos)) = 6.0;
+    writePos += sizeof(double);
+
+    *(reinterpret_cast<uint32_t*>(writePos)) = 7;
+    writePos += sizeof(uint32_t);
+
+    strcpy(writePos, strParam);
+    writePos += strlen(strParam) + 1;
+
+    // Finally, finish it off with a final double to make sure strings work
+    ue = reinterpret_cast<UncompressedEntry *>(writePos);
+    ue->timestamp = 60;
+    ue->fmtId = doubleParamId;
+    ue->entrySize = sizeof(UncompressedEntry) + sizeof(double);
+    writePos += ue->entrySize;
+    *((double*)(ue->argData)) = 9.0;
+
+    uint64_t compressedLogs = 0;
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                           writePos - inputBuffer,
+                                           1,
+                                           false,
+                                           &compressedLogs);
+    EXPECT_EQ(6, compressedLogs);
+    EXPECT_EQ(159, bytesRead);
+
+
+    // Write it out and read it back in.
+    std::ofstream oFile;
+    oFile.open(testFile);
+    oFile.write(buffer, encoder.getEncodedBytes());
+    oFile.close();
+
+    std::string iLine;
+    std::ifstream iFile;
+    FILE *outputFd;
+
+    const char* expectedLines[] = {
+            "1969-12-31 16:00:01.000000010 testHelper/client.cc:28 NOTICE[1]: I have an integer 1\r",
+            "1969-12-31 16:00:01.000000020 testHelper/client.cc:28 NOTICE[1]: I have an integer -2\r",
+            "1969-12-31 16:00:01.000000030 testHelper/client.cc:29 NOTICE[1]: I have a uint64_t 3\r",
+            "1969-12-31 16:00:01.000000040 testHelper/client.cc:30 NOTICE[1]: I have a double 4.000000\r",
+            "1969-12-31 16:00:01.000000050 testHelper/client.cc:31 NOTICE[1]: I have a couple of things 5, 6.000000, 7, eight point oh\r",
+            "1969-12-31 16:00:01.000000060 testHelper/client.cc:30 NOTICE[1]: I have a double 9.000000\r"
+    };
+
+    LogMessage logMsg;
+    Decoder dc;
+
+    outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    ASSERT_TRUE(dc.open(testFile));
+    while (dc.getNextLogStatement(logMsg, outputFd));
+    EXPECT_EQ(6, dc.logMsgsPrinted);
+    EXPECT_EQ(1, dc.numBufferFragmentsRead);
+    EXPECT_EQ(1, dc.numCheckpointsRead);
+    fclose(outputFd);
+
+    iFile.open(decomp);
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    // Now let's try accessing the fields one by one...
+    dc.open(testFile);
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(integerParamId, logMsg.getLogId());
+    EXPECT_EQ(10, logMsg.getTimestamp());
+    EXPECT_EQ(1, logMsg.getNumArgs());
+    EXPECT_EQ(1, logMsg.get<int>(0));
+
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(integerParamId, logMsg.getLogId());
+    EXPECT_EQ(20, logMsg.getTimestamp());
+    EXPECT_EQ(1, logMsg.getNumArgs());
+    EXPECT_EQ(-2, logMsg.get<int>(0));
+
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(uint64_tParamId, logMsg.getLogId());
+    EXPECT_EQ(30, logMsg.getTimestamp());
+    EXPECT_EQ(1, logMsg.getNumArgs());
+    EXPECT_EQ(3U, logMsg.get<uint64_t>(0));
+
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(doubleParamId, logMsg.getLogId());
+    EXPECT_EQ(40, logMsg.getTimestamp());
+    EXPECT_EQ(1, logMsg.getNumArgs());
+    EXPECT_EQ(4.0, logMsg.get<double>(0));
+
+    // LogMsg: "I have a couple of things 5, 6.000000, 7, eight point oh"
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(mixParamId, logMsg.getLogId());
+    EXPECT_EQ(50, logMsg.getTimestamp());
+    ASSERT_EQ(4, logMsg.getNumArgs());
+    EXPECT_EQ(5U, logMsg.get<int>(0));
+    EXPECT_EQ(6.0, logMsg.get<double>(1));
+    EXPECT_EQ(7, logMsg.get<uint32_t>(2));
+    EXPECT_STREQ(strParam, logMsg.get<const char*>(3));
+
+    ASSERT_TRUE(dc.getNextLogStatement(logMsg));
+    ASSERT_TRUE(logMsg.valid());
+    EXPECT_EQ(doubleParamId, logMsg.getLogId());
+    EXPECT_EQ(60, logMsg.getTimestamp());
+    EXPECT_EQ(1, logMsg.getNumArgs());
+    EXPECT_EQ(9.0, logMsg.get<double>(0));
+
+    EXPECT_FALSE(dc.getNextLogStatement(logMsg));
+    EXPECT_FALSE(logMsg.valid());
+
+    std::remove(testFile);
+    std::remove(decomp);
+
+
+
+}
+
+// Static helper functions to test when aggregation is run.
+static int numInvocations = 0;
+
+static void
+countFn(const char *fmtString, ...) {
+    ++numInvocations;
+}
+
+static void
+resetCount() {
+    numInvocations = 0;
+}
+
+static int
+getCount() {
+    return numInvocations;
+}
+
+TEST_F(LogTest, Decoder_internalDecompress_aggregationFn) {
+    // First we have to create a log file with encoder.
+    const char *testFile = "/tmp/testFile";
+    const char *decomp = "/tmp/testFile2";
+    char inputBuffer[1000], buffer[1000];
+    Encoder encoder(buffer, 1000, false);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint *) encoder.backing_buffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 0;
+    checkpoint->unixTime = 1;
+
+    UncompressedEntry *ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 90;
+    ue->fmtId = noParamsId;
+    ue->entrySize = sizeof(UncompressedEntry);
+
+    ++ue;
+    ue->timestamp = 105;
+    ue->fmtId = stringParamId;
+    ue->entrySize = 2 * sizeof(UncompressedEntry);
+
+    // Okay, this is really starting to dig deep into the implementation of
+    // how log messages are interpreted.... so if failures occur... yeah.
+    char tmp[sizeof(UncompressedEntry)];
+    memset(tmp, 'a', sizeof(UncompressedEntry));
+    tmp[sizeof(UncompressedEntry) - 1] = '\0';
+    memcpy(ue->argData, tmp, sizeof(tmp));
+
+    ASSERT_LE(2, GeneratedFunctions::numLogIds);
+
+
+    uint64_t compressedLogs = 0;
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                           3 * sizeof(UncompressedEntry),
+                                           5,
+                                           false,
+                                           &compressedLogs);
+    EXPECT_EQ(2, compressedLogs);
+    EXPECT_EQ(3 * sizeof(UncompressedEntry), bytesRead);
+
+
+    // Now let's swap to a different buffer and encoder two more entries
+    // that intersplice between them in time.
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 93;
+    ++ue;
+    ue->timestamp = 96;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      3 * sizeof(UncompressedEntry),
+                                      10,
+                                      false,
+                                      &compressedLogs);
+    EXPECT_EQ(4, compressedLogs);
+    EXPECT_EQ(3 * sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 100;
+    ++ue;
+    ue->timestamp = 111;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      3 * sizeof(UncompressedEntry),
+                                      10,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(6, compressedLogs);
+    EXPECT_EQ(3 * sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 145;
+    ++ue;
+    ue->timestamp = 156;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      3 * sizeof(UncompressedEntry),
+                                      5,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(8, compressedLogs);
+    EXPECT_EQ(3 * sizeof(UncompressedEntry), bytesRead);
+
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 118;
+    ue->fmtId = noParamsId;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      sizeof(UncompressedEntry),
+                                      10,
+                                      false,
+                                      &compressedLogs);
+    EXPECT_EQ(9, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 91;
+    ue->fmtId = noParamsId;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      sizeof(UncompressedEntry),
+                                      11,
+                                      false,
+                                      &compressedLogs);
+    EXPECT_EQ(10, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 135;
+    ue->fmtId = noParamsId;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      sizeof(UncompressedEntry),
+                                      12,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(11, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    ue = reinterpret_cast<UncompressedEntry *>(inputBuffer);
+    ue->timestamp = 126;
+    ue->fmtId = noParamsId;
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      sizeof(UncompressedEntry),
+                                      7,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(12, compressedLogs);
+    EXPECT_EQ(sizeof(UncompressedEntry), bytesRead);
+
+    /**
+     * At this point, the file should look something like this
+     * Checkpoint
+     * BufferExtent 5
+     *      LogMsg0 at time = 90  (order 0)
+     *      LogMsg1 at time = 105 (order 5)
+     *          'aaaaaaaaaa\0'
+     * BufferExtent 10
+     *      LogMsg0 at time = 93  (order 2)
+     *      LogMsg1 at time = 96  (order 3)
+     *          'aaaaaaaaaa\0'
+     * BufferExtent 10 ====== newRound =====
+     *      LogMsg0 at time = 100  (order 4)
+     *      LogMsg1 at time = 111  (order 6)
+     *          'aaaaaaaaaa\0'
+     * BufferExtent 5 ===== newRound ======
+     *      LogMsg0 at time = 145 (order 10)
+     *      LogMsg1 at time = 156 (order 11)
+     *          'aaaaaaaaaa\0'
+     * BufferExtent 10
+     *      LogMsg0 at time = 118 (order 7)
+     * BuferExtent  11
+     *      LogMsg0 at time = 91  (order 1)
+     * BufferExtent 12 ===== newRound ======
+     *      LogMsg0 at time = 135 (order 9)
+     * BufferExtent 7 ===== newRound ======
+     *      LogMsg0 at time = 126 (order 8)
+     */
+
+    // Write it out and read it back in.
+    std::ofstream oFile;
+    oFile.open(testFile);
+    oFile.write(buffer, encoder.getEncodedBytes());
+    oFile.close();
+
+    // Let's try to aggregate nothing
+    {
+        resetCount();
+        Decoder dc;
+        ASSERT_TRUE(dc.open(testFile));
+        FILE *outputFd = fopen(decomp, "w");
+        ASSERT_NE(nullptr, outputFd);
+        EXPECT_TRUE(dc.internalDecompressUnordered(outputFd, -1, countFn));
+        EXPECT_EQ(0U, getCount());
+        EXPECT_EQ(12, dc.logMsgsPrinted);
+        fclose(outputFd);
+    }
+
+    // Let's try to aggregate LogMsg0
+    {
+        resetCount();
+        Decoder dc;
+        ASSERT_TRUE(dc.open(testFile));
+        FILE *outputFd = fopen(decomp, "w");
+        ASSERT_NE(nullptr, outputFd);
+        EXPECT_TRUE(dc.internalDecompressUnordered(outputFd,
+                                                   noParamsId,
+                                                   countFn));
+        EXPECT_EQ(8U, getCount());
+        EXPECT_EQ(12, dc.logMsgsPrinted);
+        fclose(outputFd);
+    }
+
+    // Let's try to aggregate LogMsg1
+    {
+        resetCount();
+        Decoder dc;
+        ASSERT_TRUE(dc.open(testFile));
+        FILE *outputFd = fopen(decomp, "w");
+        ASSERT_NE(nullptr, outputFd);
+        EXPECT_TRUE(dc.internalDecompressUnordered(outputFd,
+                                                   stringParamId,
+                                                   countFn));
+        EXPECT_EQ(4U, getCount());
+        EXPECT_EQ(12, dc.logMsgsPrinted);
+        fclose(outputFd);
+    }
+
+    std::remove(testFile);
+    std::remove(decomp);
+}
+
+
+TEST_F(LogTest, LogMessage_constructor) {
+    LogMessage la;
+
+    EXPECT_EQ(nullptr, la.metadata);
+    EXPECT_EQ(uint32_t(-1), la.logId);
+    EXPECT_EQ(0, la.rdtsc);
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(10, la.totalCapacity);
+    EXPECT_EQ(nullptr, la.rawArgsExtension);
+
+    EXPECT_FALSE(la.valid());
+}
+
+TEST_F(LogTest, LogMessage_reserve) {
+    LogMessage la;
+
+    la.reserve(2);
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(10, la.totalCapacity);
+    EXPECT_EQ(nullptr, la.rawArgsExtension);
+
+    la.reserve(10);
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(10, la.totalCapacity);
+    EXPECT_EQ(nullptr, la.rawArgsExtension);
+
+    la.reserve(11);
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(20, la.totalCapacity);
+    EXPECT_NE(nullptr, la.rawArgsExtension);
+}
+
+TEST_F(LogTest, LogMesssage_push_get) {
+    LogMessage la;
+
+    la.push((uint32_t) 5);
+    la.push((void*) &la);
+    la.push((double) 15.3);
+
+    EXPECT_EQ(3, la.numArgs);
+    EXPECT_EQ(5,    la.get<uint32_t>(0));
+    EXPECT_EQ(&la,  la.get<void*>(1));
+    EXPECT_EQ(15.3, la.get<double>(2));
+}
+
+TEST_F(LogTest, LogMessage_pushOverflow) {
+    LogMessage la;
+
+    for (int i = 0; i < 21; ++i)
+        la.push(i);
+
+    for (int i = 0; i < 21; ++i)
+        EXPECT_EQ(i, la.get<int>(i));
+
+    EXPECT_EQ(21, la.numArgs);
+    EXPECT_EQ(40, la.totalCapacity);
+    EXPECT_NE(nullptr, la.rawArgsExtension);
+}
+
+TEST_F(LogTest, LogMessage_longDoubles) {
+    FormatMetadata fm;
+    LogMessage la;
+
+    la.reset(&fm);
+
+    // Check that the long double doesn't overwrite data
+    la.push<int>(1);
+    long double arg = 0.2;
+    la.push(arg);
+    la.push<int>(2);
+
+    EXPECT_TRUE(la.valid());
+    EXPECT_EQ(1, la.get<int>(0));
+    EXPECT_EQ(-1, la.get<int>(1));
+    EXPECT_EQ(2, la.get<int>(2));
+
+    // Check that we fail upon getting arg 2 as long double
+    testing::internal::CaptureStderr();
+    EXPECT_EQ(-1.0, la.get<long double>(1));
+    std::string errorMsg = testing::internal::GetCapturedStderr();
+    EXPECT_STREQ("**ERROR** Aggregating on Long Doubles is "
+                 "currently unsupported\r\n", errorMsg.c_str());
+}
+
+TEST_F(LogTest, LogMessage_reset) {
+    LogMessage la;
+
+    la.push((uint32_t) 5);
+    la.push((void*) &la);
+    la.push((double) 15.3);
+
+    ASSERT_EQ(3, la.numArgs);
+    ASSERT_EQ(5,    la.get<uint32_t>(0));
+    ASSERT_EQ(&la,  la.get<void*>(1));
+    ASSERT_EQ(15.3, la.get<double>(2));
+
+    la.reset(nullptr);
+    EXPECT_FALSE(la.valid());
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(uint32_t(-1), la.getLogId());
+    EXPECT_EQ(0, la.getTimestamp());
+    EXPECT_EQ(10, la.totalCapacity);
+    EXPECT_EQ(nullptr, la.rawArgsExtension);
+
+    FormatMetadata fm;
+    la.reset(&fm, 123, 1234);
+    EXPECT_TRUE(la.valid());
+    EXPECT_EQ(0, la.numArgs);
+    EXPECT_EQ(123, la.getLogId());
+    EXPECT_EQ(1234, la.getTimestamp());
+    EXPECT_EQ(10, la.totalCapacity);
+    EXPECT_EQ(nullptr, la.rawArgsExtension);
+
 }
 }; //namespace

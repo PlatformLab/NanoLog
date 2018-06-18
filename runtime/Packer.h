@@ -280,10 +280,10 @@ unpack(const char **in, uint8_t packNibble) {
  *      The number of bytes encoded used to encode the values
  */
 inline static uint32_t
-getSizeOfPackedValues(const TwoNibbles *nibbles, int numNibbles)
+getSizeOfPackedValues(const TwoNibbles *nibbles, uint32_t numNibbles)
 {
     uint32_t size = 0;
-    for (int i = 0; i < numNibbles/2; ++i) {
+    for (uint32_t i = 0; i < numNibbles/2; ++i) {
         size += nibbles[i].first + nibbles[i].second;
         if (nibbles[i].first == 0)
             size += 16;

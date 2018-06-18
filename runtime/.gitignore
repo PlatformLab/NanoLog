@@ -4,6 +4,7 @@
 test
 TTTest
 
+testHelper/GeneratedCode.cc
 decompressor
 compressedLog
 nbproject

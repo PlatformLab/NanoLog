@@ -96,7 +96,6 @@ Log::Encoder::Encoder(char *buffer,
     , endOfBuffer(buffer + bufferSize)
     , lastBufferIdEncoded(-1)
     , currentExtentSize(nullptr)
-    , lastTimestamp(0)
 {
     assert(buffer);
 
@@ -145,10 +144,10 @@ Log::Encoder::encodeLogMsgs(char *from,
                                     bool newPass,
                                     uint64_t *numEventsCompressed)
 {
-    if (lastBufferIdEncoded != bufferId || newPass)
-        if(!encodeBufferExtentStart(bufferId, newPass))
-            return 0;
+    if (!encodeBufferExtentStart(bufferId, newPass))
+        return 0;
 
+    uint64_t lastTimestamp = 0;
     long remaining = nbytes;
     long numEventsProcessed = 0;
     char *bufferStart = writePos;
@@ -231,7 +230,6 @@ Log::Encoder::encodeBufferExtentStart(uint32_t bufferId, bool newPass)
     tc->length = downCast<uint32_t>(writePos - writePosStart);
     currentExtentSize = &(tc->length);
     lastBufferIdEncoded = bufferId;
-    lastTimestamp = 0;
 
     return true;
 }
@@ -272,7 +270,6 @@ Log::Encoder::swapBuffer(char *inBuffer, size_t inSize, char **outBuffer,
     endOfBuffer = inBuffer + inSize;
     lastBufferIdEncoded = -1;
     currentExtentSize = nullptr;
-    lastTimestamp = 0;
 
     if (outBuffer)
         *outBuffer = ret;
@@ -284,6 +281,104 @@ Log::Encoder::swapBuffer(char *inBuffer, size_t inSize, char **outBuffer,
         *outSize = originalSize;
 }
 
+// Constructor for LogMessage
+Log::LogMessage::LogMessage()
+        : metadata(nullptr)
+        , logId(-1)
+        , rdtsc(0)
+        , numArgs(0)
+        , totalCapacity(sizeof(rawArgs)/sizeof(uint64_t))
+        , rawArgs()
+        , rawArgsExtension(nullptr)
+{}
+
+// Destructor for LogMessage
+Log::LogMessage::~LogMessage() {
+    if (rawArgsExtension != nullptr) {
+        free(rawArgsExtension);
+        rawArgsExtension = nullptr;
+        totalCapacity = INITIAL_SIZE;
+    }
+}
+
+/**
+ * Reserve/Allocate enough space for N parameters in the structure
+ *
+ * \param nparams
+ *    Number of parameters to ensure space for
+ */
+void
+Log::LogMessage::reserve(int nparams)
+{
+    if (totalCapacity >= nparams)
+        return;
+
+    while (totalCapacity < nparams)
+        totalCapacity *= 2;
+
+    size_t newSize = sizeof(uint64_t)*(totalCapacity - INITIAL_SIZE);
+    uint64_t *newAllocation = static_cast<uint64_t*>(malloc(newSize));
+
+    if (newAllocation == nullptr) {
+        fprintf(stderr, "Could not allocate memory to store %d log "
+                        "arguments. Exiting...", nparams);
+        exit(1);
+    }
+
+    if (rawArgsExtension == nullptr) {
+        rawArgsExtension = newAllocation;
+        return;
+    }
+
+    memcpy(newAllocation,
+           rawArgsExtension,
+           sizeof(uint64_t)*(numArgs - INITIAL_SIZE));
+    free(rawArgsExtension);
+
+    rawArgsExtension = newAllocation;
+}
+
+/**
+ * Ready's the structure for a new log statement by reassigning the static
+ * log information. Dynamic arguments can then be push()-ed into the
+ * structure.
+ *
+ * \param meta
+ *      Static log data to refer to
+ * \param logId
+ *      Preprocessor assigned log id of the log message
+ * \param rdtsc
+ *      Invocation time of the log message
+ */
+void
+Log::LogMessage::reset(FormatMetadata *meta, uint32_t logId, uint64_t rdtsc)
+{
+    this->metadata = meta;
+    this->rdtsc = rdtsc;
+    this->logId = logId;
+    numArgs = 0;
+}
+
+// Indicates whether the structure stores a valid log statement or not
+bool Log::LogMessage::valid() {
+    return metadata != nullptr;
+}
+
+// Returns the number of arguments currently stored for the log.
+int Log::LogMessage::getNumArgs() {
+    return numArgs;
+}
+
+// Returns the preprocessor-assigned log identifier for this log message
+uint32_t Log::LogMessage::getLogId() {
+    return logId;
+}
+
+// Returns the runtime timestamp for the log invocation.
+uint64_t Log::LogMessage::getTimestamp() {
+    return rdtsc;
+}
+
 /**
  * Decoder constructor.
  *
@@ -291,14 +386,19 @@ Log::Encoder::swapBuffer(char *inBuffer, size_t inSize, char **outBuffer,
  * decoder is intended to be constructed once and then re-used via open().
  */
 Log::Decoder::Decoder()
-    : filename(nullptr)
+    : filename()
     , inputFd(nullptr)
     , logMsgsPrinted(0)
+    , bufferFragment(nullptr)
+    , good(false)
     , checkpoint()
     , freeBuffers()
     , fmtId2metadata()
+    , fmtId2fmtString()
     , rawMetadata(nullptr)
     , endOfRawMetadata(nullptr)
+    , numBufferFragmentsRead(0)
+    , numCheckpointsRead(0)
 {
     // Take advantage of virtual memory an allocate an insanely large (1GB)
     // buffer to store log metadata read from the logFile. Such a large buffer
@@ -314,6 +414,8 @@ Log::Decoder::Decoder()
 
     endOfRawMetadata = rawMetadata;
     fmtId2metadata.reserve(1000);
+    fmtId2fmtString.reserve(1000);
+    bufferFragment = allocateBufferFragment();
 }
 
 /**
@@ -346,12 +448,14 @@ Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
     if (flushOldDictionary) {
         endOfRawMetadata = rawMetadata;
         fmtId2metadata.clear();
+        fmtId2fmtString.clear();
     }
 
     // Build an index of format id to metadata
     const char *start = endOfRawMetadata;
     const char *newEnd = endOfRawMetadata + bytesRead;
     while(endOfRawMetadata < newEnd) {
+        std::string fmtString;
         fmtId2metadata.push_back(endOfRawMetadata);
 
         // Skip ahead
@@ -363,12 +467,15 @@ Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
         {
             auto *pf = reinterpret_cast<PrintFragment*>(endOfRawMetadata);
             endOfRawMetadata += sizeof(PrintFragment) + pf->fragmentLength;
+            fmtString.append(pf->formatFragment);
         }
+
+        fmtId2fmtString.push_back(fmtString);
     }
 
     if (newEnd != endOfRawMetadata) {
-        fprintf(stderr, "Error: Metadata is inconsistent; expected %lu bytes "
-                        "but read %lu bytes\r\n",
+        fprintf(stderr, "Error: Log dictionary is inconsistent; "
+                        "expected %lu bytes, but read %lu bytes\r\n",
                 newEnd - start,
                 endOfRawMetadata - start);
         return false;
@@ -382,6 +489,7 @@ Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
         return false;
     }
 
+    ++numCheckpointsRead;
     return true;
 }
 
@@ -396,9 +504,10 @@ Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
 bool
 Log::Decoder::open(const char *filename) {
     inputFd = fopen(filename, "rb");
-    if (!inputFd) {
+    good = false;
+
+    if (!inputFd)
         return false;
-    }
 
     if(!readDictionary(inputFd, true)) {
         fclose(inputFd);
@@ -406,7 +515,11 @@ Log::Decoder::open(const char *filename) {
         return false;
     }
 
-    this->filename = filename;
+    this->filename = std::string(filename);
+    numBufferFragmentsRead = 0;
+    numCheckpointsRead = 1;
+    logMsgsPrinted = 0;
+    good = true;
     return true;
 }
 /**
@@ -416,8 +529,9 @@ Log::Decoder::~Decoder() {
     if (inputFd)
         fclose(inputFd);
 
-    filename = nullptr;
+    filename.clear();
     inputFd = nullptr;
+    good = false;
 
     for (BufferFragment *bf : freeBuffers)
         delete bf;
@@ -426,7 +540,7 @@ Log::Decoder::~Decoder() {
 }
 
 /**
- * Internal function to allocate a BufferFragment
+ * Allocates a BufferFragment to read BufferExtents into
  *
  * \return
  *      Allocated BufferFragment
@@ -527,6 +641,13 @@ Log::Decoder::BufferFragment::readBufferExtent(FILE *fd, bool *wrapAround) {
     if (wrapAround)
         *wrapAround = be->wrapAround;
 
+    // The buffer has no log messages, skip it (this may be possible in cases
+    // where we want to mark wrapArounds or the output buffer ran out of space).
+    if (readPos == endOfBuffer) {
+        hasMoreLogs = false;
+        return true;
+    }
+
     hasMoreLogs = decompressLogHeader(&readPos, 0, nextLogId, nextLogTimestamp);
     if (!hasMoreLogs)
         reset();
@@ -554,11 +675,14 @@ Log::Decoder::BufferFragment::readBufferExtent(FILE *fd, bool *wrapAround) {
 template<typename T>
 static inline void
 printSingleArg(FILE *outputFd,
-                const char* formatString,
-                T arg,
-                int width = -1,
-                int precision = -1)
+               NanoLogInternal::Log::LogMessage &logArguments,
+               const char* formatString,
+               T arg,
+               int width = -1,
+               int precision = -1)
 {
+    logArguments.push(arg);
+
     if (outputFd == nullptr)
         return;
 
@@ -589,8 +713,8 @@ printSingleArg(FILE *outputFd,
  *
  * \param outputFd
  *      File descriptor to output the log messages to
- * \param[in/out] logMsgsPrinted
- *      The number of lines outputted to outputFd
+ * \param[in/out] logMsgsProccessed
+ *      The number of log messages processed
  * \param lastTimestamp
  *      The timestamp of the last log message to be outputted (this is used
  *      to print time differences).
@@ -600,17 +724,17 @@ printSingleArg(FILE *outputFd,
  *      The logId to target running aggregationFn on
  * \param aggregationFn
  *      This is an aggregation function that can be passed to any log messages
- *      matching aggregationFilterId
+ *      matching aggregationFilterId. This function accepts the same parameters
+ *      as the original log statement.
  *
  * \return
- *      true indicates there are more log messages to decompress, false
- *      indicates that there is not (whether it be due to end-of-file or
- *      file corruption).
+ *      true indicates the operation sucessfully; false indicates that either
+ *      we reached the end of the file or the file is corrupt.
  */
 bool
 Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
-                                        uint64_t &logMsgsPrinted,
-                                        uint64_t &lastTimestamp,
+                                        uint64_t &logMsgsProcessed,
+                                        LogMessage &logArgs,
                                         const Checkpoint &checkpoint,
                                         std::vector<void*>& fmtId2metadata,
                                         long aggregationFilterId,
@@ -619,8 +743,10 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
     double secondsSinceCheckpoint, nanos = 0.0;
     char timeString[32];
 
-    if (readPos > endOfBuffer || !hasMoreLogs)
+    if (readPos > endOfBuffer || !hasMoreLogs) {
+        hasMoreLogs = false;
         return false;
+    }
 
     // no need to format the time if we're not going to output
     if (outputFd) {
@@ -634,10 +760,10 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 //            timeDiff = -1.0e9*PerfUtils::Cycles::toSeconds(
 //                                    lastTimestamp - nextLogTimestamp,
 //                                    checkpoint.cyclesPerSecond));
-//        if (logMsgsPrinted == 0)
+//        if (logMsgsProcessed == 0)
 //            timeDiff = 0;
 //
-//        fprintf(outputFd, "%4ld) +%12.2lf ns ", logMsgsPrinted, timeDiff);
+//        fprintf(outputFd, "%4ld) +%12.2lf ns ", logMsgsProcessed, timeDiff);
 
         // Convert to absolute time
         secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
@@ -680,6 +806,8 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         const char *filename = metadata->filename;
         const char *logLevel = logLevelNames[metadata->logLevel];
 
+        logArgs.reset(metadata, nextLogId, nextLogTimestamp);
+
         // Output the context
         if (outputFd) {
             fprintf(outputFd,"%s.%09.0lf %s:%u %s[%u]: "
@@ -700,6 +828,8 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         Nibbler nb(readPos, metadata->numNibbles);
         const char *nextStringArg = nb.getEndOfPackedArguments();
 
+        // TODO(syang0) We can probably skip processing the log message at
+        // if we (a) aren't printing and (b) aren't aggregating
         for (int i = 0; i < metadata->numPrintFragments; ++i) {
             const wchar_t *wstrArg;
 
@@ -717,12 +847,14 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-security"
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
-                    fprintf(outputFd, pf->formatFragment);
+                    if (outputFd)
+                        fprintf(outputFd, pf->formatFragment);
 #pragma GCC diagnostic pop
                     break;
 
                 case unsigned_char_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<unsigned char>(),
                                    width, precision);
@@ -730,6 +862,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case unsigned_short_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<unsigned short int>(),
                                    width, precision);
@@ -737,6 +870,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case unsigned_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<unsigned int>(),
                                    width, precision);
@@ -744,6 +878,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case unsigned_long_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<unsigned long int>(),
                                    width, precision);
@@ -751,6 +886,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case unsigned_long_long_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<unsigned long long int>(),
                                    width, precision);
@@ -758,6 +894,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case uintmax_t_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<uintmax_t>(),
                                    width, precision);
@@ -765,6 +902,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case size_t_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<size_t>(),
                                    width, precision);
@@ -772,6 +910,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case wint_t_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<wint_t>(),
                                    width, precision);
@@ -779,6 +918,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case signed_char_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<signed char>(),
                                    width, precision);
@@ -786,6 +926,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case short_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<short int>(),
                                    width, precision);
@@ -793,6 +934,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<int>(),
                                    width, precision);
@@ -800,6 +942,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case long_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<long int>(),
                                    width, precision);
@@ -807,6 +950,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case long_long_int_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<long long int>(),
                                    width, precision);
@@ -814,6 +958,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case intmax_t_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<intmax_t>(),
                                    width, precision);
@@ -821,6 +966,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case ptrdiff_t_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<ptrdiff_t>(),
                                    width, precision);
@@ -828,6 +974,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case double_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<double>(),
                                    width, precision);
@@ -835,6 +982,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case long_double_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<long double>(),
                                    width, precision);
@@ -842,6 +990,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
 
                 case const_void_ptr_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nb.getNext<const void *>(),
                                    width, precision);
@@ -850,6 +999,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                 // The next two are strings, so handle it accordingly.
                 case const_char_ptr_t:
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    nextStringArg,
                                    width, precision);
@@ -888,6 +1038,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                      */
                     wstrArg = reinterpret_cast<const wchar_t *>(nextStringArg);
                     printSingleArg(outputFd,
+                                   logArgs,
                                    pf->formatFragment,
                                    wstrArg,
                                    width, precision);
@@ -909,21 +1060,21 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                     + sizeof(PrintFragment));
         }
 
-
-        fprintf(outputFd, "\r\n");
+        if (outputFd)
+            fprintf(outputFd, "\r\n");
         // We're done, advance the pointer to the end of the last string
         readPos = nextStringArg;
     }
 
-    lastTimestamp = nextLogTimestamp;
-    logMsgsPrinted++;
+    logMsgsProcessed++;
 
     if (readPos >= endOfBuffer)
-        return false;
+        hasMoreLogs = false;
+    else
+        hasMoreLogs = decompressLogHeader(&readPos, nextLogTimestamp,
+                                          nextLogId, nextLogTimestamp);
 
-    hasMoreLogs = decompressLogHeader(&readPos, nextLogTimestamp,
-                                        nextLogId, nextLogTimestamp);
-    return hasMoreLogs;
+    return true;
 }
 
 /**
@@ -953,13 +1104,6 @@ Log::Decoder::BufferFragment::getNextLogTimestamp() const
  *
  * \param outputFd
  *      The file descriptor to print the log messages to
- * \param logMsgsToPrint
- *      Limit the number of log messages to print (use -1 to print all)
- * \param logMsgsPrinted
- *      Actual number of log messages printed
- * \param callRCDF
- *      Store the rdtsc() difference between every invocation of the log
- *      function. Note values may be negative due to unorderedness
  * \param aggregationTargetId
  *      Target logId to run the aggregation function on
  * \param aggregationFn
@@ -977,26 +1121,15 @@ Log::Decoder::BufferFragment::getNextLogTimestamp() const
  */
 bool
 Log::Decoder::internalDecompressUnordered(FILE* outputFd,
-                                        uint64_t logMsgsToPrint,
-                                        uint64_t *logMsgsPrinted,
-                                        std::vector<uint64_t> *callRCDF,
                                         uint32_t aggregationTargetId,
                                         void(*aggregationFn)(const char*,...))
 {
-    if (logMsgsPrinted)
-        *logMsgsPrinted = 0;
-
-    if (!filename || !inputFd)
+    if (filename.empty() || !inputFd)
        return false;
 
-    if (callRCDF)
-        callRCDF->reserve(100000000);
-
-    bool good = true;
-    uint64_t linesPrinted = 0;
-    uint64_t lastTimestamp = 0;
+    LogMessage logArguments;
     BufferFragment *bf = allocateBufferFragment();
-    while(!feof(inputFd) && good && linesPrinted < logMsgsToPrint) {
+    while(!feof(inputFd) && good) {
         bool wrapAround = false;
 
         EntryType entry = peekEntryType(inputFd);
@@ -1004,22 +1137,20 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
             case EntryType::BUFFER_EXTENT:
             {
                 if (!bf->readBufferExtent(inputFd, &wrapAround)){
-                    printf("Internal Error: Corrupted BufferExtent\r\n");
+                    fprintf(stderr,
+                            "Internal Error: Corrupted BufferExtent\r\n");
                     break;
                 }
 
-                bool hasMore = true;
-                while (hasMore && linesPrinted < logMsgsToPrint) {
-                    uint64_t lastLastTimestamp = lastTimestamp;
-                    hasMore = bf->decompressNextLogStatement(outputFd,
-                                                    linesPrinted,
-                                                    lastTimestamp,
+                ++numBufferFragmentsRead;
+                while (bf->hasNext()) {
+                    bf->decompressNextLogStatement(outputFd,
+                                                    logMsgsPrinted,
+                                                    logArguments,
                                                     checkpoint,
                                                     fmtId2metadata,
                                                     aggregationTargetId,
                                                     aggregationFn);
-                    if (callRCDF)
-                        callRCDF->push_back(lastTimestamp - lastLastTimestamp);
                 }
                 break;
             }
@@ -1031,7 +1162,7 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
 
                 break;
             case EntryType::LOG_MSG:
-                printf("Internal Error: Found a log message outside a "
+                fprintf(stderr, "Internal Error: Found a log message outside a "
                         "BufferFragment. Log may be malformed!\r\n");
                 good = false;
                 break;
@@ -1044,14 +1175,11 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
     }
 
     if (outputFd)
-        fprintf(outputFd, "\r\n\r\n# Decompression Complete after printing %lu "
-            "log messages\r\n", linesPrinted);
-
-    if (logMsgsPrinted)
-        *logMsgsPrinted = linesPrinted;
+        fprintf(outputFd, "\r\n\r\n# Decompression Complete after printing "
+                            "%lu log messages\r\n", logMsgsPrinted);
 
     freeBufferFragment(bf);
-    return true;
+    return good;
 }
 
 /**
@@ -1060,26 +1188,15 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
  *
  * \param outputFd
  *      The file descriptor to print the log messages to
- * \param logMsgsToPrint
- *      Number of log messages to print
- * \param logMsgsPrinted
- *      Actual number of log messages printed
  *
  * \return
- *      true indicates the operation succeeded without problems.
- *      false indicates that there was an error and an incomplete log was
- *      outputted to outputFd;
+ *      The number of log messages encountered. A negative value indicates error
  */
-bool
-Log::Decoder::internalDecompressOrdered(FILE* outputFd,
-                                                uint64_t logMsgsToPrint,
-                                                uint64_t *logMsgsPrinted)
+int64_t
+Log::Decoder::decompressTo(FILE* outputFd)
 {
-    if (logMsgsPrinted)
-        *logMsgsPrinted = 0;
-
-    if (!filename || !inputFd)
-        return false;
+    if (filename.empty() || !inputFd)
+        return -1;
 
     // In ordered decompression, we must sort the entries by time which means
     // we need to buffer in 3 rounds of NanoLog output. We need more than one
@@ -1102,18 +1219,12 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
     // reached the end of the current file
     bool mustDepleteAllStages = false;
 
-    // Indicates that the log message was malformed
-    bool malformed = false;
-
-    // Last timestamp printed (this primarily used to compute differences);
-    uint64_t lastTimestamp = 0;
-    uint64_t linesPrinted = 0;
-
-    while (!feof(inputFd) && !malformed && linesPrinted < logMsgsToPrint) {
+    LogMessage logArguments;
+    while (!feof(inputFd) && good) {
 
         // Step 1: Read in up to a certain number of "stages" of BufferFragments
         mustDepleteAllStages = false;
-        while (!feof(inputFd) && !malformed && !mustDepleteAllStages) {
+        while (!feof(inputFd) && good && !mustDepleteAllStages) {
             EntryType entry = peekEntryType(inputFd);
             bool newStage = false;
 
@@ -1121,9 +1232,10 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                 case EntryType::BUFFER_EXTENT:
                 {
                     BufferFragment *bf = allocateBufferFragment();
-                    malformed = !bf->readBufferExtent(inputFd, &newStage);
+                    good = bf->readBufferExtent(inputFd, &newStage);
+                    ++numBufferFragmentsRead;
 
-                    if (!malformed)
+                    if (good)
                         stages[stagesBuffered].push_back(bf);
 
                     break;
@@ -1138,17 +1250,18 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
                     }
 
                     // We're safe, all the stages are empty
-                    malformed = !readDictionary(inputFd, true);
+                    good = readDictionary(inputFd, true);
 
-                    if (!malformed)
+                    if (good)
                         fprintf(outputFd,"\r\n# New execution started\r\n");
 
                     break;
 
                 case EntryType::LOG_MSG:
-                    printf("Internal Error: Found a log message outside a "
-                            "BufferFragment. Log may be malformed!\r\n");
-                    malformed = true;
+                    fprintf(stderr, "Internal Error: Found a log message "
+                                    "outside a BufferFragment. "
+                                    "Log may be malformed!\r\n");
+                    good = false;
                     break;
                 case EntryType::INVALID:
                     // Consume padding
@@ -1162,7 +1275,7 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
 
             // If we reach a logical end to the current stage,
             // make the current stage available for consumption
-            if (((mustDepleteAllStages || malformed) && !stages[0].empty()) ||
+            if (((mustDepleteAllStages || !good) && !stages[0].empty()) ||
                     newStage)
             {
                 ++stagesBuffered;
@@ -1203,13 +1316,11 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
 
             // Step 3b: Output the log message
             BufferFragment *bf = minStage->back();
-            bool hasMore = bf->decompressNextLogStatement(outputFd,
-                                                            linesPrinted,
-                                                            lastTimestamp,
-                                                            checkpoint,
-                                                            fmtId2metadata);
+            bf->decompressNextLogStatement(outputFd, logMsgsPrinted,
+                                           logArguments, checkpoint,
+                                           fmtId2metadata);
 
-            if (hasMore) {
+            if (bf->hasNext()) {
                 std::sort(minStage->begin(), minStage->end(),
                     [](const BufferFragment *a, const BufferFragment *b) -> bool
                     {
@@ -1236,34 +1347,99 @@ Log::Decoder::internalDecompressOrdered(FILE* outputFd,
         }
     }
 
-
-    if (logMsgsPrinted)
-        *logMsgsPrinted = linesPrinted;
-
-    if (outputFd)
-        fprintf(outputFd, "\r\n\r\n# Decompression Complete after printing %lu "
-            "log messages\r\n", linesPrinted);
-
-    return malformed;
+    return logMsgsPrinted;
 }
 
 /**
- * Decompress and print the file open()-ed to a file descriptor. This will
- * output the log messages in sorted order (by machine time).
+ * Iterative interface to decompress the next log statement (if there are any)
+ * in the log file and optionally prints it via outputFd. The log statements
+ * are output in the order in which they appear in the log which may not be
+ * in chronological order.
+ *
+ * \param[out] logMsg
+ *          Log message that's decompressed; the contents are valid until
+ *          the next invocation to this function.
  *
  * \param outputFd
- *      File descriptor to output the log messages to
- * \param logMsgsToPrint
- *      Maximum number of log messages to output to the descriptor
+ *          File descriptor to output the log message to. A value of nullptr
+ *          indicates that no printing is desired.
+ *
  * \return
- *      true indicates success, false indicates an error occurred and a subset
- *      of logs may be outputted.
+ *      True if the decompression was successfully
+ *      False indicates there are no more logs or there's an error
  */
 bool
-Log::Decoder::decompressTo(FILE* outputFd, uint64_t logMsgsToPrint) {
-    //TODO(syang0) change the API such that successive calls to decompress
-    // will continue the decompression at a specific point.
-    return internalDecompressOrdered(outputFd, logMsgsToPrint);
+Log::Decoder::getNextLogStatement(LogMessage &logMsg,
+                                  FILE *outputFd) {
+    if (bufferFragment->hasNext()) {
+        bufferFragment->decompressNextLogStatement(outputFd,
+                                                        logMsgsPrinted,
+                                                        logMsg,
+                                                        checkpoint,
+                                                        fmtId2metadata,
+                                                        -1,
+                                                        nullptr);
+        return true;
+    }
+
+    logMsg.reset();
+
+    // Decoder was never 'opened' properly
+    if (filename.empty() || !inputFd)
+        return false;
+
+    // We've read the end of the file or an error
+    if (feof(inputFd) || !good)
+        return false;
+
+    while(!bufferFragment->hasNext() && !feof(inputFd) && good) {
+        EntryType entry = peekEntryType(inputFd);
+        bool wrapAround;
+
+        switch (entry) {
+            case EntryType::BUFFER_EXTENT:
+                if (bufferFragment->readBufferExtent(inputFd, &wrapAround)) {
+                    ++numBufferFragmentsRead;
+                    break;
+                }
+
+                fprintf(stderr, "Internal Error: Corrupted BufferExtent\r\n");
+                good = false;
+                return false;
+
+            case EntryType::CHECKPOINT:
+                if (readDictionary(inputFd, true)) {
+
+                    if (outputFd)
+                        fprintf(outputFd, "\r\n# New execution started\r\n");
+
+                    break;
+                }
+
+                good = false;
+                return false;
+
+            case EntryType::LOG_MSG:
+                fprintf(stderr, "Internal Error: Found a log message outside a "
+                       "BufferFragment. Log may be malformed!\r\n");
+                good = false;
+                return false;
+
+            case EntryType::INVALID:
+                // Consume padding
+                while (!feof(inputFd) && peekEntryType(inputFd) == INVALID)
+                    fgetc(inputFd);
+                break;
+        }
+    }
+
+    return bufferFragment->decompressNextLogStatement(outputFd,
+                                                            logMsgsPrinted,
+                                                            logMsg,
+                                                            checkpoint,
+                                                            fmtId2metadata,
+                                                            -1,
+                                                            nullptr);
 }
 
 /**
@@ -1276,12 +1452,12 @@ Log::Decoder::decompressTo(FILE* outputFd, uint64_t logMsgsToPrint) {
  * \param logMsgsToPrint
  *      Number of log messages to print before returning
  * \return
- *      true indicates success, false indicates an error occurred and a subset
- *      of logs may be outputted.
+ *      The number of log messages processed; a negative value indicates error
  */
-bool
-Log::Decoder::decompressUnordered(FILE* outputFd, uint64_t logMsgsToPrint) {
-    return internalDecompressUnordered(outputFd, logMsgsToPrint);
+int64_t
+Log::Decoder::decompressUnordered(FILE* outputFd) {
+    bool success = internalDecompressUnordered(outputFd);
+    return (success) ? logMsgsPrinted : -1;
 }
 
 }; /* NanoLogInternal */

@@ -8,6 +8,7 @@ libNanoLog.a
 output.txt
 testApp
 *.o
+*.dmp
 
 #IDE files
 nbproject/
