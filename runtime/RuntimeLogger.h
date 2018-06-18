@@ -44,6 +44,48 @@ using namespace NanoLog;
  */
     class RuntimeLogger {
     public:
+
+        /**
+         * See function below.
+         */
+        inline void
+        registerInvocationSite_internal(int &logId, StaticLogInfo info) {
+            // TODO(syang0) Make this into a spin lock
+            std::lock_guard<std::mutex>
+                                    lock(nanoLogSingleton.registrationMutex);
+
+            if (logId != UNASSIGNED_LOGID)
+                return;
+
+            logId = static_cast<int32_t>(invocationSites.size());
+            invocationSites.push_back(info);
+
+#ifdef ENABLE_DEBUG_PRINTING
+            printf("Registered '%s' as id=%d\r\n", info.formatString, logId);
+            printf("\tisParamString [%p] = ", info.isArgString);
+            for (int i = 0; i < info.numParams; ++i)
+                printf("%d ", info.isArgString[i]);
+            printf("\r\n");
+#endif
+        }
+
+        /**
+         * Assigns a globally unique identifier to static log information and
+         * stages it for persistence to disk.
+         *
+         * \param[in/out] logId
+         *       Unique log identifier to be assigned. A value other than -1
+         *       indicates that the id has already been assigned and this
+         *       function becomes a no-op.
+         *
+         * \param info
+         *      Static log info to associate and persist
+         */
+        static inline void
+        registerInvocationSite(int &logId, StaticLogInfo info) {
+            nanoLogSingleton.registerInvocationSite_internal(logId, info);
+        }
+
         /**
          * Allocate thread-local space for the generated C++ code to store an
          * uncompressed log message, but do not make it available for compression
@@ -238,6 +280,17 @@ using namespace NanoLog;
 
         // Stores the last coreId that the background thread ran in.
         int coreId;
+
+        // Used to control access to invocationSites
+        std::mutex registrationMutex;
+
+        // Maps unique identifiers to log invocation sites encountered thus far
+        // by the non-preprocessor version of NanoLog
+        std::vector<StaticLogInfo> invocationSites;
+
+        // Indicates the index of the next invocationSite that needs to be
+        // persisted to disk.
+        uint32_t nextInvocationIndexToBePersisted;
 
         /**
          * Implements a circular FIFO producer/consumer byte queue that is used

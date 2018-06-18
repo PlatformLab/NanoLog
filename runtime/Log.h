@@ -61,6 +61,96 @@
  * Decoder classes below.
  */
 namespace NanoLogInternal {
+
+/**
+ * Describes the type of parameter that would be passed into a printf-like
+ * function.
+ */
+enum ParamType : int32_t {
+    // Indicates that there is a problem with the parameter
+    INVALID = -6,
+
+    // Indicates a dynamic width (i.e. the '*' in  %*.d)
+    DYNAMIC_WIDTH = -5,
+
+    // Indicates dynamic precision (i.e. the '*' in %.*d)
+    DYNAMIC_PRECISION = -4,
+
+    // Indicates that the parameter is not a string time (i.e. %d, %lf)
+    NON_STRING = -3,
+
+    // Indicates the parameter is a string and has a dynamic precision
+    // (i.e. '%.*s' )
+    STRING_WITH_DYNAMIC_PRECISION = -2,
+
+    // Indicates a string with no precision specified (i.e. '%s' )
+    STRING_WITH_NO_PRECISION = -1,
+
+    // All non-negative values indicate a string with a precision equal to its
+    // enum value casted as an int32_t
+    STRING = 0
+};
+
+// Default, uninitialized value for log identifiers associated with log
+// invocation sites.
+static constexpr int UNASSIGNED_LOGID = -1;
+
+/**
+ * Stores the static log information associated with a log invocation site
+ * (i.e. filename/line/fmtString combination).
+ */
+struct StaticLogInfo {
+
+    // Function signature of the compression function used in the
+    // non-preprocessor version of NanoLog
+    typedef void (*CompressionFn)(int, const ParamType*, char**, char**);
+
+    // Constructor
+    constexpr StaticLogInfo(CompressionFn compress,
+                      const char* filename,
+                      const uint32_t lineNum,
+                      const uint8_t severity,
+                      const char* fmtString,
+                      const int numParams,
+                      const int numNibbles,
+                      const ParamType* paramTypes)
+            : compressionFunction(compress)
+            , filename(filename)
+            , lineNum(lineNum)
+            , severity(severity)
+            , formatString(fmtString)
+            , numParams(numParams)
+            , numNibbles(numNibbles)
+            , paramTypes(paramTypes)
+    { }
+
+    // Stores the compression function to be used on the log's dynamic arguments
+    CompressionFn compressionFunction;
+
+    // File where the log invocation is invoked
+    const char *filename;
+
+    // Line number in the file for the invocation
+    const uint32_t lineNum;
+
+    // LogLevel severity associated with the log invocation
+    const uint8_t severity;
+
+    // printf format string associated with the log invocation
+    const char *formatString;
+
+    // Number of arguments required for the log invocation
+    const int numParams;
+
+    // Number of nibbles needed to compress all the non-string log arguments
+    const int numNibbles;
+
+    // Mapping of parameter index (i.e. order in which it appears in the
+    // argument list starting at 0) to parameter type as inferred from the
+    // printf log message invocation
+    const ParamType* paramTypes;
+};
+
 namespace Log {
     /**
      * Marks the beginning of a log entry within the StagingBuffer waiting
@@ -97,8 +187,9 @@ namespace Log {
         // in the final output.
         INVALID = 0,
 
-        // Indicates a CompressedRecordEntry that can be decompressed
-        LOG_MSG = 1,
+        // Indicates the beginning of a CompressedRecordEntry when within a
+        // BufferExtent, otherwise marks the beginning of a dictionary fragment
+        LOG_MSGS_OR_DIC = 1,
 
         // Indicates a BufferExtent struct
         BUFFER_EXTENT = 2,
@@ -131,8 +222,8 @@ namespace Log {
      *      (0-n bytes) arguments (determined by preprocessor)
      */
     struct CompressedEntry {
-        // Byte representation of an EntryType::LOG_MSG to identify this as
-        // a CompressedRecordEntry.
+        // Byte representation of an EntryType::LOG_MSGS_OR_DIC to identify this
+        // as a CompressedRecordEntry.
         uint8_t entryType:2;
 
         // Value returned by pack(formatId), subtracted by 1 to save space.
@@ -215,6 +306,44 @@ namespace Log {
 
     } __attribute__((packed));
 
+    /**
+     * A DictionaryFragment contains a partial mapping of unique identifiers to
+     * static log information on disk. Following this structure is one or more
+     * CompressedLogInfo. The order in which these log infos appear determine
+     * its unique identifier (i.e. by order of appearance starting at 0).
+     */
+    struct DictionaryFragment {
+        // Byte representation of an EntryType::LOG_MSG_OR_DIC to indicate
+        // the start of a dictionary fragment.
+        uint32_t entryType:2;
+
+        // Number of bytes for this fragment (including all CompressedLogInfo)
+        uint32_t newMetadataBytes:30;
+
+        // Total number of FormatMetadata encountered so far in the log
+        // including this fragment (used as a sanity check only).
+        uint32_t totalMetadataEntries;
+    } __attribute__((packed));
+
+    /**
+     * Stores the static log information associated with a log message on disk.
+     * Following this structure are the filename and format string.
+     */
+    struct CompressedLogInfo {
+        // LogLevel severity of the original log invocation
+        uint8_t severity;
+
+        // File line number in which the original log invocation appeared
+        uint32_t linenum;
+
+        // Length of the filename that is associated with this log invocation
+        // and follows after this structure.
+        uint16_t filenameLength;
+
+        // Length of the format string that is associated with this log
+        // invocation and comes after filename.
+        uint16_t formatStringLength;
+    } __attribute((packed));
 
     /**
      * Describes a unique log message within the user sources. The order in
@@ -256,6 +385,7 @@ namespace Log {
         bool hasDynamicWidth:1;
         bool hasDynamicPrecision:1;
 
+        //TODO(syang0) is this necessary? The format framgnet is null-terminated
         // Length of the format fragment
         uint16_t fragmentLength;
 
@@ -368,7 +498,7 @@ namespace Log {
         CompressedEntry *mo = reinterpret_cast<CompressedEntry*>(*out);
         *out += sizeof(CompressedEntry);
 
-        mo->entryType = EntryType::LOG_MSG;
+        mo->entryType = EntryType::LOG_MSGS_OR_DIC;
 
         // Bitmask is needed to prevent -Wconversion warnings
         mo->additionalFmtIdBytes = 0x03 & static_cast<uint8_t>(
@@ -400,8 +530,8 @@ namespace Log {
     inline bool
     decompressLogHeader(const char **in, uint64_t lastTimestamp,
                             uint32_t &logId, uint64_t &timestamp) {
-        if (!reinterpret_cast<const UnknownHeader*>(*in)->entryType
-                                                        == EntryType::LOG_MSG)
+        if (!(reinterpret_cast<const UnknownHeader*>(*in)->entryType
+                                                == EntryType::LOG_MSGS_OR_DIC))
             return false;
 
         CompressedEntry cre;
@@ -489,8 +619,18 @@ namespace Log {
         Encoder(char *buffer, size_t bufferSize, bool skipCheckpoint=false);
 
         long encodeLogMsgs(char *from, uint64_t nbytes,
-                                    uint32_t bufferId, bool wrapAround,
+                           uint32_t bufferId,
+                           bool wrapAround,
+                           uint64_t *numEventsCompressed);
+
+        long encodeLogMsgs(char *from, uint64_t nbytes,
+                                    uint32_t bufferId,
+                                    bool wrapAround,
+                                    std::vector<StaticLogInfo> dictionary,
                                     uint64_t *numEventsCompressed);
+        uint32_t encodeNewDictionaryEntries(uint32_t& currentPosition,
+                                            std::vector<StaticLogInfo> allMetadata);
+
         size_t getEncodedBytes();
         void swapBuffer(char *inBuffer, size_t inSize,
                         char **outBuffer=nullptr, size_t *outLength=nullptr,
@@ -735,6 +875,7 @@ namespace Log {
         };
 
         bool readDictionary(FILE *fd, bool flushOldDictionary);
+        bool readDictionaryFragment(FILE *fd);
 
         BufferFragment *allocateBufferFragment();
         void freeBufferFragment(BufferFragment *bf);
