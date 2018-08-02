@@ -16,6 +16,7 @@
 #include <algorithm>
 
 #include <bits/algorithmfwd.h>
+#include <regex>
 #include <vector>
 
 #include "Log.h"
@@ -114,6 +115,63 @@ Log::Encoder::Encoder(char *buffer,
 }
 
 /**
+ * Given a vector of StaticLogInfo and a starting index, encode all the static
+ * log information into a partial dictionary for the Decompressor to use.
+ *
+ * \param[in/out] currentPosition
+ *      Starting/Ending index
+ * \param allMetadata
+ *      All the static log information encountered so far
+ *
+ * \return
+ *      Number of bytes encoded in the dictionary
+ */
+uint32_t
+Log::Encoder::encodeNewDictionaryEntries(uint32_t& currentPosition,
+                                        std::vector<StaticLogInfo> allMetadata)
+{
+    char *bufferStart = writePos;
+
+    if (sizeof(DictionaryFragment) >=
+                                static_cast<uint32_t>(endOfBuffer - writePos))
+        return 0;
+
+    DictionaryFragment *df = reinterpret_cast<DictionaryFragment*>(writePos);
+    writePos += sizeof(DictionaryFragment);
+    df->entryType = EntryType::LOG_MSGS_OR_DIC;
+
+    while (currentPosition < allMetadata.size()) {
+        StaticLogInfo &curr = allMetadata.at(currentPosition);
+        size_t filenameLength = strlen(curr.filename) + 1;
+        size_t formatLength = strlen(curr.formatString) + 1;
+        size_t nextDictSize = sizeof(CompressedLogInfo)
+                                    + filenameLength
+                                    + formatLength;
+
+        // Not enough space, break out!
+        if (nextDictSize >= static_cast<uint32_t>(endOfBuffer - writePos))
+            break;
+
+        CompressedLogInfo *cli = reinterpret_cast<CompressedLogInfo*>(writePos);
+        writePos += sizeof(CompressedLogInfo);
+        cli->severity = curr.severity;
+        cli->linenum = curr.lineNum;
+        cli->filenameLength = static_cast<uint16_t>(filenameLength);
+        cli->formatStringLength = static_cast<uint16_t>(formatLength);
+
+        memcpy(writePos, curr.filename, filenameLength);
+        memcpy(writePos + filenameLength, curr.formatString, formatLength);
+        writePos += filenameLength + formatLength;
+        ++currentPosition;
+    }
+
+    df->newMetadataBytes = 0x3FFFFFFF & static_cast<uint32_t>(
+                                                        writePos - bufferStart);
+    df->totalMetadataEntries = currentPosition;
+    return df->newMetadataBytes;
+}
+
+/**
  * Interprets the uncompressed log messages (created by the compile-time
  * generated code) contained in the *from buffer and compresses them to
  * the internal buffer. The encoded data can later be retrieved via swapBuffer()
@@ -154,7 +212,6 @@ Log::Encoder::encodeLogMsgs(char *from,
 
     while (remaining > 0) {
         auto *entry = reinterpret_cast<UncompressedEntry*>(from);
-
         if (entry->entrySize > remaining)
             break;
 
@@ -163,7 +220,7 @@ Log::Encoder::encodeLogMsgs(char *from,
         // as there are data bytes.
         uint32_t maxCompressedSize = downCast<uint32_t>(2*entry->entrySize
                                 + sizeof(Log::UncompressedEntry));
-        if (maxCompressedSize > endOfBuffer - writePos)
+        if (maxCompressedSize > (endOfBuffer - writePos))
             break;
 
         compressLogHeader(entry, &writePos, lastTimestamp);
@@ -172,6 +229,102 @@ Log::Encoder::encodeLogMsgs(char *from,
         size_t argBytesWritten =
             GeneratedFunctions::compressFnArray[entry->fmtId](entry, writePos);
         writePos += argBytesWritten;
+
+        remaining -= entry->entrySize;
+        from += entry->entrySize;
+
+        ++numEventsProcessed;
+    }
+
+    assert(currentExtentSize);
+    *currentExtentSize += downCast<uint32_t>(writePos - bufferStart);
+
+    if (numEventsCompressed)
+        *numEventsCompressed += numEventsProcessed;
+
+    return nbytes - remaining;
+}
+
+
+/**
+ * Compresses a *from buffer filled with UncompressedEntry's and their
+ * arguments to an internal buffer. The encoded data can then later be retrieved
+ * via swapBuffer().
+ *
+ * This function is specialized for the non-preprocessor version of NanoLog and
+ * requires a dictionary mapping logId's to static log information to be
+ * explicitly passed in.
+ *
+ * \param from
+ *      A buffer containing the uncompressed log message created by the
+ *      the non-preprocessor version of NanoLog
+ * \param nbytes
+ *      Maximum number of bytes that can be extracted from the *from buffer
+ * \param bufferId
+ *      The runtime thread/StagingBuffer id to associate the logs with
+ * \param newPass
+ *      Indicates that this encoding correlates with starting a new pass
+ *      through the runtime StagingBuffers. In other words, this should be true
+ *      on the first invocation of this function after the runtime has checked
+ *      and encoded all the StagingBuffers at least once.
+ * \param[out] numEventsCompressed
+ *      adds the number of log messages processed in this invocation
+ *
+ * \return
+ *      The number of bytes read from *from. A value of 0 indicates there is
+ *      insufficient space in the internal buffer to fit the compressed message.
+ */
+long
+Log::Encoder::encodeLogMsgs(char *from,
+                            uint64_t nbytes,
+                            uint32_t bufferId,
+                            bool newPass,
+                            std::vector<StaticLogInfo> dictionary,
+                            uint64_t *numEventsCompressed)
+{
+    if (!encodeBufferExtentStart(bufferId, newPass))
+        return 0;
+
+    uint64_t lastTimestamp = 0;
+    long remaining = nbytes;
+    long numEventsProcessed = 0;
+    char *bufferStart = writePos;
+
+    while (remaining > 0) {
+        auto *entry = reinterpret_cast<UncompressedEntry*>(from);
+
+        // New log entry that we have not observed yet
+        if (dictionary.size() <= entry->fmtId)
+            break;
+
+#ifdef ENABLE_DEBUG_PRINTING
+        printf("Trying to encode fmtId=%u, size=%u, remaining=%ld\r\n",
+                entry->fmtId, entry->entrySize, remaining);
+        printf("\t%s\r\n", dictionary.at(entry->fmtId).formatString);
+#endif
+
+        if (entry->entrySize > remaining)
+            break;
+
+        // Check for free space using the worst case assumption that
+        // none of the arguments compressed and there are as many Nibbles
+        // as there are data bytes.
+        uint32_t maxCompressedSize = downCast<uint32_t>(2*entry->entrySize
+                                              + sizeof(Log::UncompressedEntry));
+        if (maxCompressedSize > (endOfBuffer - writePos))
+            break;
+
+        compressLogHeader(entry, &writePos, lastTimestamp);
+        lastTimestamp = entry->timestamp;
+
+        StaticLogInfo &info = dictionary.at(entry->fmtId);
+#ifdef ENABLE_DEBUG_PRINTING
+        printf("\r\nCompressing \'%s\' with info.id=%d\r\n",
+                info.formatString, entry->fmtId);
+#endif
+        char *argData = entry->argData;
+        info.compressionFunction(info.numNibbles, info.paramTypes,
+                                        &argData, &writePos);
 
         remaining -= entry->entrySize;
         from += entry->entrySize;
@@ -490,6 +643,347 @@ Log::Decoder::readDictionary(FILE *fd, bool flushOldDictionary) {
     }
 
     ++numCheckpointsRead;
+    return true;
+}
+
+/**
+ * Parses the <length> and <specifier> components of a printf format sub-string
+ * according to http://www.cplusplus.com/reference/cstdio/printf/ and returns
+ * a corresponding FormatType.
+ *
+ * \param length
+ *      Length component of the printf format string
+ * \param specifier
+ *      Specifier component of the printf format string
+ * @return
+ *      The FormatType corresponding to the length and specifier. A value of
+ *      MAX_FORMAT_TYPE is returned in case of error.
+ */
+static NanoLogInternal::Log::FormatType
+getFormatType(std::string length, char specifier) {
+    using namespace NanoLogInternal::Log;
+
+    // Signed Integers
+    if (specifier == 'd' || specifier == 'i') {
+        if (length.empty())
+            return int_t;
+
+        if (length.size() == 2) {
+            if (length[0] == 'h') return signed_char_t;
+            if (length[0] == 'l') return long_long_int_t;
+        }
+
+        switch(length[0]) {
+            case 'h': return short_int_t;
+            case 'l': return long_int_t;
+            case 'j': return intmax_t_t;
+            case 'z': return size_t_t;
+            case 't': return ptrdiff_t_t;
+            default : break;
+        }
+    }
+
+    // Unsigned integers
+    if (specifier == 'u' || specifier == 'o'
+            || specifier == 'x' || specifier == 'X')
+    {
+        if (length.empty())
+            return unsigned_int_t;
+
+        if (length.size() == 2) {
+            if (length[0] == 'h') return unsigned_char_t;
+            if (length[0] == 'l') return unsigned_long_long_int_t;
+        }
+
+        switch(length[0]) {
+            case 'h': return unsigned_short_int_t;
+            case 'l': return unsigned_long_int_t;
+            case 'j': return uintmax_t_t;
+            case 'z': return size_t_t;
+            case 't': return ptrdiff_t_t;
+            default : break;
+        }
+    }
+
+    // Strings
+    if (specifier == 's') {
+        if (length.empty()) return const_char_ptr_t;
+        if (length[0] == 'l') return const_wchar_t_ptr_t;
+    }
+
+    // Pointer
+    if (specifier == 'p') {
+        if (length.empty()) return const_void_ptr_t;
+    }
+
+
+    // Floating points
+    if (specifier == 'f' || specifier == 'F'
+            || specifier == 'e' || specifier == 'E'
+            || specifier == 'g' || specifier == 'G'
+            || specifier == 'a' || specifier == 'A')
+    {
+        if (length.size() == 1 && length[0] == 'L' )
+            return long_double_t;
+        else
+            return double_t;
+    }
+
+    if (specifier == 'c') {
+        if (length.empty()) return int_t;
+        if (length[0] == 'l') return wint_t_t;
+    }
+
+    fprintf(stderr, "Attempt to decode format specifier failed: %s%c\r\n",
+            length.c_str(), specifier);
+    return MAX_FORMAT_TYPE;
+}
+
+/**
+ * Generate a more efficient internal representation describing how to process
+ * the compressed arguments of a NANO_LOG statement given its static
+ * log information.
+ *
+ * The output representation would look something like a FormatMetadata with
+ * nested PrintFragments. This representation can then be interpreted by the
+ * state machine in decompressNextLogStatement to decompress the log statements.
+ *
+ * \param[in/out] microCode
+ *      Buffer to store the generated internal representation
+ * \param formatString
+ *      Format string of the NANO_LOG statement
+ * \param formatStringLength
+ *      Length of the format string
+ * \param filename
+ *      File associated with the log invocation site
+ * \param linenum
+ *      Line number within filename associated with the log invocation site
+ * \param severity
+ *      LogLevel severity associated with the log invocation site
+ * \return
+ *      true indicates success; false indicates malformed printf format string
+ */
+static bool createMicroCode(char **microCode,
+                            const char *formatString,
+                            size_t formatStringLength,
+                            const char *filename,
+                            uint32_t linenum,
+                            uint8_t severity)
+{
+    using namespace NanoLogInternal::Log;
+
+    FormatMetadata *fm = reinterpret_cast<FormatMetadata*>(*microCode);
+    *microCode += sizeof(FormatMetadata);
+
+    fm->logLevel = severity;
+    fm->lineNumber = linenum;
+    fm->filenameLength = static_cast<uint16_t>(strlen(filename) + 1);
+    *microCode = stpcpy(*microCode, filename) + 1;
+
+    fm->numNibbles = 0;
+    fm->numPrintFragments = 0;
+
+    std::regex regex("^%"
+                     "([-+ #0]+)?" // Flags (Position 1)
+                     "([\\d]+|\\*)?" // Width (Position 2)
+                     "(\\.(\\d+|\\*))?"// Precision (Position 4; 3 includes '.')
+                     "(hh|h|l|ll|j|z|Z|t|L)?" // Length (Position 5)
+                     "([diuoxXfFeEgGaAcspn])"// Specifier (Position 6)
+                     );
+
+    size_t i = 0;
+    std::cmatch match;
+    int consecutivePercents = 0;
+    size_t startOfNextFragment = 0;
+    PrintFragment *pf = nullptr;
+
+    // The key idea here is to split up the format string in to fragments (i.e.
+    // PrintFragments) such that there is at most one specifier per fragment.
+    // This then allows the decompressor later to consume one argument at a
+    // time and print the fragment (vs. buffering all the arguments first).
+    while (i < formatStringLength) {
+        char c = formatString[i];
+
+        // Skip the next character if there's an escape
+        if (c == '\\') {
+            i += 2;
+            continue;
+        }
+
+        if (c != '%') {
+            ++i;
+            consecutivePercents = 0;
+            continue;
+        }
+
+        // If there's an even number of '%'s, then it's a comment
+        if (++consecutivePercents % 2 == 0
+                || !std::regex_search(formatString + i, match, regex))
+        {
+            ++i;
+            continue;
+        }
+
+        // Advance the pointer to the end of the specifier
+        i += match.length();
+
+        // At this point we found a match, let's start analyzing it
+        pf = reinterpret_cast<PrintFragment*>(*microCode);
+        *microCode += sizeof(PrintFragment);
+
+        std::string width = match[2].str();
+        std::string precision = match[4].str();
+        std::string length = match[5].str();
+        char specifier = match[6].str()[0];
+
+        FormatType type = getFormatType(length, specifier);
+        if (type == MAX_FORMAT_TYPE) {
+            fprintf(stderr, "Error: Couldn't process this: %s\r\n",
+                    match.str().c_str());
+            return false;
+        }
+
+        pf->argType = 0x1F & type;
+        pf->hasDynamicWidth = (width.empty()) ? false : width[0] == '*';
+        pf->hasDynamicPrecision = (precision.empty()) ? false
+                                                        : precision[0] == '*';
+
+        // Tricky tricky: We null-terminate the fragment by copying 1
+        // extra byte and then setting it to NULL
+        pf->fragmentLength = static_cast<uint16_t>(i - startOfNextFragment + 1);
+        memcpy(*microCode,
+                formatString + startOfNextFragment,
+                pf->fragmentLength);
+        *microCode += pf->fragmentLength;
+        *(*microCode - 1) = '\0';
+
+        // Non-strings and dynamic widths need nibbles!
+        if (specifier != 's')
+            ++fm->numNibbles;
+
+        if (pf->hasDynamicWidth)
+            ++fm->numNibbles;
+
+        if (pf->hasDynamicPrecision)
+            ++fm->numNibbles;
+
+#ifdef ENABLE_DEBUG_PRINTING
+        printf("Fragment %d: %s\r\n", fm->numPrintFragments,pf->formatFragment);
+        printf("\t\ttype: %u, dWidth: %u, dPrecision: %u, length: %u\r\n",
+                                           pf->argType,
+                                           pf->hasDynamicWidth,
+                                           pf->hasDynamicPrecision,
+                                           pf->fragmentLength);
+#endif
+
+        startOfNextFragment = i;
+        ++fm->numPrintFragments;
+    }
+
+    // If we didn't encounter any specifiers, make one for a basic string
+    if (pf == nullptr) {
+        pf = reinterpret_cast<PrintFragment*>(*microCode);
+        *microCode += sizeof(PrintFragment);
+        fm->numPrintFragments = 1;
+
+        pf->argType = FormatType::NONE;
+        pf->hasDynamicWidth = pf->hasDynamicPrecision = false;
+        pf->fragmentLength = downCast<uint16_t>(formatStringLength);
+        memcpy(*microCode, formatString, formatStringLength);
+        *microCode += formatStringLength;
+    } else {
+        // Extend the last fragment to include the rest of the string
+        size_t endingLength = formatStringLength - startOfNextFragment - 1;
+        memcpy(pf->formatFragment + pf->fragmentLength - 1,  // -1 to erase \0
+              formatString + startOfNextFragment,
+              endingLength);
+        pf->fragmentLength = downCast<uint16_t>(pf->fragmentLength
+                                                                + endingLength);
+        *microCode += endingLength;
+    }
+
+#ifdef ENABLE_DEBUG_PRINTING
+    printf("Fragment %d: %s\r\n", fm->numPrintFragments, pf->formatFragment);
+    printf("\t\ttype: %u, dWidth: %u, dPrecision: %u, length: %u\r\n",
+           pf->argType,
+           pf->hasDynamicWidth,
+           pf->hasDynamicPrecision,
+           pf->fragmentLength);
+#endif
+
+    return true;
+}
+
+/**
+ * Reads a partial dictionary from the log file and adds it to the global
+ * mapping of log identifiers to static log information.
+ *
+ * \param fd
+ *      File descriptor to read the mapping from
+ * \return
+ *      true indicates success; false indicates error
+ */
+bool
+Log::Decoder::readDictionaryFragment(FILE *fd) {
+    //TODO(syang0) Right now this is statically defined, we should dynamically
+    // adjust to what the Log file demands...
+    char filenameBuffer[10*1024];
+    char formatBuffer[10*1024];
+
+    DictionaryFragment df;
+
+    size_t bytesRead = fread(&df, 1, sizeof(DictionaryFragment), fd);
+    if (bytesRead != sizeof(DictionaryFragment)) {
+        fprintf(stderr, "Could not read entire dictionary fragment header\r\n");
+        return false;
+    }
+
+    assert(df.entryType == EntryType::LOG_MSGS_OR_DIC);
+
+    while (bytesRead < df.newMetadataBytes && !feof(fd)) {
+        CompressedLogInfo cli;
+        size_t newBytesRead = 0;
+        newBytesRead += fread(&cli, 1, sizeof(CompressedLogInfo), fd);
+
+        if (newBytesRead != sizeof(CompressedLogInfo)) {
+            fprintf(stderr, "Could not read in log metadata\r\n");
+            return false;
+        }
+
+        if (sizeof(filenameBuffer) < cli.filenameLength ||
+            sizeof(formatBuffer) < cli.formatStringLength)
+        {
+            fprintf(stderr, "The standard decompressor buffer size of %lu for "
+                            "storing filenames and format strings (%u and %u "
+                            "required)\r\n",
+                            sizeof(filenameBuffer),
+                            cli.filenameLength,
+                            cli.formatStringLength);
+            return false;
+        }
+
+        newBytesRead += fread(&filenameBuffer, 1, cli.filenameLength, fd);
+        newBytesRead += fread(&formatBuffer, 1, cli.formatStringLength, fd);
+        bytesRead += newBytesRead;
+
+        if (newBytesRead != sizeof(CompressedLogInfo)
+                                + cli.filenameLength + cli.formatStringLength)
+        {
+            fprintf(stderr, "Could not read in a log's filename/"
+                            "format string\r\n");
+            return false;
+        }
+
+        fmtId2metadata.push_back(endOfRawMetadata);
+        fmtId2fmtString.push_back(formatBuffer);
+        createMicroCode(&endOfRawMetadata,
+                            formatBuffer,
+                            cli.formatStringLength,
+                            filenameBuffer,
+                            cli.linenum,
+                            cli.severity);
+    }
+
     return true;
 }
 
@@ -1042,9 +1536,8 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
                                    pf->formatFragment,
                                    wstrArg,
                                    width, precision);
-
                     // +1 for NULL
-                    nextStringArg += (wcslen(wstrArg) + 1)*sizeof(wchar_t);
+                    nextStringArg += (wcslen(wstrArg) + 1) * sizeof(wchar_t);
                     break;
 
                 case MAX_FORMAT_TYPE:
@@ -1161,10 +1654,8 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
                     fprintf(outputFd, "\r\n# New execution started\r\n");
 
                 break;
-            case EntryType::LOG_MSG:
-                fprintf(stderr, "Internal Error: Found a log message outside a "
-                        "BufferFragment. Log may be malformed!\r\n");
-                good = false;
+            case EntryType::LOG_MSGS_OR_DIC:
+                good = readDictionaryFragment(inputFd);
                 break;
             case EntryType::INVALID:
                 // Consume whitespace
@@ -1257,12 +1748,10 @@ Log::Decoder::decompressTo(FILE* outputFd)
 
                     break;
 
-                case EntryType::LOG_MSG:
-                    fprintf(stderr, "Internal Error: Found a log message "
-                                    "outside a BufferFragment. "
-                                    "Log may be malformed!\r\n");
-                    good = false;
+                case EntryType::LOG_MSGS_OR_DIC:
+                    good = readDictionaryFragment(inputFd);
                     break;
+
                 case EntryType::INVALID:
                     // Consume padding
                     while (!feof(inputFd) && peekEntryType(inputFd) == INVALID)
@@ -1419,11 +1908,9 @@ Log::Decoder::getNextLogStatement(LogMessage &logMsg,
                 good = false;
                 return false;
 
-            case EntryType::LOG_MSG:
-                fprintf(stderr, "Internal Error: Found a log message outside a "
-                       "BufferFragment. Log may be malformed!\r\n");
-                good = false;
-                return false;
+            case EntryType::LOG_MSGS_OR_DIC:
+                good = readDictionaryFragment(inputFd);
+                break;
 
             case EntryType::INVALID:
                 // Consume padding
