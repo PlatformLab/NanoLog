@@ -12,6 +12,7 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
+#include <cassert>
 #include <type_traits>
 
 #include <cstddef>
@@ -139,23 +140,6 @@ pack(char **buffer, T val) {
  *      Special 4-bit value indicating how the primitive was packed
  */
 inline int
-pack(char **buffer, int8_t val)
-{
-    **buffer = val;
-    (*buffer)++;
-    return 1;
-}
-
-inline int
-pack(char **buffer, int16_t val)
-{
-    if (val >= 0 || val <= int16_t(-(1<<8)))
-        return pack<uint16_t>(buffer, static_cast<uint16_t>(val));
-    else
-        return 8 + pack<uint16_t>(buffer, static_cast<uint16_t>(-val));
-}
-
-inline int
 pack(char **buffer, int32_t val)
 {
     if (val >= 0 || val <= int32_t(-(1<<24)))
@@ -173,6 +157,8 @@ pack(char **buffer, int64_t val)
         return 8 + pack<uint64_t>(buffer, static_cast<uint64_t>(-val));
 }
 
+//TODO(syang0) we should measure the performance of doing it this way
+// vs taking both the negated and non-negated versions and encoding the smaller
 inline int
 pack(char **buffer, long long int val)
 {
@@ -182,7 +168,30 @@ pack(char **buffer, long long int val)
         return 8 + pack<uint64_t>(buffer, static_cast<uint64_t>(-val));
 }
 
-/**
+// The following pack functions that specialize on smaller signed types don't
+// make sense in the context of NanoLog since printf doesn't allow the
+// specification of an int16_t or an int8_t. This means we wouldn't have the
+// type information to unpack them properly based purely on the format string.
+#if 0
+    inline int
+pack(char **buffer, int8_t val)
+{
+    **buffer = val;
+    (*buffer)++;
+    return 1;
+}
+
+inline int
+pack(char **buffer, int16_t val)
+{
+    if (val >= 0 || val <= int16_t(-(1<<8)))
+        return pack<uint16_t>(buffer, static_cast<uint16_t>(val));
+    else
+        return 8 + pack<uint16_t>(buffer, static_cast<uint16_t>(-val));
+}
+#endif
+
+    /**
  * Pointer specialization for the pack template that will copy the value
  * without compression.
  *
@@ -251,6 +260,7 @@ unpack(const char **in, uint8_t packResult)
 
     return static_cast<T>(-packed);
 }
+
 template<typename T>
 inline typename std::enable_if<std::is_pointer<T>::value, T>::type
 unpack(const char **in, uint8_t packNibble) {
@@ -260,8 +270,16 @@ unpack(const char **in, uint8_t packNibble) {
 template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
 unpack(const char **in, uint8_t packNibble) {
+    if (packNibble == sizeof(float)) {
+        const float result = *reinterpret_cast<const float*>(*in);
+        *in += sizeof(float);
+        return result;
+    }
+
+    // Double case
     T result;
-    std::memcpy(&result, (*in), sizeof(T));
+    int bytes = packNibble == 0 ? 16 : packNibble;
+    std::memcpy(&result, (*in), bytes);
     (*in) += sizeof(T);
     
     return result;

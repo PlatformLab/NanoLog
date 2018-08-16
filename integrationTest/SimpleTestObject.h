@@ -20,7 +20,12 @@
 
 #include <string>
 
+#ifdef CPP17NANOLOG
+#include "NanoLogCpp17.h"
+#else
 #include "NanoLog.h"
+#endif
+
 #include "Cycles.h"
 
 #include "folder/Sample.h"

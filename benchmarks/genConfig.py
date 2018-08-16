@@ -53,6 +53,8 @@ static const uint64_t ITERATIONS = %d;
 // Function (or functions) to use for the NanoLog benchmark
 #define BENCH_OPS %s;
 
+const char BENCH_OPS_AS_A_STR[] = "%s";
+
 // Additional #defines here
 %s
 
@@ -148,7 +150,8 @@ def main(argv):
         extraDefines = "#define USE_SNAPPY"
 
     with open('BenchmarkConfig.h', 'w') as oFile:
-      oFile.write(template % (outputFile, disableCompaction, stagingBufferExp, outputBufferExp, releaseThreshExp, pollInterval, pollInterval, threads, iterations, benchOp, extraDefines))
+      benchOpStr = benchOp.replace('"', "'")
+      oFile.write(template % (outputFile, disableCompaction, stagingBufferExp, outputBufferExp, releaseThreshExp, pollInterval, pollInterval, threads, iterations, benchOp, benchOpStr, extraDefines))
 
 if __name__ == "__main__":
    main(sys.argv[1:])

@@ -37,7 +37,7 @@ a supporting C++ header file used in the Runtime and Decompression components.
 
 Usage:
     parser.py [-h] --mapOutput=MAP PREPROCESSED_SRC
-    parser.py [-h] --combinedOutput=HEADER MAP_FILES...
+    parser.py [-h] --combinedOutput=HEADER [MAP_FILES...]
 
 Options:
   -h --help             Show this help messages

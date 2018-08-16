@@ -126,12 +126,12 @@ TEST_F(LogTest, peekEntryType) {
     char buffer[100];
 
     UnknownHeader *header = reinterpret_cast<UnknownHeader*>(buffer);
-    header->entryType = EntryType::LOG_MSG;
+    header->entryType = EntryType::LOG_MSGS_OR_DIC;
     (++header)->entryType = EntryType::BUFFER_EXTENT;
     (++header)->entryType = EntryType::CHECKPOINT;
     (++header)->entryType = EntryType::INVALID;
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(buffer));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(buffer));
     EXPECT_EQ(EntryType::BUFFER_EXTENT, peekEntryType(buffer + 1));
     EXPECT_EQ(EntryType::CHECKPOINT, peekEntryType(buffer + 2));
     EXPECT_EQ(EntryType::INVALID, peekEntryType(buffer + 3));
@@ -145,7 +145,7 @@ TEST_F(LogTest, peekEntryType) {
     FILE *in = fopen(testFile, "r");
     ASSERT_NE(nullptr, in);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(in));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(in));
     fgetc(in);
     EXPECT_EQ(EntryType::BUFFER_EXTENT, peekEntryType(in));
     fgetc(in);
@@ -158,7 +158,6 @@ TEST_F(LogTest, peekEntryType) {
     fgetc(in);
     EXPECT_TRUE(feof(in));
     EXPECT_EQ(EntryType::INVALID, peekEntryType(in));
-
 
     std::remove(testFile);
 }
@@ -236,28 +235,28 @@ TEST_F(LogTest, compressMetadata_end2end)
 
     const char *readPtr = backing_buffer;
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPtr));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPtr));
     ASSERT_TRUE(decompressLogHeader(&readPtr, 0U, dLogId, dTimestamp));
     EXPECT_EQ(1000, dLogId);
     EXPECT_EQ(10000000000000L, dTimestamp);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPtr));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPtr));
     ASSERT_TRUE(decompressLogHeader(&readPtr, 10000000000000L, dLogId,
                                                                    dTimestamp));
     EXPECT_EQ(10000, dLogId);
     EXPECT_EQ(10000, dTimestamp);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPtr));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPtr));
     ASSERT_TRUE(decompressLogHeader(&readPtr, 10000, dLogId, dTimestamp));
     EXPECT_EQ(1, dLogId);
     EXPECT_EQ(100000, dTimestamp);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPtr));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPtr));
     ASSERT_TRUE(decompressLogHeader(&readPtr, 100000, dLogId, dTimestamp));
     EXPECT_EQ(1, dLogId);
     EXPECT_EQ(100001, dTimestamp);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPtr));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPtr));
     ASSERT_TRUE(decompressLogHeader(&readPtr, 100001, dLogId, dTimestamp));
     EXPECT_EQ(1, dLogId);
     EXPECT_EQ(100001, dTimestamp);
@@ -360,6 +359,115 @@ TEST_F(LogTest, encoder_constructor) {
     EXPECT_EQ(sizeof(buffer), e.endOfBuffer - e.backing_buffer);
 }
 
+TEST_F(LogTest, encodeNewDictionaryEntries) {
+    char buffer[10*1024];
+    uint32_t currentPos = 0;
+
+    std::vector<StaticLogInfo> meta;
+
+    NanoLogInternal::ParamType paramTypes[10];
+    meta.emplace_back(nullptr, "File", 123, 0, "Hello World", 0, 0, paramTypes);
+    meta.emplace_back(nullptr, "FileA", 99, 2, "Hello World %s", 0, 0, paramTypes);
+    meta.emplace_back(nullptr, "FileC", 125, 3, "Hello World %%d", 0, 0, paramTypes);
+
+    // Not enough space, even for a dictionary fragment
+    Encoder noSpaceEncoder(buffer, 1, true);
+    EXPECT_EQ(0, noSpaceEncoder.encodeNewDictionaryEntries(currentPos, meta));
+    EXPECT_EQ(0, currentPos);
+
+    // Normal encoding
+    Encoder encoder(buffer, sizeof(buffer), true);
+
+    uint32_t expectedSize = sizeof(DictionaryFragment)
+            + 3*sizeof(CompressedLogInfo)
+            + strlen(meta[0].filename) + 1
+            + strlen(meta[1].filename) + 1
+            + strlen(meta[2].filename) + 1
+            + strlen(meta[0].formatString) + 1
+            + strlen(meta[1].formatString) + 1
+            + strlen(meta[2].formatString) + 1;
+
+    EXPECT_EQ(expectedSize,
+                encoder.encodeNewDictionaryEntries(currentPos, meta));
+    EXPECT_EQ(3, currentPos);
+
+    // Read Header
+    char *readPos = buffer;
+    DictionaryFragment *df = reinterpret_cast<DictionaryFragment*>(readPos);
+    readPos += sizeof(DictionaryFragment);
+
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, df->entryType);
+    EXPECT_EQ(expectedSize, df->newMetadataBytes);
+    EXPECT_EQ(3, df->totalMetadataEntries);
+
+    // Read back the entries
+    for (size_t i = 0; i < meta.size(); ++i) {
+        CompressedLogInfo *cli = reinterpret_cast<CompressedLogInfo *>(readPos);
+        readPos += sizeof(CompressedLogInfo);
+
+        EXPECT_EQ(meta[i].lineNum, cli->linenum);
+        EXPECT_EQ(meta[i].severity, cli->severity);
+        EXPECT_EQ(strlen(meta[i].filename) + 1, cli->filenameLength);
+        EXPECT_EQ(strlen(meta[i].formatString) + 1, cli->formatStringLength);
+
+        EXPECT_STREQ(meta[i].filename, readPos);
+        readPos += strlen(meta[i].filename) + 1;
+
+        EXPECT_STREQ(meta[i].formatString, readPos);
+        readPos += strlen(meta[i].formatString) + 1;
+    }
+
+    EXPECT_EQ(buffer + expectedSize, readPos);
+
+    // Now let's add another entry to make sure it makes it in okay
+    meta.emplace_back(nullptr, "BLALKSD", 125, 3, "H %%d", 0, 0, paramTypes);
+    expectedSize = sizeof(DictionaryFragment)
+                    + sizeof(CompressedLogInfo)
+                    + strlen(meta[3].filename) + 1
+                    + strlen(meta[3].formatString) + 1;
+    EXPECT_EQ(expectedSize, encoder.encodeNewDictionaryEntries(currentPos,
+                                                                meta));
+
+    df = reinterpret_cast<DictionaryFragment*>(readPos);
+    readPos += sizeof(DictionaryFragment);
+
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, df->entryType);
+    EXPECT_EQ(expectedSize, df->newMetadataBytes);
+    EXPECT_EQ(4, df->totalMetadataEntries);
+
+    for (size_t i = 3; i < meta.size(); ++i) {
+        CompressedLogInfo *cli = reinterpret_cast<CompressedLogInfo *>(readPos);
+        readPos += sizeof(CompressedLogInfo);
+
+        EXPECT_EQ(meta[i].lineNum, cli->linenum);
+        EXPECT_EQ(meta[i].severity, cli->severity);
+        EXPECT_EQ(strlen(meta[i].filename) + 1, cli->filenameLength);
+        EXPECT_EQ(strlen(meta[i].formatString) + 1, cli->formatStringLength);
+
+        EXPECT_STREQ(meta[i].filename, readPos);
+        readPos += strlen(meta[i].filename) + 1;
+
+        EXPECT_STREQ(meta[i].formatString, readPos);
+        readPos += strlen(meta[i].formatString) + 1;
+    }
+
+    // One last entry, but this time we'll run out of space after encoding
+    // the dictionary fragment header
+    encoder.endOfBuffer = encoder.writePos + sizeof(DictionaryFragment) + 1;
+    meta.emplace_back(nullptr, "BLALKSD", 125, 3, "H %%d", 0, 0, paramTypes);
+    EXPECT_EQ(sizeof(DictionaryFragment),
+                encoder.encodeNewDictionaryEntries(currentPos, meta));
+
+    df = reinterpret_cast<DictionaryFragment*>(readPos);
+    readPos += sizeof(DictionaryFragment);
+
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, df->entryType);
+    EXPECT_EQ(sizeof(DictionaryFragment), df->newMetadataBytes);
+    EXPECT_EQ(4, df->totalMetadataEntries);
+    EXPECT_EQ(4, currentPos);
+
+}
+
 TEST_F(LogTest, encodeLogMsgs) {
     char inputBuffer[100], outputBuffer1[1000];
 
@@ -416,10 +524,10 @@ TEST_F(LogTest, encodeLogMsgs) {
     // Checking the first log meta
     uint64_t ts;
     uint32_t fmtId;
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPos));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPos));
     decompressLogHeader(&readPos, 0, fmtId, ts);
 
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPos));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPos));
     decompressLogHeader(&readPos, 0, fmtId, ts);
 
     // Now we break abstractions a little bit and read the "string" part of it
@@ -443,7 +551,7 @@ TEST_F(LogTest, encodeLogMsgs) {
     EXPECT_TRUE(be->isShort);
     EXPECT_EQ(6U, be->threadIdOrPackNibble);
     readPos += sizeof(BufferExtent);
-    EXPECT_EQ(EntryType::LOG_MSG, peekEntryType(readPos));
+    EXPECT_EQ(EntryType::LOG_MSGS_OR_DIC, peekEntryType(readPos));
 
     // Now one last time without without changing the buffers
     readPos = e.writePos;
@@ -2288,6 +2396,322 @@ TEST_F(LogTest, Decoder_internalDecompress_aggregationFn) {
 
     std::remove(testFile);
     std::remove(decomp);
+}
+
+static int compressHelper0TimesRun = 0;
+static int compressHelper1TimesRun = 0;
+
+static void
+compressHelper0(int numNibbles, const ParamType*, char **in, char**out)
+{
+    ++compressHelper0TimesRun;
+}
+
+static void
+compressHelper1(int numNibbles, const ParamType*, char **in, char**out)
+{
+    ++compressHelper1TimesRun;
+}
+
+template<typename T>
+static T*
+push(char* (&in)) {
+    T *t = reinterpret_cast<T*>(in);
+    in += sizeof(T);
+    return t;
+}
+
+// Most of the logic is already extensively tested in the other encodeMsgs
+// tests, so this will only test the new bits of code for cpp17
+TEST_F(LogTest, encodeLogMsgs_cpp17) {
+    char inBuffer[1024];
+    char outBuffer[1024];
+
+    char *in = inBuffer;
+    char *out = outBuffer;
+
+    uint64_t numEventsCompressed = 0;
+    std::vector<StaticLogInfo> dictionary;
+    NanoLogInternal::ParamType paramTypes[10];
+    dictionary.emplace_back(&compressHelper0, "File", 123, 0, "Hello World", 0, 0, paramTypes);
+    dictionary.emplace_back(&compressHelper1, "FileA", 99, 2, "Hello World %s", 0, 0, paramTypes);
+
+    // Case 1: early break because we haven't persisted the dictionary entries
+    UncompressedEntry *ue = push<UncompressedEntry>(in);
+    ue->entrySize = sizeof(UncompressedEntry);
+    ue->timestamp = 0;
+    ue->fmtId = 10;
+
+    UncompressedEntry *ue2 = push<UncompressedEntry>(in);
+    ue2->entrySize = sizeof(UncompressedEntry);
+    ue2->timestamp = 1;
+    ue2->fmtId = 1;
+
+    Encoder encoder(outBuffer, sizeof(outBuffer), true);
+
+    in = inBuffer;
+    char *encoderStartingPos = encoder.writePos;
+    EXPECT_EQ(0, encoder.encodeLogMsgs(in, sizeof(UncompressedEntry), 0, false,
+                                            dictionary, &numEventsCompressed));
+    EXPECT_EQ(0, numEventsCompressed);
+    EXPECT_EQ(encoderStartingPos + sizeof(BufferExtent), encoder.writePos);
+
+    // Case 2: Normal Compression
+    ue->fmtId = 0;
+    in = inBuffer;
+    encoderStartingPos = encoder.writePos;
+    EXPECT_EQ(2*sizeof(UncompressedEntry),
+                  encoder.encodeLogMsgs(in, 2*sizeof(UncompressedEntry), 0,
+                                      false, dictionary, &numEventsCompressed));
+    EXPECT_EQ(2, numEventsCompressed);
+    EXPECT_EQ(encoderStartingPos
+                + sizeof(BufferExtent)
+                + 2*sizeof(CompressedEntry)
+                + 4, // +4 for the 2x2 compacted timestamp + logId
+                encoder.writePos);
+
+    EXPECT_EQ(1, compressHelper0TimesRun);
+    EXPECT_EQ(1, compressHelper1TimesRun);
+}
+
+TEST_F(LogTest, createMicroCode) {
+    using namespace NanoLogInternal::Log;
+    char backing_buffer[1024];
+    char *microCode = backing_buffer;
+    memset(backing_buffer, 'a', sizeof(backing_buffer));
+
+    // Error Cases
+    testing::internal::CaptureStderr();
+    EXPECT_FALSE(Decoder::createMicroCode(&microCode, "%Ls", "file", 4, 2));
+    EXPECT_EQ(backing_buffer, microCode);
+    std::string output = testing::internal::GetCapturedStderr().c_str();
+    EXPECT_STREQ("Attempt to decode format specifier failed: Ls\r\n"
+                 "Error: Couldn't process this: %Ls\r\n", output.c_str());
+
+    // No format specifiers
+    microCode = backing_buffer;
+    EXPECT_TRUE(Decoder::createMicroCode(&microCode, "Nothing", "file", 4, 0));
+
+    EXPECT_EQ(sizeof(FormatMetadata)
+                    + strlen("file") + 1
+                    + sizeof(PrintFragment)
+                    + strlen("Nothing") + 1,
+            microCode - backing_buffer);
+
+    microCode = backing_buffer;
+    FormatMetadata *fm = push<FormatMetadata>(microCode);
+    microCode += fm->filenameLength;
+    PrintFragment *pf = push<PrintFragment>(microCode);
+
+    EXPECT_STREQ("file", fm->filename);
+    EXPECT_EQ(5, fm->filenameLength);
+    EXPECT_EQ(4, fm->lineNumber);
+    EXPECT_EQ(0, fm->logLevel);
+    EXPECT_EQ(0, fm->numNibbles);
+    EXPECT_EQ(1, fm->numPrintFragments);
+
+    EXPECT_EQ(FormatType::NONE, pf->argType);
+    EXPECT_STREQ("Nothing", pf->formatFragment);
+    EXPECT_EQ(strlen("Nothing") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+
+    // A very complex one
+    microCode = backing_buffer;
+    const char *filename = "DatFile.txt";
+    const char *formatString = "%% %*.4s %lf %Lf %4.*ls %*.*d blah";
+    EXPECT_TRUE(Decoder::createMicroCode(&microCode,
+                                         formatString,
+                                         filename,
+                                         1234,
+                                         1));
+
+    microCode = backing_buffer;
+    fm = push<FormatMetadata>(microCode);
+    microCode += fm->filenameLength;
+
+    EXPECT_STREQ(filename, fm->filename);
+    EXPECT_EQ(strlen(filename) + 1, fm->filenameLength);
+    EXPECT_EQ(1234, fm->lineNumber);
+    EXPECT_EQ(1, fm->logLevel);
+    EXPECT_EQ(7, fm->numNibbles);
+    EXPECT_EQ(5, fm->numPrintFragments);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::const_char_ptr_t, pf->argType);
+    EXPECT_STREQ("%% %*.4s", pf->formatFragment);
+    EXPECT_EQ(strlen("%% %*.4s") + 1, pf->fragmentLength);
+    EXPECT_TRUE(pf->hasDynamicWidth);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::double_t, pf->argType);
+    EXPECT_STREQ(" %lf", pf->formatFragment);
+    EXPECT_EQ(strlen(" %lf") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::long_double_t, pf->argType);
+    EXPECT_STREQ(" %Lf", pf->formatFragment);
+    EXPECT_EQ(strlen(" %Lf") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::const_wchar_t_ptr_t, pf->argType);
+    EXPECT_STREQ(" %4.*ls", pf->formatFragment);
+    EXPECT_EQ(strlen(" %4.*ls") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+    EXPECT_TRUE(pf->hasDynamicPrecision);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::int_t, pf->argType);
+    EXPECT_STREQ(" %*.*d blah", pf->formatFragment);
+    EXPECT_EQ(strlen(" %*.*d blah") + 1, pf->fragmentLength);
+    EXPECT_TRUE(pf->hasDynamicWidth);
+    EXPECT_TRUE(pf->hasDynamicPrecision);
+}
+
+TEST_F(LogTest, readDictionaryFragment) {
+    char testFile[] = "test.dic";
+    char *buffer = static_cast<char*>(malloc(1024*1024));
+    char *writePos = buffer;
+
+    Decoder dc;
+
+    DictionaryFragment *df = push<DictionaryFragment>(writePos);
+    df->entryType = EntryType::LOG_MSGS_OR_DIC;
+    df->totalMetadataEntries = 0;
+    df->newMetadataBytes = 0;
+
+    std::ofstream oFile;
+    oFile.open(testFile);
+    oFile.write(buffer, sizeof(DictionaryFragment) - 1);
+    oFile.close();
+
+    // Too few bytes
+    FILE *fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    testing::internal::CaptureStderr();
+    EXPECT_FALSE(dc.readDictionaryFragment(fd));
+    EXPECT_STREQ("Could not read entire dictionary fragment header\r\n",
+                 testing::internal::GetCapturedStderr().c_str());
+    fclose(fd);
+    std::remove(testFile);
+
+    // Just enough, but header only
+    oFile.open(testFile);
+    oFile.write(buffer, sizeof(DictionaryFragment));
+    oFile.close();
+
+    fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    EXPECT_TRUE(dc.readDictionaryFragment(fd));
+    fclose(fd);
+    std::remove(testFile);
+
+    // Header and incomplete Compressed Info
+    writePos = buffer + sizeof(DictionaryFragment);
+    CompressedLogInfo *cli = push<CompressedLogInfo>(writePos);
+    char filename[] = "file.txt";
+    char formatString[] = "blah blah %s\r\n";
+    cli->severity = 2;
+    cli->linenum = 124;
+    cli->filenameLength = strlen(filename) + 1;
+    cli->formatStringLength = strlen(formatString) + 1;
+
+    memcpy(writePos, filename, cli->filenameLength);
+    writePos += cli->filenameLength;
+    memcpy(writePos, formatString, cli->formatStringLength);
+    writePos += cli->formatStringLength;
+
+
+    char filename2[] = "fileTwo.txt";
+    char formatString2[] = "yup yup %d %d\r\n";
+    cli = push<CompressedLogInfo>(writePos);
+    cli->severity = 2;
+    cli->linenum = 124;
+    cli->filenameLength = strlen(filename2) + 1;
+    cli->formatStringLength = strlen(formatString2) + 1;
+
+    memcpy(writePos, filename2, cli->filenameLength);
+    writePos += cli->filenameLength;
+    memcpy(writePos, formatString2, cli->formatStringLength);
+    writePos += cli->formatStringLength;
+
+    df->newMetadataBytes = writePos - buffer;
+    df->totalMetadataEntries = 2;
+
+    oFile.open(testFile);
+    oFile.write(buffer, sizeof(DictionaryFragment) + sizeof(CompressedLogInfo) - 1);
+    oFile.close();
+
+    fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    testing::internal::CaptureStderr();
+    EXPECT_FALSE(dc.readDictionaryFragment(fd));
+    EXPECT_STREQ("Could not read in log metadata\r\n",
+                 testing::internal::GetCapturedStderr().c_str());
+    fclose(fd);
+    std::remove(testFile);
+
+    // Header and complete CompressedInfo, but incomplete filenames
+    oFile.open(testFile);
+    oFile.write(buffer, sizeof(DictionaryFragment)
+                            + sizeof(CompressedLogInfo)
+                            + strlen(filename)
+                            + strlen(formatString) - 1);
+    oFile.close();
+
+    fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    testing::internal::CaptureStderr();
+    EXPECT_FALSE(dc.readDictionaryFragment(fd));
+    EXPECT_STREQ("Could not read in a log's filename/format string\r\n",
+                 testing::internal::GetCapturedStderr().c_str());
+    fclose(fd);
+    std::remove(testFile);
+
+    // Finally, one that works okay
+    oFile.open(testFile);
+    oFile.write(buffer, writePos - buffer);
+    oFile.close();
+
+    fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    EXPECT_TRUE(dc.readDictionaryFragment(fd));
+    ASSERT_EQ(2, dc.fmtId2fmtString.size());
+    EXPECT_STREQ(formatString, dc.fmtId2fmtString.at(0).c_str());
+    EXPECT_STREQ(formatString2, dc.fmtId2fmtString.at(1).c_str());
+
+    EXPECT_EQ(2, dc.fmtId2metadata.size());
+
+    // And then we duplicate the dictoinary and should end up with 4
+    fd = fopen(testFile, "rb");
+    ASSERT_TRUE(fd);
+    EXPECT_TRUE(dc.readDictionaryFragment(fd));
+    ASSERT_EQ(4, dc.fmtId2fmtString.size());
+    EXPECT_STREQ(formatString, dc.fmtId2fmtString.at(0).c_str());
+    EXPECT_STREQ(formatString2, dc.fmtId2fmtString.at(1).c_str());
+    EXPECT_STREQ(formatString, dc.fmtId2fmtString.at(2).c_str());
+    EXPECT_STREQ(formatString2, dc.fmtId2fmtString.at(3).c_str());
+
+    ASSERT_EQ(4, dc.fmtId2metadata.size());
+
+    fclose(fd);
+    std::remove(testFile);
+    free(buffer);
 }
 
 

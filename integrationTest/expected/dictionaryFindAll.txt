@@ -1,84 +1,95 @@
   id | filename             | line | format string
-   0 | main.cc              | 324  | No Length=%d %i %u %o %x %x %f %F %e %E %g %G %a %A %c %s %p
-   1 | main.cc              | 303  | Error
-   2 | main.cc              | 227  | 14) Hello %d
-   3 | main.cc              | 133  | 13) Yup
-ie
-   4 | main.cc              | 214  | The worse
-   5 | main.cc              | 203  | Same line, bad form
-   6 | main.cc              | 313  | Notice
-   7 | main.cc              | 59   | This is a string of many strings, like %s, %s, and %s with a number %d and a final string with spacers %*s
-
-   8 | main.cc              | 314  | Warning
+   0 | main.cc              | 193  | 11) SDF
+   1 | main.cc              | 186  | 18) OLO_SWAG
+   2 | main.cc              | 311  | Warning
+   3 | main.cc              | 121  | longString: %d %ls
+   4 | SimpleTestObject.h   | 46   | In the header, I am %d x2
+   5 | main.cc              | 384  | l=%ld %li %lu %lo %lx %lx %lc %ls
+   6 | main.cc              | 235  | The worse
+   7 | main.cc              | 279  | A string that's just one 'a': %.1000000s
+   8 | main.cc              | 160  | 14) Hello %d
    9 | SimpleTestObject.cc  | 43   | SimpleTest::wholeBunchOfLogStatements: exiting...
-  10 | folder/../SimpleTestObject.h | 40   | In the header, I am %d
-  11 | main.cc              | 294  | Debug
-  12 | main.cc              | 392  | z=%zd %zi %zu %zo %zx %zx
-  13 | main.cc              | 127  | 12) NEWLinesSoEvil %s
-  14 | SimpleTestObject.h   | 41   | In the header, I am %d x2
-  15 | main.cc              | 193  | %s
+  10 | main.cc              | 333  | Debug
+  11 | main.cc              | 164  | 14) Hello %d
+  12 | main.cc              | 315  | Debug
+  13 | main.cc              | 117  | And another one that should end %.4s
+  14 | main.cc              | 131  | A Character %c
+  15 | main.cc              | 310  | Notice
   16 | SimpleTestObject.cc  | 32   | SimpleTest::logSomething: Something = %d
-  17 | main.cc              | 185  | I am so evil
-  18 | folder/Sample.h      | 42   | Messages in the Header File
-  19 | main.cc              | 291  | Error
-  20 | main.cc              | 289  | Notice
-  21 | main.cc              | 72   | A const void* pointer %p
-  22 | main.cc              | 236  | Ending on different lines
-  23 | main.cc              | 48   | How about a nice little string? %s
-  24 | main.cc              | 301  | Notice
-  25 | main.cc              | 258  | A string that's just one 'a': %.1000000s
-  26 | main.cc              | 288  | Debug
-  27 | main.cc              | 218  | TEST
-  28 | main.cc              | 290  | Warning
-  29 | main.cc              | 50   | A middle "%s" string?
-  30 | main.cc              | 307  | Notice
-  31 | main.cc              | 251  | This string should end soon with 4 'a''s here: %.4s
-  32 | main.cc              | 410  | L=%Lf %LF %Le %LE %Lg %LG %La %LA
-  33 | main.cc              | 42   | How about a number? %d
-  34 | main.cc              | 205  | Ending on different lines
-  35 | main.cc              | 157  | 17) This is rediculous
-  36 | main.cc              | 306  | Debug
-  37 | main.cc              | 241  | 1) Simple times
-  38 | main.cc              | 309  | Error
-  39 | main.cc              | 184  | No %s
-  40 | main.cc              | 374  | ll=%lld %lli %llu %llo %llx %llx
-  41 | main.cc              | 297  | Error
-  42 | main.cc              | 109  | How about variable width + precision? %*.*lf %*d %10s
-  43 | main.cc              | 296  | Warning
-  44 | main.cc              | 140  | 14) Hello %d
-  45 | main.cc              | 180  | sneaky #define LOG
-  46 | main.cc              | 126  | 11) SDF
-  47 | main.cc              | 173  | 11) SDF
-  48 | main.cc              | 383  | j=%jd %ji %ju %jo %jx %jx
-  49 | main.cc              | 144  | 14) Hello %d
-  50 | main.cc              | 155  | 16) Hello /* uncool */
-  51 | main.cc              | 234  | 13) Yup
+  17 | main.cc              | 43   | More simplicity
+  18 | main.cc              | 224  | Really bad
+  19 | main.cc              | 324  | Error
+  20 | main.cc              | 330  | Error
+  21 | main.cc              | 431  | L=%Lf %LF %Le %LE %Lg %LG %La %LA
+  22 | main.cc              | 262  | 1) Simple times
+  23 | main.cc              | 312  | Error
+  24 | main.cc              | 49   | How about a double? %lf
+  25 | main.cc              | 138  | 10) NANO_LOG() "NANO_LOG("Hi ")"
+  26 | folder/Sample.h      | 50   | Messages in the Header File
+  27 | folder/../SimpleTestObject.h | 46   | In the header, I am %d x2
+  28 | main.cc              | 255  | 13) Yup
 ie
-  52 | main.cc              | 431  | Loop test!
-  53 | main.cc              | 308  | Warning
-  54 | main.cc              | 166  | 18) OLO_SWAG
-  55 | main.cc              | 151  | 15) This should not be incremented twice (=1):%d
-  56 | main.cc              | 111  | How about a variable length string that should end %.*s
-  57 | main.cc              | 401  | t=%td %ti %tu %to %tx %tx
-  58 | main.cc              | 52   | And another string? %s
-  59 | main.cc              | 57   | Hello world number %d of %d (%0.2lf%%)! This is %s!
-  60 | main.cc              | 40   | More simplicity
-  61 | main.cc              | 353  | h=%hd %hi %hu %ho %hx %hx
-  62 | main.cc              | 44   | How about a second number? %d
-  63 | main.cc              | 302  | Warning
-  64 | SimpleTestObject.h   | 40   | In the header, I am %d
-  65 | main.cc              | 100  | how about some negative numbers?
+  29 | main.cc              | 322  | Notice
+  30 | main.cc              | 105  | how about some negative numbers?
 int8_t %d
 int16_t %d
 int32_t %d
 int64_t %ld
 int %d
-  66 | main.cc              | 315  | Error
+  31 | main.cc              | 345  | No Length=%d %i %u %o %x %x %f %F %e %E %g %G %a %A %c %s %p
+  32 | main.cc              | 328  | Notice
+  33 | main.cc              | 404  | j=%jd %ji %ju %jo %jx %jx
+  34 | SimpleTestObject.h   | 45   | In the header, I am %d
+  35 | main.cc              | 226  | Ending on different lines
+  36 | main.cc              | 51   | How about a nice little string? %s
+  37 | main.cc              | 173  | 15) This should be incremented once more (=2):%d
+  38 | main.cc              | 413  | z=%zd %zi %zu %zo %zx %zx
+  39 | main.cc              | 323  | Warning
+  40 | main.cc              | 60   | Hello world number %d of %d (%0.2lf%%)! This is %s!
+  41 | folder/../SimpleTestObject.h | 45   | In the header, I am %d
+  42 | main.cc              | 47   | How about a second number? %d
+  43 | main.cc              | 41   | Simple times
+  44 | main.cc              | 154  | 13.5) This should be =2: %d
+  45 | main.cc              | 276  | Another string that should end soon with 5 'a''s here: %.*s
+  46 | main.cc              | 57   | One that should be "end"? %s
+  47 | main.cc              | 129  | NonConst %s ls=%ls s=%s
+  48 | main.cc              | 77   | I'm a small log with a small %s
+  49 | main.cc              | 374  | h=%hd %hi %hu %ho %hx %hx
+  50 | main.cc              | 334  | Notice
+  51 | main.cc              | 318  | Error
+  52 | main.cc              | 316  | Notice
+  53 | main.cc              | 222  | {{"(( False curlies and brackets! %d
+  54 | main.cc              | 55   | And another string? %s
+  55 | main.cc              | 248  | 14) Hello %d
+  56 | main.cc              | 116  | How about a variable length string that should end %.*s
+  57 | main.cc              | 309  | Debug
+  58 | main.cc              | 146  | 11) SDF
+  59 | main.cc              | 395  | ll=%lld %lli %llu %llo %llx %llx
+  60 | main.cc              | 171  | 15) This should not be incremented twice (=1):%d
+  61 | main.cc              | 317  | Warning
+  62 | main.cc              | 177  | 17) This is rediculous
+  63 | main.cc              | 224  | Same line, bad form
+  64 | main.cc              | 321  | Debug
+  65 | main.cc              | 206  | I am so evil
+  66 | main.cc              | 201  | sneaky #define LOG
   67 | SimpleTestObject.cc  | 40   | SimpleTest::wholeBunchOfLogStatements: I am in a loop!
-  68 | main.cc              | 363  | l=%ld %li %lu %lo %lx %lx %lc %ls
-  69 | folder/../SimpleTestObject.h | 41   | In the header, I am %d x2
-  70 | main.cc              | 112  | And another one that should end %.4s
-  71 | main.cc              | 82   | Let's try out all the types!
+  68 | main.cc              | 335  | Warning
+  69 | main.cc              | 53   | A middle "%s" string?
+  70 | main.cc              | 45   | How about a number? %d
+  71 | main.cc              | 327  | Debug
+  72 | main.cc              | 217  | NonConst: %s
+  73 | main.cc              | 214  | %s
+  74 | main.cc              | 329  | Warning
+  75 | main.cc              | 62   | This is a string of many strings, like %s, %s, and %s with a number %d and a final string with spacers %*s
+
+  76 | main.cc              | 453  | Loop test!
+  77 | main.cc              | 75   | A const void* pointer %p
+  78 | main.cc              | 422  | t=%td %ti %tu %to %tx %tx
+  79 | main.cc              | 257  | Ending on different lines
+  80 | main.cc              | 336  | Error
+  81 | main.cc              | 153  | 13) Yup
+ie
+  82 | main.cc              | 87   | Let's try out all the types!
 Pointer = %p
 uint8_t = %u
 uint16_t = %u
@@ -88,19 +99,12 @@ float = %f
 double = %lf
 hexadecimal = %x
 Just a normal character = %c
-  72 | main.cc              | 201  | {{"(( False curlies and brackets! %d
-  73 | main.cc              | 153  | 15) This should be incremented once more (=2):%d
-  74 | main.cc              | 295  | Notice
-  75 | main.cc              | 54   | One that should be "end"? %s
-  76 | main.cc              | 38   | Simple times
-  77 | main.cc              | 312  | Debug
-  78 | main.cc              | 118  | 10) NANO_LOG() "NANO_LOG("Hi ")"
-  79 | main.cc              | 212  | Make sure that the inserted code is before the ++i
-  80 | main.cc              | 46   | How about a double? %lf
-  81 | main.cc              | 300  | Debug
-  82 | main.cc              | 344  | hh=%hhd %hhi %hhu %hho %hhx %hhx
-  83 | main.cc              | 255  | Another string that should end soon with 5 'a''s here: %.*s
-  84 | main.cc              | 196  | NonConst: %s
-  85 | main.cc              | 203  | Really bad
+  83 | main.cc              | 365  | hh=%hhd %hhi %hhu %hho %hhx %hhx
+  84 | main.cc              | 239  | TEST
+  85 | main.cc              | 272  | This string should end soon with 4 'a''s here: %.4s
   86 | SimpleTestObject.cc  | 37   | SimpleTest::wholeBunchOfLogStatements: Here I am
-  87 | main.cc              | 134  | 13.5) This should be =2: %d
+  87 | main.cc              | 205  | No %s
+  88 | main.cc              | 147  | 12) NEWLinesSoEvil %s
+  89 | main.cc              | 233  | Make sure that the inserted code is before the ++i
+  90 | main.cc              | 175  | 16) Hello /* uncool */
+  91 | main.cc              | 114  | How about variable width + precision? %*.*lf %*d %10s

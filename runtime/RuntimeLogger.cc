@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -64,6 +64,9 @@ RuntimeLogger::RuntimeLogger()
         , logsProcessed(0)
         , numAioWritesCompleted(0)
         , coreId(-1)
+        , registrationMutex()
+        , invocationSites()
+        , nextInvocationIndexToBePersisted(0)
 {
     for (size_t i = 0; i < Util::arraySize(stagingBufferPeekDist); ++i)
         stagingBufferPeekDist[i] = 0;
@@ -361,6 +364,10 @@ RuntimeLogger::compressionThreadMain() {
     // zero-th index, but have not yet encoded that in he compressed output
     bool wrapAround = false;
 
+    // Keeps a shadow mapping of the log identifiers to static information
+    // to allow the logging threads to register in parallel with compression
+    // lookup
+    std::vector<StaticLogInfo> shadowStaticInfo;
 
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
@@ -378,6 +385,22 @@ RuntimeLogger::compressionThreadMain() {
         {
             std::unique_lock<std::mutex> lock(bufferMutex);
             size_t i = lastStagingBufferChecked;
+
+            // Output new dictionary entries, if necessary
+            if (nextInvocationIndexToBePersisted < invocationSites.size())
+            {
+                std::unique_lock<std::mutex> lock (registrationMutex);
+                encoder.encodeNewDictionaryEntries(
+                                               nextInvocationIndexToBePersisted,
+                                               invocationSites);
+
+                // update our shadow copy
+                for (uint64_t i = shadowStaticInfo.size();
+                                    i < nextInvocationIndexToBePersisted; ++i)
+                {
+                    shadowStaticInfo.push_back(invocationSites.at(i));
+                }
+            }
 
             // Scan through the threadBuffers looking for log messages to
             // compress while the output buffer is not full.
@@ -406,12 +429,23 @@ RuntimeLogger::compressionThreadMain() {
                         long bytesToEncode = std::min(
                                 NanoLogConfig::RELEASE_THRESHOLD,
                                 remaining);
+#ifdef PREPROCESSOR_NANOLOG
                         long bytesRead = encoder.encodeLogMsgs(
                                 peekPosition + (peekBytes - remaining),
                                 bytesToEncode,
                                 sb->getId(),
                                 wrapAround,
                                 &logsProcessed);
+#else
+                        long bytesRead = encoder.encodeLogMsgs(
+                                peekPosition + (peekBytes - remaining),
+                                bytesToEncode,
+                                sb->getId(),
+                                wrapAround,
+                                shadowStaticInfo,
+                                &logsProcessed);
+#endif
+
 
                         if (bytesRead == 0) {
                             lastStagingBufferChecked = i;
@@ -622,6 +656,7 @@ RuntimeLogger::setLogFile_internal(const char *filename) {
     outputFd = newFd;
 
     // Relaunch thread
+    nextInvocationIndexToBePersisted = 0; // Reset the dictionary
     compressionThreadShouldExit = false;
     compressionThread = std::thread(&RuntimeLogger::compressionThreadMain, this);
 }

@@ -26,7 +26,11 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#ifndef PREPROCESSOR_NANOLOG
+#include "NanoLogCpp17.h"
+#else
 #include "NanoLog.h"
+#endif
 using namespace NanoLog::LogLevels;
 
 #ifndef __Sample__h__
@@ -34,6 +38,10 @@ using namespace NanoLog::LogLevels;
 
 // Tests whether the system can detect re #define's
 #define LOG NANO_LOG
+
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 
 // Tests whether header functions get parsed as well.
 static void
@@ -44,5 +52,7 @@ hiddenInHeaderFilePrint()
         " File"
         );
 }
+
+#pragma GCC diagnostic pop
 
 #endif // __Sample__h__

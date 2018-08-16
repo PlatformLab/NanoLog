@@ -17,9 +17,10 @@ PREPROC_DIR=$(NANOLOG_DIR)/preprocessor
 # Compile a user C++ source file to an object file using the NanoLog system.
 # The first parameter $(1) should be the output filename (*.o)
 # The second parameter $(2) should be the input filename (*.cc)
-# The optional third parameter $(3) is any additional options compiler options.
+# The optional third parameter $(3) should be additional options compiler options.
+# The optional fourth parameter ($4) should be gnu preprocessor options.
 define run-cxx
-	$(CXX) -E -I $(RUNTIME_DIR) $(2) -o $(2).i -std=c++11
+	$(CXX) -E -I $(RUNTIME_DIR) $(2) -o $(2).i -std=c++11 $(4)
 	@mkdir -p generated
 	python $(PREPROC_DIR)/parser.py --mapOutput="generated/$(2).map" $(2).i
 	$(CXX) -I $(RUNTIME_DIR) -c -o $(1) $(2).ii $(3)

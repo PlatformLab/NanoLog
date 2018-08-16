@@ -11,6 +11,7 @@
  This is a string of many strings, like this one, this other one, and this third one with a number 12345670 and a final string with spacers              far out
 
  A const void* pointer 0x7ffe075cbe7d
+ I'm a small log with a small string
  Let's try out all the types!
 Pointer = 0x7ffe075cbe7d
 uint8_t = 10
@@ -23,13 +24,16 @@ hexadecimal = ff
 Just a normal character = a
  how about some negative numbers?
 int8_t -10
-int16_t -33
+int16_t -9991
 int32_t -99991
 int64_t -1
 int -12356
  How about variable width + precision?  12345.12        123        end
  How about a variable length string that should end here
  And another one that should end here
+ longString: 1 asdf
+ NonConst bcdefg ls=asdf s=bcdefg
+ A Character d
  10) NANO_LOG() "NANO_LOG("Hi ")"
  11) SDF
  12) NEWLinesSoEvil NANO_LOG()
@@ -68,7 +72,7 @@ ie
  No Length=-1 -2 3 4 5 6 7.000000 8.000000 9.000000e+00 1.000000E+01 11 12 0x1.ap+3 0X1.CP+3 a abc 0x1
  hh=-1 -2 3 4 5 6
  h=-20000 -20001 20002 47043 4e24 4e25
- l=-1073741824 -1073741825 4294967296 100000000000 400000000 800000000 a asdf
+ l=-1073741824 -1073741825 1073741826 10000000003 40000004 40000005 a asdf
  ll=1152921504606846976 -1152921504606846976 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
  j=1152921504606846976 -1152921504606846976 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
  z=4611686018427387904 2305843009213693952 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
@@ -126,6 +130,7 @@ ie
  This is a string of many strings, like this one, this other one, and this third one with a number 12345670 and a final string with spacers              far out
 
  A const void* pointer 0x7ffe075cbe7d
+ I'm a small log with a small string
  Let's try out all the types!
 Pointer = 0x7ffe075cbe7d
 uint8_t = 10
@@ -138,13 +143,16 @@ hexadecimal = ff
 Just a normal character = a
  how about some negative numbers?
 int8_t -10
-int16_t -33
+int16_t -9991
 int32_t -99991
 int64_t -1
 int -12356
  How about variable width + precision?  12345.12        123        end
  How about a variable length string that should end here
  And another one that should end here
+ longString: 1 asdf
+ NonConst bcdefg ls=asdf s=bcdefg
+ A Character d
  10) NANO_LOG() "NANO_LOG("Hi ")"
  11) SDF
  12) NEWLinesSoEvil NANO_LOG()
@@ -183,7 +191,7 @@ ie
  No Length=-1 -2 3 4 5 6 7.000000 8.000000 9.000000e+00 1.000000E+01 11 12 0x1.ap+3 0X1.CP+3 a abc 0x1
  hh=-1 -2 3 4 5 6
  h=-20000 -20001 20002 47043 4e24 4e25
- l=-1073741824 -1073741825 4294967296 100000000000 400000000 800000000 a asdf
+ l=-1073741824 -1073741825 1073741826 10000000003 40000004 40000005 a asdf
  ll=1152921504606846976 -1152921504606846976 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
  j=1152921504606846976 -1152921504606846976 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
  z=4611686018427387904 2305843009213693952 1152921504606846976 200000000000000000000 4000000000000000 8000000000000000
@@ -228,4 +236,4 @@ ie
  Error
 
 
-# Decompression Complete after printing 192 log messages
+# Decompression Complete after printing 200 log messages

@@ -1,4 +1,4 @@
-/* Copyright (c) 2016 Stanford University
+/* Copyright (c) 2016-18 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +20,10 @@
 
 #include <string>
 
-#include "NanoLog.h"
+#ifndef PREPROCESSOR_NANOLOG
+#include "NanoLogCpp17.h"
+#endif
+
 #include "Cycles.h"
 
 #include "folder/Sample.h"
@@ -71,12 +74,14 @@ evilTestCase(NANO_LOG* log) {
 
     NANO_LOG(NOTICE, "A const void* pointer %p", const_ptr);
 
+    NANO_LOG(NOTICE, "I'm a small log with a small %s", "string");
+
     uint8_t small = 10;
     uint16_t medium = 33;
     uint32_t large = 99991;
     uint64_t ultra_large = -1;
 
-    float Float = 121.121;
+    float Float = 121.121f;
     double Double = 212.212;
 
     NANO_LOG(NOTICE, "Let's try out all the types!\n"
@@ -94,7 +99,7 @@ evilTestCase(NANO_LOG* log) {
             );
 
     int8_t smallNeg = -10;
-    int16_t mediumNeg= -33;
+    int16_t mediumNeg= -9991;
     int32_t largeNeg = -99991;
     int64_t ultra_large_neg = -1;
     NANO_LOG(NOTICE, "how about some negative numbers?\n"
@@ -111,10 +116,25 @@ evilTestCase(NANO_LOG* log) {
     NANO_LOG(NOTICE, "How about a variable length string that should end %.*s", 4, "here, but not here.");
     NANO_LOG(NOTICE, "And another one that should end %.4s", "here, but not here.");
 
+    // Long strings!
+    const wchar_t *longString = L"asdf";
+    NANO_LOG(WARNING, "longString: %d %ls", 1, longString);
+
+    // What happens when strings are not const?
+    char stringArray[10];
+    wchar_t longStringArray[10];
+    strcpy(stringArray, "bcdefg");
+    wcscpy(longStringArray, longString);
+
+    NANO_LOG(WARNING, "NonConst %s ls=%ls s=%s",
+             stringArray, longStringArray, stringArray);
+    NANO_LOG(WARNING, "A Character %c", 'd');
+
     ////////
     // Name Collision Tests
     ////////
     const char *falsePositive = "NANO_LOG(\"yolo\")";
+    ++falsePositive;
     NANO_LOG(NOTICE, "10) NANO_LOG() \"NANO_LOG(\"Hi \")\"");
 
     printf("Regular Print: NANO_LOG()\r\n");
@@ -171,7 +191,8 @@ evilTestCase(NANO_LOG* log) {
 
      // /*
      NANO_LOG(NOTICE, "11) SDF");
-     const char *str = ";";
+     const char *dummy = ";";
+     ++dummy;
      // */
 
     ////////
@@ -364,10 +385,10 @@ void testAllTheTypes() {
         "l=%ld %li %lu %lo %lx %lx %lc %ls",
         (long int)-(1 << 30),
         (long int)-(1 << 30) -1 ,
-        (unsigned long int)1<<30 + 2,
-        (unsigned long int)1<<30 + 3,
-        (unsigned long int)1<<30 + 4,
-        (unsigned long int)1<<30 + 5,
+        ((unsigned long int)1UL<<30) + 2,
+        ((unsigned long int)1UL<<30) + 3,
+        ((unsigned long int)1UL<<30) + 4,
+        ((unsigned long int)1UL<<30) + 5,
         (wchar_t)'a',
         (const wchar_t*)longString);
 
@@ -419,24 +440,25 @@ void testAllTheTypes() {
         (long double)14.0);
 }
 
+
 int main()
 {
-    NanoLog::setLogFile("/tmp/testLog");
+    NanoLog::setLogFile("testLog");
     evilTestCase(NULL);
     testAllTheTypes();
 
     int count = 10;
     uint64_t start = PerfUtils::Cycles::rdtsc();
     for (int i = 0; i < count; ++i) {
-        NANO_LOG(NOTICE, "Loop test!");
+       NANO_LOG(NOTICE, "Loop test!");
     }
 
     uint64_t stop = PerfUtils::Cycles::rdtsc();
 
     double time = PerfUtils::Cycles::toSeconds(stop - start);
     printf("Total time 'benchmark recording' %d events took %0.2lf seconds "
-            "(%0.2lf ns/event avg)\r\n",
-            count, time, (time/count)*1e9);
+           "(%0.2lf ns/event avg)\r\n",
+           count, time, (time/count)*1e9);
 
     SimpleTest st(10);
     st.logSomething();
@@ -449,7 +471,7 @@ int main()
 
     NanoLog::sync();
 
-    printf("\r\nNote: This app is used in the integration tests, but"
+    printf("\r\nNote: This app is used in the integration tests, but "
         "is not the test runner. \r\nTo run the actual test, invoke "
         "\"make run-test\"\r\n\r\n");
 }

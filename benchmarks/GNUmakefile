@@ -1,30 +1,15 @@
 ########
-## This file serves as an example for how users of the NanoLog system
-## should layout their makefile rules.
-##
-## The first half ("Required Library Variables") should always be defined
-## in the user GNUmakefile and the only requirements on the second half
-## ("User Section") are:
-##   1) User C++ files MUST be compiled into .o files with run-cxx
-##			before being linked into the main executable/library.
-##   2) The final executable links NanoLog.a and $(NANO_LOG_LIBRARY_LIBS)
-##
-## The high level idea is that the NanoLog System needs to preprocess the
-## user sources to extract static information and compile that information
-## into the NanoLog library before linking it with the user application.
-## The way we go about this is to use run-cxx to preprocess the user
-## source files, use the USER_OBJS variable to determine when all user
-## sources have been compiled, and have the final executable depend on
-## libNanoLog.a to force a final library compilation.
+## Builds the base application used in a lot of NanoLog benchmarks
 ########
 
-####
-## Required Library Variables
-####
+# Environment variable determines whether the makefile will compile
+# the Preprocessor version of NanoLog (yes) or Cpp17 NanoLog (no)
+#
+# Note that if you change this variable, you MUST make-clean since
+# the two libraries and binaries created are not cross-compatible!
+PREPROCESSOR_NANOLOG ?= yes
 
-# USER_OBJS specifies all user object files to be compiled; this is used by
-# NanoLog to determine when all the user sources have been preprocessed
-# and compiled.
+# All user sources
 USER_SRCS=Benchmark.cc
 USER_OBJS=$(USER_SRCS:.cc=.o)
 
@@ -33,6 +18,10 @@ NANOLOG_DIR=..
 
 # Enables logging for producer statistics
 EXTRA_NANOLOG_FLAGS=-DRECORD_PRODUCER_STATS
+
+ifeq ($(PREPROCESSOR_NANOLOG),yes)
+EXTRA_NANOLOG_FLAGS=-DRECORD_PRODUCER_STATS -DPREPROCESSOR_NANOLOG
+endif
 
 # Must be specified AFTER defining NANOLOG_DIR and USER_OBJ's
 include $(NANOLOG_DIR)/NanoLogMakeFrag
@@ -43,15 +32,24 @@ include $(NANOLOG_DIR)/NanoLogMakeFrag
 USER_SRCS=Benchmark.cc
 
 # -DNDEBUG and -O3 should always be passed for high performance
+ifeq ($(PREPROCESSOR_NANOLOG),yes)
 CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
+else
+CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
+endif
 CXX=g++
 
 all: benchmark
 
+ifeq ($(PREPROCESSOR_NANOLOG),yes)
 # [Required] run-cxx will compile the user C++ source file into an object file using
 # the NanoLog system. See documentation in the Library Compilation section.
 %.o: %.cc BenchmarkConfig.h
-	$(call run-cxx, $@, $<, $(CXXFLAGS) -I.)
+	$(call run-cxx, $@, $<, $(CXXFLAGS) -I., -DPREPROCESSOR_NANOLOG)
+else
+%.o: %.cc BenchmarkConfig.h
+	$(CXX) -I $(RUNTIME_DIR) -c -o $@ $< $(CXXFLAGS)
+endif
 
 BenchmarkConfig.h: ./genConfig.py
 	python ./genConfig.py
@@ -67,7 +65,7 @@ interference: Interference.o libFastLogger.a
 	$(CXX) $(CXXFLAGS) -o interference Interference.o -L. -lFastLogger $(LIBRARY_LIBS)
 
 clean:
-	@rm -f *.o benchmark /tmp/logFile
+	@rm -f *.o benchmark /tmp/logFile compressedLog
 
 ####
 # Library Compilation (copy verbatim)

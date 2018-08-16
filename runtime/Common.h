@@ -22,6 +22,9 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+// Uncomment to enable super verbose logging by NanoLog
+//#define ENABLE_DEBUG_PRINTING
+
 namespace NanoLogInternal {
 
 #ifdef EXPOSE_PRIVATES
@@ -41,12 +44,13 @@ namespace NanoLogInternal {
     TypeName& operator=(const TypeName&) = delete;
 #endif
 
+#include <cassert>
 /**
  * Cast one size of int down to another one.
  * Asserts that no precision is lost at runtime.
  */
 template<typename Small, typename Large>
-Small
+inline Small
 downCast(const Large& large)
 {
     Small small = static_cast<Small>(large);

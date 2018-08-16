@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,7 +16,8 @@
 #define CONFIG_H
 
 #include <fcntl.h>
-#include <assert.h>
+#include <cassert>
+#include <cstdint>
 
 /**
  * This file centralizes the Configuration Options that can be made to NanoLog

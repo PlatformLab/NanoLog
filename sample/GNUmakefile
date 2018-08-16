@@ -1,58 +1,48 @@
-########
-## This file serves as an example for how users of the NanoLog system
-## should layout their makefile rules.
-##
-## The first half ("Required Library Variables") should always be defined
-## in the user GNUmakefile and the only requirements on the second half
-## ("User Section") are:
-##   1) User C++ files MUST be compiled into .o files with run-cxx
-##			before being linked into the main executable/library.
-##   2) The final executable links NanoLog.a and $(NANO_LOG_LIBRARY_LIBS)
-##
-## The high level idea is that the NanoLog System needs to preprocess the
-## user sources to extract static information and compile that information
-## into the NanoLog library before linking it with the user application.
-## The way we go about this is to use run-cxx to preprocess the user
-## source files, use the USER_OBJS variable to determine when all user
-## sources have been compiled, and have the final executable depend on
-## libNanoLog.a to force a final library compilation.
-########
+#####################################################################
+#
+# This is a sample makefile on how to compile with C++17 NanoLog
+# (i.e. Non-preprocessor version of NanoLog).
+#
+# The main requirements are
+#  (a) include the NanoLog runtime directory with -I when compiling
+#  (b) link the NanoLog runtime library (-lNanoLog) and external
+#      libraries (-lpthread -lrt) into the final executable
+#
+#####################################################################
 
-####
-## Required Library Variables
-####
-
-# USER_OBJS specifies all user object files to be compiled; this is used by
-# NanoLog to determine when all the user sources have been preprocessed
-# and compiled.
-USER_SRCS=main.cc
-USER_OBJS=$(USER_SRCS:.cc=.o)
-
-# Root of the NanoLog Repository
-NANOLOG_DIR=..
-
-# Must be specified AFTER defining NANOLOG_DIR and USER_OBJ's
-include $(NANOLOG_DIR)/NanoLogMakeFrag
-
-####
-# User Section
-####
 # -DNDEBUG and -O3 should always be passed for high performance
-CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
+CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
 CXX=g++
 
-all: sampleApplication
+NANOLOG_RUNTIME_DIR=../runtime
 
-# [Required] run-cxx will compile the user C++ source file into an object file using
-# the NanoLog system. For run-cxx, the first parameter is the output file name (*.o),
-# the second parameter is the input file (*.cc), and the third parameter is for
-# compiler options.
+all: sampleApplication decompressor
+
+# (a) Make the user object files include the NanoLog header (-I)
 %.o: %.cc
-	$(call run-cxx, $@, $<, $(CXXFLAGS))
+	$(CXX) -I $(NANOLOG_RUNTIME_DIR) -c -o $@ $< $(CXXFLAGS)
 
-# [Required] $(NANO_LOG_LIBRARY_LIBS) must be used
-sampleApplication: $(USER_OBJS) libNanoLog.a
-	$(CXX) $(CXXFLAGS) -o sampleApplication $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
+# Make the final application linking NanoLog, pthreads, and POSIX aio
+sampleApplication: main.o libNanoLog.a
+	$(CXX) $(CXXFLAGS) -o sampleApplication main.o -L. -lNanoLog -lpthread -lrt
 
 clean:
-	@rm -f *.o sampleApplication /tmp/logFile
+	@rm -f *.o sampleApplication /tmp/logFile compressedLog
+
+
+
+
+# These (optional) rules copy in the NanoLog library and decompressor.
+# An alternative is to run "make" in the runtime directory and copy out
+# the library and decompressor executable.
+libNanoLog.a:
+	$(MAKE) libNanoLog.a -C $(NANOLOG_RUNTIME_DIR)
+	cp $(NANOLOG_RUNTIME_DIR)/libNanoLog.a .
+
+decompressor:
+	$(MAKE) decompressor -C $(NANOLOG_RUNTIME_DIR)
+	cp $(NANOLOG_RUNTIME_DIR)/decompressor .
+
+# Cleans up the NanoLog files as well
+clean-all: clean
+	@rm -f $(NANOLOG_RUNTIME_DIR)/*.o $(NANOLOG_RUNTIME_DIR)/libNanoLog.a libNanoLog.a decompressor

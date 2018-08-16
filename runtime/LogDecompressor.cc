@@ -130,6 +130,11 @@ void printHelp(const char *exe) {
     printf("when there is one runtime logging thread:\r\n");
     printf("\t%s rcdfTime <logFile>\r\n\r\n", exe);
 
+    printf("== Note ==\r\n");
+    printf("The following 2 commands only work with logs produced by the\r\n");
+    printf("preprocessor version of NanoLog\r\n");
+    printf("==========\r\n\r\n");
+
     printf("Run a minMaxMean aggregation on a specific logId (integer)"
             " and interpret the first argument as an int:\r\n");
     printf("\t%s minMaxMean <logFile> <logId>\r\n\r\n", exe);

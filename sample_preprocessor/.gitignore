@@ -1,0 +1,15 @@
+decompressor
+compressedLog
+sampleApplication
+generated/
+results/
+
+*.a
+*.o
+*.i
+*.ii
+*.map
+
+# IDE files
+.idea
+nbproject

@@ -145,7 +145,7 @@ TEST_F(PackerTest, packSignedIntegers) {
     EXPECT_EQ(1, pack(&buffer, int64_t(1)));
     EXPECT_EQ(buffer_space + 8, buffer);
 
-    EXPECT_EQ(1, pack(&buffer, int8_t(-1)));
+    EXPECT_EQ(1 + 8, pack(&buffer, int8_t(-1)));
     EXPECT_EQ(1 + 8, pack(&buffer, int16_t(-1)));
     EXPECT_EQ(1 + 8, pack(&buffer, int32_t(-1)));
     EXPECT_EQ(1 + 8, pack(&buffer, int64_t(-1)));
@@ -157,19 +157,19 @@ TEST_F(PackerTest, packSignedIntegers) {
     EXPECT_EQ(1, pack(&buffer, int64_t(127)));
     EXPECT_EQ(buffer_space + 16, buffer);
 
-    EXPECT_EQ(1, pack(&buffer, int8_t(128)));
+    EXPECT_EQ(1 + 8, pack(&buffer, int8_t(128)));
     EXPECT_EQ(1, pack(&buffer, int16_t(128)));
     EXPECT_EQ(1, pack(&buffer, int32_t(128)));
     EXPECT_EQ(1, pack(&buffer, int64_t(128)));
     EXPECT_EQ(buffer_space + 20, buffer);
 
-    EXPECT_EQ(1, pack(&buffer, int8_t(-128)));
+    EXPECT_EQ(1 + 8, pack(&buffer, int8_t(-128)));
     EXPECT_EQ(1 + 8, pack(&buffer, int16_t(-128)));
     EXPECT_EQ(1 + 8, pack(&buffer, int32_t(-128)));
     EXPECT_EQ(1 + 8, pack(&buffer, int64_t(-128)));
     EXPECT_EQ(buffer_space + 24, buffer);
 
-    EXPECT_EQ(1, pack(&buffer, int8_t(255)));
+    EXPECT_EQ(1 + 8, pack(&buffer, int8_t(255)));
     EXPECT_EQ(1, pack(&buffer, int16_t(255)));
     EXPECT_EQ(1, pack(&buffer, int32_t(255)));
     EXPECT_EQ(1, pack(&buffer, int64_t(255)));
@@ -194,7 +194,7 @@ TEST_F(PackerTest, packSignedIntegers) {
     EXPECT_EQ(2 + 8, pack(&buffer, -int64_t(1 << 8)));
     EXPECT_EQ(buffer_space + 46, buffer);
 
-    EXPECT_EQ(2, pack(&buffer, int16_t(1 << 16 - 1)));
+    EXPECT_EQ(2 + 8, pack(&buffer, int16_t(1 << 16 - 1)));
     EXPECT_EQ(2, pack(&buffer, int32_t(1 << 16 - 1)));
     EXPECT_EQ(2, pack(&buffer, int64_t(1 << 16 - 1)));
     EXPECT_EQ(buffer_space + 52, buffer);
