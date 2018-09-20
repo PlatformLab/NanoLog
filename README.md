@@ -5,7 +5,7 @@ How it achieves this insane performance is by extracting static log information 
 
 ## Performance
 
-This section shows the performance of NanoLog with existing logging systems such as [spdlog](https://github.com/gabime/spdlog), [Log4j2](https://logging.apache.org/log4j/2.x/), [Boost 1.55](http://www.boost.org), [glog](https://github.com/google/glog), and Windows Event Tracing with Windows Software Trace Preprocessor [(WPP)](https://docs.microsoft.com/en-us/windows-hardware/drivers/devtest/wpp-software-tracing).
+This section shows the performance of NanoLog with existing logging systems such as [spdlog v1.1.0](https://github.com/gabime/spdlog), [Log4j2 v2.8](https://logging.apache.org/log4j/2.x/), [Boost 1.55](http://www.boost.org), [glog v0.3.5](https://github.com/google/glog), and Windows Event Tracing with Windows Software Trace Preprocessor on Windows 10 [(WPP)](https://docs.microsoft.com/en-us/windows-hardware/drivers/devtest/wpp-software-tracing).
 
 ### Throughput
 
