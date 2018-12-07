@@ -1,6 +1,5 @@
 # Common Sources
 SRCS=Cycles.cc Util.cc testHelper/GeneratedCode.cc Log.cc NanoLog.cc RuntimeLogger.cc  TimeTrace.cc
-DEPS=Fence.h Log.h Common.h Packer.h
 OBJECTS:=$(SRCS:.cc=.o)
 
 # Test Specific Sources
@@ -15,13 +14,13 @@ CXX?=g++
 
 all: test Perf decompressor libNanoLog.a
 
-%.o:%.cc %.h $(DEPS)
+%.o:%.cc %.h
 	$(CXX) $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
-%.o:%.cc $(DEPS)
+%.o:%.cc
 	$(CXX) $(CXX_ARGS) $(INCLUDES) -c $< -o $@
 
-$(TEST_OBJS): %.o:%.cc $(DEPS) libgtest.a
+$(TEST_OBJS): %.o:%.cc libgtest.a
 	$(CXX) $(CXX_ARGS) $(INCLUDES) $(LIBS) -c $< -o $@
 
 test: $(OBJECTS) $(TEST_OBJS) libgtest.a
@@ -35,7 +34,7 @@ libgtest.a:
 	ar -rv libgtest.a gtest-all.o
 	@rm gtest-all.o
 
-libNanoLog.a: $(OBJECTS) $(DEPS)
+libNanoLog.a: $(OBJECTS)
 	ar -cr libNanoLog.a $(OBJECTS)
 
 testHelper/GeneratedCode.cc: testHelper/client.cc
@@ -50,7 +49,17 @@ decompressor: testHelper/GeneratedCode.o Cycles.o Util.o Log.o LogDecompressor.c
 	$(CXX) $(CXX_ARGS) $^ -o decompressor $(INCLUDES) -Igenerated -Werror
 
 clean:
-	rm -f Perf test compressedLog testHelper/GeneratedCode.o *.o *.gch *.log
+	rm -f Perf test compressedLog testHelper/GeneratedCode.o *.o *.gch *.log ./.depend
 
 clean-all: clean
 	rm -f libgtest.a testHelper/GeneratedCode.cc
+
+# Automatic rules to build *.h dependencies. Taken from
+# https://stackoverflow.com/questions/2394609/makefile-header-dependencies
+depend: .depend
+
+.depend: $(SRCS)
+	rm -f ./.depend
+	$(CXX) $(CXX_ARGS) $(INCLUDES) -MM $^  > ./.depend;
+
+include .depend

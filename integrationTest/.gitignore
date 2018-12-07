@@ -9,6 +9,7 @@ output.txt
 testApp
 *.o
 *.dmp
+.depend_nanolog
 
 #IDE files
 nbproject/

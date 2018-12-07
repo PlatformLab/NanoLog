@@ -9,6 +9,7 @@ results/
 *.i
 *.ii
 *.map
+.depend_nanolog
 
 # IDE files
 .idea

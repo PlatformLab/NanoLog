@@ -30,7 +30,6 @@ endef
 RUNTIME_CXX_FLAGS= -std=c++11 -O3 -DNDEBUG -g
 NANO_LOG_LIBRARY_LIBS=-lrt -pthread
 
-RUNTIME_DEPS=$(wildcard $(RUNTIME_DIR)/*.h)
 RUNTIME_CC=$(RUNTIME_DIR)/Cycles.cc $(RUNTIME_DIR)/NanoLog.cc \
 		 $(RUNTIME_DIR)/Util.cc $(RUNTIME_DIR)/Log.cc $(RUNTIME_DIR)/RuntimeLogger.cc $(RUNTIME_DIR)/TimeTrace.cc
 RUNTIME_OBJS=$(RUNTIME_CC:.cc=.o)
@@ -53,7 +52,7 @@ generated/GeneratedCode.o: $(USER_OBJS)
 $(RUNTIME_DIR)/%.o: $(RUNTIME_DIR)/%.cc
 	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) -c -o $@ $< -I $(RUNTIME_DIR) -Igenerated -Werror $(EXTRA_NANOLOG_FLAGS)
 
-libNanoLog.a: $(RUNTIME_OBJS) $(RUNTIME_DEPS) generated/GeneratedCode.o decompressor
+libNanoLog.a: $(RUNTIME_OBJS) generated/GeneratedCode.o decompressor
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
 
 decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/Util.o $(RUNTIME_DIR)/Log.o $(RUNTIME_DIR)/LogDecompressor.cc
@@ -61,5 +60,15 @@ decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/U
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor
-	@rm -rf generated
+	@rm -rf generated $(RUNTIME_DIR)/.depend
 
+# Automatic rules to build *.h dependencies for NanoLog. Taken from
+# https://stackoverflow.com/questions/2394609/makefile-header-dependencies
+depend: .depend_nanolog
+
+.depend_nanolog: $(RUNTIME_CC)
+	rm -f $(RUNTIME_DIR)/.depend
+	$(CXX) $(RUNTIME_CXX_FLAGS) -I $(RUNTIME_DIR) -MM $^  > .depend_nanolog;
+	sed -i -E "s#(^[^ ])#$(RUNTIME_DIR)/\1#" .depend_nanolog
+
+include .depend_nanolog

@@ -3,6 +3,7 @@
 *.log
 test
 TTTest
+.depend
 
 testHelper/GeneratedCode.cc
 decompressor

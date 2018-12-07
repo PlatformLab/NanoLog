@@ -22,7 +22,7 @@ all: sampleApplication decompressor
 %.o: %.cc
 	$(CXX) -I $(NANOLOG_RUNTIME_DIR) -c -o $@ $< $(CXXFLAGS)
 
-# Make the final application linking NanoLog, pthreads, and POSIX aio
+# (b) Make the final application linking NanoLog, pthreads, and POSIX aio
 sampleApplication: main.o libNanoLog.a
 	$(CXX) $(CXXFLAGS) -o sampleApplication main.o -L. -lNanoLog -lpthread -lrt
 
