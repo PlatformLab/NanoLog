@@ -91,22 +91,31 @@ Log::insertCheckpoint(char **out, char *outLimit, bool writeDictionary) {
  */
 Log::Encoder::Encoder(char *buffer,
                                 size_t bufferSize,
-                                bool skipCheckpoint)
+                                bool skipCheckpoint,
+                                bool forceDictionaryOutput)
     : backing_buffer(buffer)
     , writePos(buffer)
     , endOfBuffer(buffer + bufferSize)
     , lastBufferIdEncoded(-1)
     , currentExtentSize(nullptr)
+    , encodeMissDueToMetadata(0)
+    , consecutiveEncodeMissesDueToMetadata(0)
 {
     assert(buffer);
 
     // Start the buffer off with a checkpoint
-    if (skipCheckpoint)
+    if (skipCheckpoint && !forceDictionaryOutput)
         return;
+
+#ifdef PREPROCESSOR_NANOLOG
+    bool writeDictionary = true;
+#else
+    bool writeDictionary = forceDictionaryOutput;
+#endif
 
     // In virtually all cases, our output buffer should have enough
     // space to store the dictionary. If not, we fail in place.
-    if (!insertCheckpoint(&writePos, endOfBuffer, true)) {
+    if (!insertCheckpoint(&writePos, endOfBuffer, writeDictionary)) {
         fprintf(stderr, "Internal Error: Not enough space allocated for "
                         "dictionary file.\r\n");
 
@@ -213,8 +222,20 @@ Log::Encoder::encodeLogMsgs(char *from,
 
     while (remaining > 0) {
         auto *entry = reinterpret_cast<UncompressedEntry*>(from);
-        if (entry->entrySize > remaining)
-            break;
+
+        if (entry->entrySize > remaining) {
+            if (entry->entrySize < (NanoLogConfig::STAGING_BUFFER_SIZE/2))
+                break;
+
+            GeneratedFunctions::LogMetadata &lm
+                            = GeneratedFunctions::logId2Metadata[entry->fmtId];
+            fprintf(stderr, "ERROR: Attempting to log a message that is %u "
+                            "bytes while the maximum allowable size is %u.\r\n"
+                            "This occurs for the log message %s:%u '%s'\r\n",
+                            entry->entrySize,
+                            NanoLogConfig::STAGING_BUFFER_SIZE/2,
+                            lm.fileName, lm.lineNumber, lm.fmtString);
+        }
 
         // Check for free space using the worst case assumption that
         // none of the arguments compressed and there are as many Nibbles
@@ -295,8 +316,25 @@ Log::Encoder::encodeLogMsgs(char *from,
         auto *entry = reinterpret_cast<UncompressedEntry*>(from);
 
         // New log entry that we have not observed yet
-        if (dictionary.size() <= entry->fmtId)
+        if (dictionary.size() <= entry->fmtId) {
+            ++encodeMissDueToMetadata;
+            ++consecutiveEncodeMissesDueToMetadata;
+
+            // If we miss a whole bunch, then we start printing out errors
+            if (consecutiveEncodeMissesDueToMetadata % 1000 == 0) {
+                fprintf(stderr, "NanoLog Error: Metadata missing for a dynamic "
+                                "log message (id=%u) during compression. If "
+                                "you are using Preprocessor NanoLog, there is "
+                                "be a problem with your integration (static "
+                                "logs detected=%lu).\r\n",
+                                entry->fmtId,
+                                GeneratedFunctions::numLogIds);
+            }
+
             break;
+        }
+
+        consecutiveEncodeMissesDueToMetadata = 0;
 
 #ifdef ENABLE_DEBUG_PRINTING
         printf("Trying to encode fmtId=%u, size=%u, remaining=%ld\r\n",
@@ -304,8 +342,19 @@ Log::Encoder::encodeLogMsgs(char *from,
         printf("\t%s\r\n", dictionary.at(entry->fmtId).formatString);
 #endif
 
-        if (entry->entrySize > remaining)
-            break;
+        if (entry->entrySize > remaining) {
+            if (entry->entrySize < (NanoLogConfig::STAGING_BUFFER_SIZE/2))
+                break;
+
+            StaticLogInfo &info = dictionary.at(entry->fmtId);
+            fprintf(stderr, "NanoLog ERROR: Attempting to log a message that "
+                            "is %u bytes while the maximum allowable size is "
+                            "%u.\r\n This occurs for the log message %s:%u '%s'"
+                            "\r\n",
+                            entry->entrySize,
+                            NanoLogConfig::STAGING_BUFFER_SIZE/2,
+                            info.filename, info.lineNum, info.formatString);
+        }
 
         // Check for free space using the worst case assumption that
         // none of the arguments compressed and there are as many Nibbles

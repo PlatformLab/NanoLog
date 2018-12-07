@@ -45,4 +45,5 @@ decompressor:
 
 # Cleans up the NanoLog files as well
 clean-all: clean
-	@rm -f $(NANOLOG_RUNTIME_DIR)/*.o $(NANOLOG_RUNTIME_DIR)/libNanoLog.a libNanoLog.a decompressor
+	@rm -f libNanoLog.a decompressor
+	$(MAKE) clean-all -C $(NANOLOG_RUNTIME_DIR)

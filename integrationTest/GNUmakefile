@@ -46,7 +46,9 @@ endif
 testApp: $(USER_OBJS) libNanoLog.a
 	$(CXX) -o testApp $(CXXFLAGS) $(USER_OBJS) -L. -lNanoLog $(NANO_LOG_LIBRARY_LIBS)
 
-basic_decompressor:
+# The dependency ensures that we build testApp with the appropriate flags
+# before we wipe them out to make the basicDecompressor.
+basic_decompressor: testApp
 	$(MAKE) -C basicDecompressor $(MAKEFLAGS)
 	cp basicDecompressor/decompressor basic_decompressor
 

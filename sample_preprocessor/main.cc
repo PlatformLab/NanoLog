@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
     time_span = std::chrono::duration_cast<std::chrono::duration<double>>(
                                                         stop - start).count();
-    printf("The total time spent invoking FAST_LOG with no parameters %lu "
+    printf("The total time spent invoking NANO_LOG with no parameters %lu "
             "times took %0.2lf seconds (%0.2lf ns/message average)\r\n",
             RECORDS, time_span, (time_span/RECORDS)*1e9);
 

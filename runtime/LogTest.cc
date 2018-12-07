@@ -599,7 +599,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     ASSERT_LE(2, GeneratedFunctions::numLogIds);
 
     uint64_t compressedLogs = 1;
-    Encoder e(outputBuffer1, 100 + dictionaryBytes);
+    Encoder e(outputBuffer1, 100 + dictionaryBytes, false, true);
 
     long bytesRead = e.encodeLogMsgs(inputBuffer,
                                            3*sizeof(UncompressedEntry),
@@ -626,7 +626,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
     compressedLogs = 1;
     uint32_t bufferSize = sizeof(Checkpoint)    + dictionaryBytes
                                                 + sizeof(BufferExtent) - 1;
-    Encoder e2(outputBuffer1, bufferSize);
+    Encoder e2(outputBuffer1, bufferSize, false, true);
     bytesRead = e2.encodeLogMsgs(inputBuffer,
                                     3*sizeof(UncompressedEntry),
                                     100,
@@ -647,7 +647,7 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughOutputSpace) {
 
     bufferSize = sizeof(Checkpoint) + dictionaryBytes + sizeof(BufferExtent)
                                     + sizeof(uint32_t);
-    Encoder e3(outputBuffer1, bufferSize);
+    Encoder e3(outputBuffer1, bufferSize, false, true);
     bytesRead = e3.encodeLogMsgs(inputBuffer,
                                     3*sizeof(UncompressedEntry),
                                     1,
@@ -706,6 +706,34 @@ TEST_F(LogTest, encodeLogMsgs_notEnoughInputSpace) {
     EXPECT_EQ(5U, e.lastBufferIdEncoded);
 }
 
+TEST_F(LogTest, encodeLogMsgs_logTooBig) {
+    char inputBuffer[100], outputBuffer1[1000];
+
+
+    UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
+    ue->timestamp = 100;
+    ue->fmtId = stringParamId;
+    ue->entrySize = sizeof(UncompressedEntry)
+            + NanoLogConfig::STAGING_BUFFER_SIZE;
+
+    Encoder e(outputBuffer1, 1000);
+
+    testing::internal::CaptureStderr();
+    uint64_t compressedLogs = 0;
+    long bytesRead = e.encodeLogMsgs(inputBuffer,
+                                     2*sizeof(UncompressedEntry),
+                                     5,
+                                     true,
+                                     &compressedLogs);
+
+    EXPECT_EQ(0, compressedLogs);
+    EXPECT_STREQ("ERROR: Attempting to log a message that is 1048592 bytes "
+                 "while the maximum allowable size is 524288.\r\nThis occurs "
+                 "for the log message testHelper/client.cc:21 "
+                 "'This is a string %s'\r\n",
+                    testing::internal::GetCapturedStderr().c_str());
+}
+
 TEST_F(LogTest, encodeBufferExtentStart) {
     char buffer[1000];
     Encoder encoder(buffer, 1000, true);
@@ -759,7 +787,7 @@ TEST_F(LogTest, encodeBufferExtentStart_outtaSpace) {
 
 TEST_F(LogTest, swapBuffer) {
     char buffer1[1000], buffer2[100];
-    Encoder encoder(buffer1, 1000, false);
+    Encoder encoder(buffer1, 1000, false, true);
 
     char *outBuffer;
     size_t outLength;
@@ -1992,7 +2020,7 @@ TEST_F(LogTest, Decoder_getNextLogStatement) {
     const char *testFile = "/tmp/testFile";
     const char *decomp = "/tmp/testFile2";
     char inputBuffer[1000], buffer[1000];
-    Encoder encoder(buffer, 1000, false);
+    Encoder encoder(buffer, 1000, false, true);
 
     // Hack to load fake Checkpoint values to get a consistent time output
     Checkpoint *checkpoint = (Checkpoint *) encoder.backing_buffer;
@@ -2449,12 +2477,37 @@ TEST_F(LogTest, encodeLogMsgs_cpp17) {
 
     Encoder encoder(outBuffer, sizeof(outBuffer), true);
 
+    // Case 1, not enough dictionary entries
+    EXPECT_EQ(0, encoder.encodeMissDueToMetadata);
+    EXPECT_EQ(0, encoder.consecutiveEncodeMissesDueToMetadata);
+
     in = inBuffer;
     char *encoderStartingPos = encoder.writePos;
     EXPECT_EQ(0, encoder.encodeLogMsgs(in, sizeof(UncompressedEntry), 0, false,
                                             dictionary, &numEventsCompressed));
     EXPECT_EQ(0, numEventsCompressed);
     EXPECT_EQ(encoderStartingPos + sizeof(BufferExtent), encoder.writePos);
+
+    EXPECT_EQ(1, encoder.encodeMissDueToMetadata);
+    EXPECT_EQ(1, encoder.consecutiveEncodeMissesDueToMetadata);
+
+    // Case 1, part 2: Not enough dictionary entries a whole bunch of times.
+    testing::internal::CaptureStderr();
+    for (int i = 0; i < 1000; ++i){ // 1000 corresponds to magic number in code
+        encoder.writePos = encoder.backing_buffer;
+        EXPECT_EQ(0, encoder. encodeLogMsgs(in, sizeof(UncompressedEntry),
+                                0, false, dictionary, &numEventsCompressed));
+    }
+
+    EXPECT_EQ(1001, encoder.encodeMissDueToMetadata);
+    EXPECT_EQ(1001, encoder.consecutiveEncodeMissesDueToMetadata);
+
+    std::string output = testing::internal::GetCapturedStderr().c_str();
+    EXPECT_STREQ("NanoLog Error: Metadata missing for a dynamic log message "
+                 "(id=10) during compression. If you are using Preprocessor "
+                 "NanoLog, there is be a problem with your integration "
+                 "(static logs detected=10).\r\n",
+                 output.c_str());
 
     // Case 2: Normal Compression
     ue->fmtId = 0;
@@ -2472,6 +2525,9 @@ TEST_F(LogTest, encodeLogMsgs_cpp17) {
 
     EXPECT_EQ(1, compressHelper0TimesRun);
     EXPECT_EQ(1, compressHelper1TimesRun);
+
+    EXPECT_EQ(1001, encoder.encodeMissDueToMetadata);
+    EXPECT_EQ(0, encoder.consecutiveEncodeMissesDueToMetadata);
 }
 
 TEST_F(LogTest, createMicroCode) {

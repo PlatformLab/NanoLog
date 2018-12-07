@@ -634,7 +634,9 @@ namespace Log {
      */
     class Encoder {
     PUBLIC:
-        Encoder(char *buffer, size_t bufferSize, bool skipCheckpoint=false);
+        Encoder(char *buffer, size_t bufferSize,
+                bool skipCheckpoint=false,
+                bool forceDictionaryOutput=false);
 
         long encodeLogMsgs(char *from, uint64_t nbytes,
                            uint32_t bufferId,
@@ -674,6 +676,15 @@ namespace Log {
         // A pointer to the last encoded BufferExtent's length to allow updating
         // the value as the user performs more encodeLogMsgs with the same id.
         uint32_t *currentExtentSize;
+
+        // Metric: Total number of encode failures due to missing metadata. This
+        // is typically due to a benign race condition, but could indicate an
+        // error if it happens repeatedly.
+        uint32_t encodeMissDueToMetadata;
+
+        // Metric: Number of consecutive encode failures due to missing metadata
+        // Used to detect cases where the dictionary isn't persisted due to bugs
+        uint32_t consecutiveEncodeMissesDueToMetadata;
     };
 
     /**
