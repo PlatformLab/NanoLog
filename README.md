@@ -49,7 +49,7 @@ NanoLog depends on the following:
 * POSIX AIO and Threads (usually installed with Linux)
 
 ## NanoLog Pipeline
-The NanoLog system enables low latency logging by deduplicating static log metadata and outputting the dynamic log data in a binary format. This means that log files produced by NanoLog are in binary and must be passed through a separate decompression program to produce the full, human readable ASCII log. The decompression program is built as a part of the NanoLog library.
+The NanoLog system enables low latency logging by deduplicating static log metadata and outputting the dynamic log data in a binary format. This means that log files produced by NanoLog are in binary and must be passed through a separate decompression program to produce the full, human readable ASCII log.
 
 ## Compiling NanoLog
 There are two versions of NanoLog (Preprocessor version and C++17 version) and you must chose **one** to use with your application as they’re not interoperable. The biggest difference between the two is that the Preprocessor version requires one to integrate a Python script in their build chain while the C++17 version is closer to a regular library (simply build and link against it). The benefit of using the Preprocessor version is that it performs more work at compile-time, resulting in a slightly more optimized runtime.
@@ -57,29 +57,22 @@ There are two versions of NanoLog (Preprocessor version and C++17 version) and y
 If you don’t know which one to use, go with C++17 NanoLog as it’s easier to use.
 
 ### C++17 NanoLog
-The C++17 version of NanoLog works like a traditional library, in that one uses the library by simply #include-ing the NanoLog header ([NanoLogCpp17.h](./runtime/NanoLogCpp17.h)), writing NANO_LOG(…) statements, and linking against the NanoLog Runtime library. A sample application and can be found in [sample](./sample).
+The C++17 version of NanoLog works like a traditional library; just [``#include "NanoLogCpp17.h"``](./runtime/NanoLogCpp17.h) and link against the NanoLog library. A sample application can be found in the [sample directory](./sample).
 
-To build the NanoLog Runtime library, simply change directory into the [runtime directory.h](./runtime/) and invoke ```make```. This will produce ```./libNanoLog.a``` to against link your application and a ```./decompressor``` application that can be used to re-inflate the binary logs.
+To build the C++17 NanoLog Runtime library, go in the [runtime directory](./runtime/) and invoke ```make```. This will produce ```./libNanoLog.a``` to against link your application and a ```./decompressor``` application that can be used to re-inflate the binary logs.
 
-The [NanoLog header](./runtime/NanoLogCpp17.h) is found in the [runtime directory](./runtime/) and be sure to link your application against the NanoLog library that you built above, pthreads, and POSIX AIO (-lrt). Again, a [sample GNUmakefile](./sample/GNUmakefile) can be found in the sample directory.
+When you compile your application, be sure to include the NanoLog header directory ([``-I ./runtime``](./runtime/)), and link against NanoLog, pthreads, and POSIX AIO (``-L ./runtime/ -lNanoLog -lpthreads -lrt``). Sample g++ invocations can be found in the [sample GNUmakefile](./sample/GNUmakefile).
 
-After you compile and run the application, the generated log file can then be passed to the decompressor application to generate the full human-readable log file (instructions below).
+After you compile and run the application, the log file generated can then be passed to the ```./decompressor``` application to generate the full human-readable log file (instructions below).
 
 ### Preprocessor NanoLog
 The Preprocessor version of NanoLog requires a tighter integration with the user build chain and is only for advanced/extreme users.
 
-It *requires* the user to use a GNUmakefile that includes the (NanoLogMakeFrag)[./NanoLogMakeFrag), declares the USR_SRCS and USR_OBJS variables to list all app’s source and object files respectively, and uses the pre-defined ```run-cxx``` macro to compile the user .cc files into .o files.
+It *requires* the user's GNUmakefile to include the [NanoLogMakeFrag](./NanoLogMakeFrag), declare USR_SRCS and USR_OBJS variables to list all app’s source and object files respectively, and use the pre-defined ```run-cxx``` macro to compile *ALL* the user .cc files into .o files instead of ``g++``. See the [preprocessor sample GNUmakefile](./sample_preprocessor/GNUmakefile) for more details.
 
-This version of NanoLog will then run a Python script over all the sources (via the ```run-cxx``` invocation) and generate code for the NanoLog library that is *specific* to that compilation of the user application. In other words, the NanoLog library for the Preprocessor version of NanoLog is __non-portable, even between compilations of the same application__.
+Internally, the ```run-cxx``` invocation will run a Python script over the source files and generate library code that is *specific* to each compilation of the user application. In other words, the compilation builds a version of the NanoLog library that is __non-portable, even between compilations of the same application__ and each ```make``` invocation rebuilds this library.
 
-The easiest way to use this version of NanoLog is to copy the [sample application](./sample_preprocessor) and follow the instructions in the [sample GNUmakefile](./sample_preprocessor/GNUmakefile).
-
-In short:
-1. Copy the ```## Required Library Variables``` section in the [preprocessor sample GNUmakefile](./sample_preprocessor/GNUmakefile) and set the ```USER_SRCS```, ```USER_OBJS```, and ```NANO_LOG_DIR``` variables to be the a list of the user sources, a list of the compiled user objects, and the root directory for NanoLog.
-2. Have ```EXTRA_NANOLOG_FLAGS=-DPREPROCESSOR_NANOLOG``` verbatim in the GNUmakefile and include the [NanoLogMakeFrag](./NanoLogMakeFrag) in the GNUmakefile
-3. Compile all the user sources with the predefined ```run-cxx``` function in the [NanoLogMakeFrag](./NanoLogMakeFrag)
-
-When you compile the application, a ./decompressor executable should be generated in your application directory as well. Use this to reconstitute the full human-readable log file (instructions below).
+Additionally, the compilation should also generate a ```./decompressor``` executable in the app directory and this can be used to reconstitute the full human-readable log file (instructions below).
 
 ## NanoLog API
 To use the NanoLog system in the code, one just has to include the NanoLog header (either [NanoLogCpp17.h](./runtime/NanoLogCpp17.h) for C++17 NanoLog or [NanoLog.h](./runtime/NanoLog.h) for Preprocessor NanoLog) and invoke the ```NANO_LOG()``` function in a similar fashion to printf, with the exception of a log level before it. Example below:
@@ -99,9 +92,10 @@ Valid log levels are DEBUG, NOTICE, WARNING, and ERROR and the logging level can
 The rest of the NanoLog API is documented in the [NanoLog.h](./runtime/NanoLog.h) header file.
 
 ## Post-Execution Log Decompressor
-A ./decompressor executable should have been generated when the NanoLog library is first compiled. If you're using Preprocessor NanoLog, the ./decompressor should be appear in the user application diectory, otherwise it's found in the [runtime directory](./runtime/).
+The execution of the user application should generate a compressed, binary log file (default locations: ./compressedLog or /tmp/logFile). To make the log file human-readable, simply invoke the ```decompressor``` application with the log file.
 
-To get a human-readable log file, simply pass the log file (default location: ./compressedLog or /tmp/logFile) into the executable:
 ```
 ./decompressor decompress ./compressedLog
 ```
+
+After building the NanoLog library, the decompressor executable can be found in either the [./runtime directory](./runtime/) (for C++17 NanoLog) or the user app directory (for Preprocessor NanoLog).
