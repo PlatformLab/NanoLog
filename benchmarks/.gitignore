@@ -3,6 +3,7 @@
 BenchmarkConfig.h
 generated/
 ._*
+.depend_nanolog
 
 # Generated executables
 benchmark

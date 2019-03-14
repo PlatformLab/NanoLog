@@ -746,11 +746,11 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
     // if the buffer either completely full or completely empty.
     // Doing this check here ensures that == means completely empty.
     while (minFreeSpace <= nbytes) {
-        // Since readHead can be updated in a different thread, we
+        // Since consumerPos can be updated in a different thread, we
         // save a consistent copy of it here to do calculations on
-        char *cachedReadPos = consumerPos;
+        char *cachedConsumerPos = consumerPos;
 
-        if (cachedReadPos <= producerPos) {
+        if (cachedConsumerPos <= producerPos) {
             minFreeSpace = endOfBuffer - producerPos;
 
             if (minFreeSpace > nbytes)
@@ -761,14 +761,14 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
 
             // Prevent the roll over if it overlaps the two positions because
             // that would imply the buffer is completely empty when it's not.
-            if (cachedReadPos != storage) {
+            if (cachedConsumerPos != storage) {
                 // prevents producerPos from updating before endOfRecordedSpace
                 Fence::sfence();
                 producerPos = storage;
-                minFreeSpace = cachedReadPos - producerPos;
+                minFreeSpace = cachedConsumerPos - producerPos;
             }
         } else {
-            minFreeSpace = cachedReadPos - producerPos;
+            minFreeSpace = cachedConsumerPos - producerPos;
         }
 
         // Needed to prevent infinite loops in tests
@@ -803,10 +803,10 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
 */
 char *
 RuntimeLogger::StagingBuffer::peek(uint64_t *bytesAvailable) {
-    // Save a consistent copy of recordHead
-    char *cachedRecordHead = producerPos;
+    // Save a consistent copy of producerPos
+    char *cachedProducerPos = producerPos;
 
-    if (cachedRecordHead < consumerPos) {
+    if (cachedProducerPos < consumerPos) {
         Fence::lfence(); // Prevent reading new producerPos but old endOf...
         *bytesAvailable = endOfRecordedSpace - consumerPos;
 
@@ -817,7 +817,7 @@ RuntimeLogger::StagingBuffer::peek(uint64_t *bytesAvailable) {
         consumerPos = storage;
     }
 
-    *bytesAvailable = cachedRecordHead - consumerPos;
+    *bytesAvailable = cachedProducerPos - consumerPos;
     return consumerPos;
 }
 

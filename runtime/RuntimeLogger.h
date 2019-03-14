@@ -453,7 +453,7 @@ using namespace NanoLog;
 
             // Position within the storage buffer where the consumer will consume
             // the next bytes from. This value is only updated by the consumer.
-            char *consumerPos;
+            char* volatile consumerPos;
 
             // Indicates that the thread owning this StagingBuffer has been
             // destructed (i.e. no more messages will be logged to it) and thus
