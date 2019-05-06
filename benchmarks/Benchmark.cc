@@ -96,14 +96,16 @@ int main(int argc, char** argv) {
     // Optional: Set the output location for the NanoLog system. By default
     // the log will be output to /tmp/compressedLog
     // NanoLog::setLogFile("/tmp/logFile");
-    NanoLog::setLogFile(BENCHMARK_OUPTUT_FILE);
+    NanoLog::setLogFile(BENCHMARK_OUTPUT_FILE);
 
     printf("BENCH_OP = %s\r\n", BENCH_OPS_AS_A_STR);
+
 #ifdef PREPROCESSOR_NANOLOG
-    printf("NanoLog System: Preprocessor\r\n");
+    constexpr const char system[] = "Preprocessor";
 #else
-    printf("NanoLog System: C++17\r\n");
+    constexpr const char system[] = "C++17";
 #endif
+    printf("NanoLog System: %s\r\n", system);
 
     pthread_barrier_t barrier;
     if (pthread_barrier_init(&barrier, NULL, BENCHMARK_THREADS)) {
@@ -144,12 +146,12 @@ int main(int argc, char** argv) {
 
     // Again print out all the parameters on one line so that aggregation's a bit easier
     const char *compaction = (BENCHMARK_DISABLE_COMPACTION) ? "false" : "true";
-    printf("# Throughput(Mop/s)  Operations Time Threads Compaction OutputFile BenchOp\r\n");
-    printf("%0.2lf %lu %0.6lf %d %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUPTUT_FILE, BENCH_OPS_AS_A_STR);
+    printf("# Throughput(Mop/s)  Operations Time Threads Compaction OutputFile System BenchOp\r\n");
+    printf("%10.2lf %10lu %10.6lf %10d %10s %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUTPUT_FILE, system, BENCH_OPS_AS_A_STR);
 
     // This is useful for when output is disabled and our metrics from the consumer aren't correct
     totalEvents = NanoLogInternal::RuntimeLogger::stagingBuffer->numAllocations*BENCHMARK_THREADS;
     printf("# Same as the above, but guestimated from the producer side\r\n");
-    printf("%10.2lf %10lu %10.6lf %10d %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUPTUT_FILE, BENCH_OPS_AS_A_STR);
+    printf("%10.2lf %10lu %10.6lf %10d %10s %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUTPUT_FILE, system, BENCH_OPS_AS_A_STR);
 }
 
