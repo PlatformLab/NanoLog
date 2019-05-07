@@ -147,7 +147,7 @@ libraryConfigTemplate = """
 
 namespace NanoLogConfig {
     // Controls in what mode the compressed log file will be opened
-    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_NOATIME|O_DSYNC;
+    static const int FILE_PARAMS = O_APPEND|O_RDWR|O_CREAT|O_DSYNC;
 
     // Location of the initial log file
     static constexpr const char* DEFAULT_LOG_FILE = BENCHMARK_OUTPUT_FILE;
@@ -245,6 +245,15 @@ def main(argv):
 
     with open('../runtime/Config.h', 'w') as oFile:
       oFile.write(libraryConfigTemplate)
+      print """
+***********
+* WARNING *
+***********
+      """
+      print "\"../runtime/Config.h\" has been modified to support " \
+              "the benchmark.\r\nPlease checkout a fresh version when " \
+              "building the library for other purposes with:\r\n" \
+              "\t git checkout ../runtime/Config.h\r\n"
 
 if __name__ == "__main__":
    main(sys.argv[1:])

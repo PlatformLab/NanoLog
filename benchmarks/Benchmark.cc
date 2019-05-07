@@ -101,11 +101,17 @@ int main(int argc, char** argv) {
     printf("BENCH_OP = %s\r\n", BENCH_OPS_AS_A_STR);
 
 #ifdef PREPROCESSOR_NANOLOG
-    constexpr const char system[] = "Preprocessor";
+    constexpr const char system[] = "PreProc";
 #else
     constexpr const char system[] = "C++17";
 #endif
     printf("NanoLog System: %s\r\n", system);
+
+#ifdef BENCHMARK_DISCARD_ENTRIES_AT_STAGINGBUFFER
+    constexpr const char discard[] = "true";
+#else
+    constexpr const char discard[] = "false";
+#endif
 
     pthread_barrier_t barrier;
     if (pthread_barrier_init(&barrier, NULL, BENCHMARK_THREADS)) {
@@ -135,6 +141,12 @@ int main(int argc, char** argv) {
 
     uint64_t totalEvents = NanoLogInternal::RuntimeLogger::nanoLogSingleton.logsProcessed;
     double totalTime = PerfUtils::Cycles::toSeconds(stop - start);
+    double recordTimeEstimated = PerfUtils::Cycles::toSeconds(stop - start
+                                    - NanoLogInternal::RuntimeLogger::stagingBuffer->cyclesProducerBlocked);
+    double recordNsEstimated = recordTimeEstimated*1.0e9
+                                / NanoLogInternal::RuntimeLogger::stagingBuffer->numAllocations;
+    double compressionTime = PerfUtils::Cycles::toSeconds(
+                    NanoLogInternal::RuntimeLogger::nanoLogSingleton.cyclesCompressing);
     printf("Took %0.2lf seconds to log %lu operations\r\nThroughput: %0.2lf op/s (%0.2lf Mop/s)\r\n",
                 totalTime, totalEvents,
                 totalEvents/totalTime,
@@ -146,12 +158,47 @@ int main(int argc, char** argv) {
 
     // Again print out all the parameters on one line so that aggregation's a bit easier
     const char *compaction = (BENCHMARK_DISABLE_COMPACTION) ? "false" : "true";
-    printf("# Throughput(Mop/s)  Operations Time Threads Compaction OutputFile System BenchOp\r\n");
-    printf("%10.2lf %10lu %10.6lf %10d %10s %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUTPUT_FILE, system, BENCH_OPS_AS_A_STR);
+    printf("# Note: record()* time is estimated based on one thread's performance\r\n");
+    printf("# %8s %10s %10s %10s %10s %10s %10s %10s %10s %10s %10s\r\n",
+            "Mlogs/s",
+            "Ops",
+            "Time",
+            "record()*",
+            "compress()",
+            "Threads",
+            "Discard",
+            "Compaction",
+            "OutputFile",
+            "System",
+            "BenchOp");
+
+    printf("%10.2lf %10lu %10.6lf %10.2lf %10.2lf %10d %10s %10s %10s %10s %-10s\r\n",
+            totalEvents/(totalTime*1e6),
+            totalEvents,
+            totalTime,
+            recordNsEstimated,
+            compressionTime*1.0e9/totalEvents,
+            BENCHMARK_THREADS,
+            discard,
+            compaction,
+            BENCHMARK_OUTPUT_FILE,
+            system,
+            BENCH_OPS_AS_A_STR);
 
     // This is useful for when output is disabled and our metrics from the consumer aren't correct
     totalEvents = NanoLogInternal::RuntimeLogger::stagingBuffer->numAllocations*BENCHMARK_THREADS;
     printf("# Same as the above, but guestimated from the producer side\r\n");
-    printf("%10.2lf %10lu %10.6lf %10d %10s %10s %10s %10s\r\n", totalEvents/(totalTime*1e6), totalEvents, totalTime, BENCHMARK_THREADS, compaction, BENCHMARK_OUTPUT_FILE, system, BENCH_OPS_AS_A_STR);
+    printf("%10.2lf %10lu %10.6lf %10.2lf %10.2lf %10d %10s %10s %10s %10s %10s\r\n",
+            totalEvents/(totalTime*1e6),
+            totalEvents,
+            totalTime,
+            recordNsEstimated,
+            compressionTime*1.0e9/totalEvents,
+            BENCHMARK_THREADS,
+            discard,
+            compaction,
+            BENCHMARK_OUTPUT_FILE,
+            system,
+            BENCH_OPS_AS_A_STR);
 }
 
