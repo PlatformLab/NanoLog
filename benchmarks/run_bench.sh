@@ -51,10 +51,10 @@ grep -P "model name|processor|MHz" /proc/cpuinfo >> $SETUP_FILE
 grep MemTotal /proc/meminfo   >> $SETUP_FILE
 
 ### Printing to GIT_FILE
-printf "=== Git Log (relative to master) ===\r\n"  >  $GIT_FILE
-git log benchmark...master^   >> $GIT_FILE
+printf "=== Git Log (Last 5 Entries) ===\r\n"  >  $GIT_FILE
+git log -5  >> $GIT_FILE
 
-printf "\r\n\r\n=== Git Diff (from benchmark head) ===\r\n" >> $GIT_FILE
+printf "\r\n\r\n=== Git Diff (from HEAD) ===\r\n" >> $GIT_FILE
 git diff                      >> $GIT_FILE
 
 printf "\r\n\r\n=== Git Diff (to master) === \r\n" >> $GIT_FILE
@@ -62,7 +62,7 @@ git diff master               >> $GIT_FILE
 
 
 # Run the actual test
-make clean-all && make -j4 && rm -rf /tmp/logFile && clear
+make clean-all && make -j4 > /dev/null && rm -rf /tmp/logFile && clear
 { ./benchmark 2>&1; } | tee $CONSOLE_OUT_FILE
-# ./decompressor rcdfTime /tmp/logFile > $RCDF_FILE
+./decompressor rcdfTime /tmp/logFile > $RCDF_FILE
 

@@ -247,7 +247,11 @@ using namespace NanoLog;
         uint64_t cyclesActive;
 
         // Metric: Amount of time spent compressing the dynamic log data
-        uint64_t cyclesCompressing;
+        uint64_t cyclesCompressingOnly;
+
+        // Metric: Amount of time spent compressing the dynamic log data
+        // including synchronization overheads
+        uint64_t cyclesCompressPlusLocking;
 
         // Metric: Stores the distribution of StagingBuffer peek sizes in 5%
         // increments relative to the full size. This distribution should show

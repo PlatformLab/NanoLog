@@ -39,7 +39,7 @@ CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
 endif
 CXX=g++
 
-all: benchmark
+all: benchmark unloadedLatency
 
 ifeq ($(PREPROCESSOR_NANOLOG),yes)
 # [Required] run-cxx will compile the user C++ source file into an object file using

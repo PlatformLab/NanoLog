@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "TimeTrace.h"
 #include "Cycles.h"         /* Cycles::rdtsc() */
 #include "RuntimeLogger.h"
 #include "Config.h"
@@ -54,7 +55,8 @@ RuntimeLogger::RuntimeLogger()
         , currentLogLevel(NOTICE)
         , cycleAtThreadStart(0)
         , cyclesActive(0)
-        , cyclesCompressing(0)
+        , cyclesCompressingOnly(0)
+        , cyclesCompressPlusLocking(0)
         , stagingBufferPeekDist()
         , cyclesScanningAndCompressing(0)
         , cyclesDiskIO_upperBound(0)
@@ -146,11 +148,15 @@ RuntimeLogger::getStats() {
     uint64_t stop = PerfUtils::Cycles::rdtsc();
     nanoLogSingleton.cyclesDiskIO_upperBound += (stop - start);
 
-    double outputTime =
-            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesDiskIO_upperBound);
-    double compressTime =
-            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesCompressing);
-    double workTime = outputTime + compressTime;
+    double outputTime = PerfUtils::Cycles::toSeconds(
+                                    nanoLogSingleton.cyclesDiskIO_upperBound);
+    double compressOnlyTime = PerfUtils::Cycles::toSeconds(
+                                    nanoLogSingleton.cyclesCompressingOnly);
+    double compressPlusLocking = PerfUtils::Cycles::toSeconds(
+                                    nanoLogSingleton.cyclesCompressPlusLocking);
+    double scanAndCompressTime = PerfUtils::Cycles::toSeconds(
+                                    nanoLogSingleton.cyclesScanningAndCompressing);
+    double workTime = outputTime + compressPlusLocking;
 
     double totalBytesWrittenDouble = static_cast<double>(
             nanoLogSingleton.totalBytesWritten);
@@ -167,7 +173,7 @@ RuntimeLogger::getStats() {
                nanoLogSingleton.logsProcessed,
                totalBytesWrittenDouble / 1.0e6,
                workTime,
-               compressTime);
+               compressPlusLocking);
     out << buffer;
 
     snprintf(buffer, 1024,
@@ -212,9 +218,13 @@ RuntimeLogger::getStats() {
 
     snprintf(buffer, 1024,
                 "\t%0.2lf ns/event in total\r\n"
-                   "\t%0.2lf ns/event compressing\r\n",
+                "\t%0.2lf ns/event compress only\r\n"
+                "\t%0.2lf ns/event compressing with synchronization\r\n"
+                "\t%0.2lf ns/event scan+compress\r\n",
                 (workTime) * 1.0e9 / numEventsProcessedDouble,
-                compressTime * 1.0e9 / numEventsProcessedDouble);
+                compressOnlyTime * 1.0e9 / numEventsProcessedDouble,
+                compressPlusLocking * 1.0e9 / numEventsProcessedDouble,
+                scanAndCompressTime* 1.0e9 / numEventsProcessedDouble);
     out << buffer;
 
     snprintf(buffer, 1024, "The compression ratio was %0.2lf-%0.2lfx "
@@ -371,6 +381,8 @@ RuntimeLogger::compressionThreadMain() {
     // lookup
     std::vector<StaticLogInfo> shadowStaticInfo;
 
+    PerfUtils::TimeTrace::record("Compression Thread Started");
+
     // Each iteration of this loop scans for uncompressed log messages in the
     // thread buffers, compresses as much as possible, and outputs it to a file.
     while (!compressionThreadShouldExit) {
@@ -431,6 +443,8 @@ RuntimeLogger::compressionThreadMain() {
                         long bytesToEncode = std::min(
                                 NanoLogConfig::RELEASE_THRESHOLD,
                                 remaining);
+
+                        uint64_t startCompressOnly = PerfUtils::Cycles::rdtsc();
 #ifdef PREPROCESSOR_NANOLOG
                         long bytesRead = encoder.encodeLogMsgs(
                                 peekPosition + (peekBytes - remaining),
@@ -447,6 +461,8 @@ RuntimeLogger::compressionThreadMain() {
                                 shadowStaticInfo,
                                 &logsProcessed);
 #endif
+                        cyclesCompressingOnly +=
+                                PerfUtils::Cycles::rdtsc() - startCompressOnly;
 
 
                         if (bytesRead == 0) {
@@ -461,8 +477,9 @@ RuntimeLogger::compressionThreadMain() {
                         totalBytesRead += bytesRead;
                         bytesConsumedThisIteration += bytesRead;
                     }
-                    cyclesCompressing += PerfUtils::Cycles::rdtsc() - start;
                     lock.lock();
+                    cyclesCompressPlusLocking
+                                        += PerfUtils::Cycles::rdtsc() - start;
                 } else {
                     // If there's no work, check if we're supposed to delete
                     // the stagingBuffer
@@ -526,9 +543,11 @@ RuntimeLogger::compressionThreadMain() {
                 if (outputBufferFull) {
                     // If the output buffer is full and we're not done,
                     // wait for completion
+                    PerfUtils::TimeTrace::record("Going to sleep (buffer full)");
                     cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
                     int err = aio_suspend(aiocb_list, 1, NULL);
                     cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                    PerfUtils::TimeTrace::record("Wakeup from sleep");
                     if (err != 0)
                         perror("LogCompressor's Posix AIO "
                                        "suspend operation failed");
@@ -554,6 +573,7 @@ RuntimeLogger::compressionThreadMain() {
             // Finishing up the IO
             int err = aio_error(&aioCb);
             ssize_t ret = aio_return(&aioCb);
+            PerfUtils::TimeTrace::record("IO Complete");
 
             if (err != 0) {
                 fprintf(stderr, "LogCompressor's POSIX AIO failed"
@@ -584,6 +604,8 @@ RuntimeLogger::compressionThreadMain() {
         aioCb.aio_nbytes = bytesToWrite;
         totalBytesWritten += bytesToWrite;
 
+        PerfUtils::TimeTrace::record("Issuing I/O Of size %u bytes",
+                                        int(bytesToWrite));
         if (aio_write(&aioCb) == -1)
             fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
 

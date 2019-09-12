@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018 Stanford University
+/* Copyright (c) 2016-2019 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
     double recordNsEstimated = recordTimeEstimated*1.0e9
                                 / NanoLogInternal::RuntimeLogger::stagingBuffer->numAllocations;
     double compressionTime = PerfUtils::Cycles::toSeconds(
-                    NanoLogInternal::RuntimeLogger::nanoLogSingleton.cyclesCompressing);
+                    NanoLogInternal::RuntimeLogger::nanoLogSingleton.cyclesCompressPlusLocking);
     printf("Took %0.2lf seconds to log %lu operations\r\nThroughput: %0.2lf op/s (%0.2lf Mop/s)\r\n",
                 totalTime, totalEvents,
                 totalEvents/totalTime,
@@ -155,6 +155,9 @@ int main(int argc, char** argv) {
     // Prints various statistics gathered by the NanoLog system to stdout
     printf("%s", NanoLog::getStats().c_str());
     NanoLog::printConfig();
+
+    // Print out any time trace statements
+    PerfUtils::TimeTrace::print();
 
     // Again print out all the parameters on one line so that aggregation's a bit easier
     const char *compaction = (BENCHMARK_DISABLE_COMPACTION) ? "false" : "true";

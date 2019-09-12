@@ -46,7 +46,7 @@ do
         for OPTION in "${OPTIONS[@]}"
         do
             echo "# Options ${OPTION}" | tee -a $LOG_FILE
-            for ((THREADS=1; THREADS<=6; THREADS=THREADS+=1))
+            for ((THREADS=1; THREADS<=8; THREADS=THREADS+=1))
             do
                 for BENCH_OP in "${BENCH_OPS[@]}"
                 do
