@@ -39,7 +39,7 @@ CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
 endif
 CXX=g++
 
-all: benchmark unloadedLatency
+all: benchmark simpleTimeRecorder
 
 ifeq ($(PREPROCESSOR_NANOLOG),yes)
 # [Required] run-cxx will compile the user C++ source file into an object file using
@@ -64,8 +64,11 @@ unloadedLatency: UnloadedLatency.o libNanoLog.a
 interference: Interference.o libFastLogger.a
 	$(CXX) $(CXXFLAGS) -o interference Interference.o -L. -lFastLogger $(LIBRARY_LIBS)
 
+simpleTimeRecorder: SimpleTimeRecorder.o $(NANOLOG_DIR)/runtime/Cycles.o
+	$(CXX) $(CXXFLAGS) -o simpleTimeRecorder $^
+
 clean:
-	@rm -f *.o benchmark /tmp/logFile compressedLog
+	@rm -f *.o benchmark /tmp/logFile compressedLog unloadedLatency simpleTimeRecorder
 
 ####
 # Library Compilation (copy verbatim)
