@@ -81,11 +81,13 @@ void runBenchmark(int id, pthread_barrier_t *barrier)
             "times took %0.2lf seconds (%0.2lf ns/op average)\r\n",
             id, ITERATIONS, time, (time/ITERATIONS)*1e9);
 
-        // Break abstraction to bring metrics on cycles blocked.
-    uint32_t nBlocks = NanoLogInternal::RuntimeLogger::stagingBuffer->numTimesProducerBlocked;
+    // Break abstraction to bring metrics on cycles blocked.
+    uint32_t nBlocks =
+         NanoLogInternal::RuntimeLogger::stagingBuffer->numTimesProducerBlocked;
     double timeBlocked = 1e9*PerfUtils::Cycles::toSeconds(
-            NanoLogInternal::RuntimeLogger::stagingBuffer->cyclesProducerBlocked);
-    printf("Thread[%d]: Time producer was stuck for = %0.2e ns (avg: %0.2e ns cnt: %u)\r\n",
+         NanoLogInternal::RuntimeLogger::stagingBuffer->cyclesProducerBlocked);
+    printf("Thread[%d]: Time producer was stuck for "
+           "= %0.2e ns (avg: %0.2e ns cnt: %u)\r\n",
             id,
             timeBlocked,
             timeBlocked/nBlocks,
@@ -136,17 +138,21 @@ int main(int argc, char** argv) {
     uint64_t stop = PerfUtils::Cycles::rdtsc();
 
     double time = PerfUtils::Cycles::toSeconds(stop - syncStart);
-    printf("Flushing the log statements to disk took an additional %0.2lf secs\r\n",
+    printf("Flushing the log file to disk took an additional %0.2lf secs\r\n",
             time);
 
-    uint64_t totalEvents = NanoLogInternal::RuntimeLogger::nanoLogSingleton.logsProcessed;
+
+    // Note: It's bad form to access the nanoLogSingleton and stagingBuffer's
+    // internal variables. It's only done here as this is an internal benchmark
+    // application used to evaluate/debug performance.
+    uint64_t totalEvents = NanoLogInternal::RuntimeLogger::nanoLogSingleton.metrics.logsProcessed;
     double totalTime = PerfUtils::Cycles::toSeconds(stop - start);
     double recordTimeEstimated = PerfUtils::Cycles::toSeconds(stop - start
                                     - NanoLogInternal::RuntimeLogger::stagingBuffer->cyclesProducerBlocked);
     double recordNsEstimated = recordTimeEstimated*1.0e9
                                 / NanoLogInternal::RuntimeLogger::stagingBuffer->numAllocations;
     double compressionTime = PerfUtils::Cycles::toSeconds(
-                    NanoLogInternal::RuntimeLogger::nanoLogSingleton.cyclesCompressPlusLocking);
+                    NanoLogInternal::RuntimeLogger::nanoLogSingleton.metrics.cyclesCompressAndLock);
     printf("Took %0.2lf seconds to log %lu operations\r\nThroughput: %0.2lf op/s (%0.2lf Mop/s)\r\n",
                 totalTime, totalEvents,
                 totalEvents/totalTime,
@@ -157,7 +163,7 @@ int main(int argc, char** argv) {
     NanoLog::printConfig();
 
     // Print out any time trace statements
-    PerfUtils::TimeTrace::print();
+//    PerfUtils::TimeTrace::print();
 
     // Again print out all the parameters on one line so that aggregation's a bit easier
     const char *compaction = (BENCHMARK_DISABLE_COMPACTION) ? "false" : "true";

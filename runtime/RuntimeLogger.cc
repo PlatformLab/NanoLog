@@ -54,25 +54,12 @@ RuntimeLogger::RuntimeLogger()
         , outputDoubleBuffer(nullptr)
         , currentLogLevel(NOTICE)
         , cycleAtThreadStart(0)
-        , cyclesActive(0)
-        , cyclesCompressingOnly(0)
-        , cyclesCompressPlusLocking(0)
-        , stagingBufferPeekDist()
-        , cyclesScanningAndCompressing(0)
-        , cyclesDiskIO_upperBound(0)
-        , totalBytesRead(0)
-        , totalBytesWritten(0)
-        , padBytesWritten(0)
-        , logsProcessed(0)
-        , numAioWritesCompleted(0)
+        , metrics()
         , coreId(-1)
         , registrationMutex()
         , invocationSites()
         , nextInvocationIndexToBePersisted(0)
 {
-    for (size_t i = 0; i < Util::arraySize(stagingBufferPeekDist); ++i)
-        stagingBufferPeekDist[i] = 0;
-
     const char *filename = NanoLogConfig::DEFAULT_LOG_FILE;
     outputFd = open(filename, NanoLogConfig::FILE_PARAMS, 0666);
     if (outputFd < 0) {
@@ -142,99 +129,101 @@ std::string
 RuntimeLogger::getStats() {
     std::ostringstream out;
     char buffer[1024];
-    // Leaks abstraction, but basically flush so we get all the time
+
+    // Leaks abstraction, but basically flush so we get all the I/O time
     uint64_t start = PerfUtils::Cycles::rdtsc();
     fdatasync(nanoLogSingleton.outputFd);
     uint64_t stop = PerfUtils::Cycles::rdtsc();
-    nanoLogSingleton.cyclesDiskIO_upperBound += (stop - start);
+    nanoLogSingleton.metrics.cyclesDiskIO_upperBound += (stop - start);
 
-    double outputTime = PerfUtils::Cycles::toSeconds(
-                                    nanoLogSingleton.cyclesDiskIO_upperBound);
-    double compressOnlyTime = PerfUtils::Cycles::toSeconds(
-                                    nanoLogSingleton.cyclesCompressingOnly);
-    double compressPlusLocking = PerfUtils::Cycles::toSeconds(
-                                    nanoLogSingleton.cyclesCompressPlusLocking);
-    double scanAndCompressTime = PerfUtils::Cycles::toSeconds(
-                                    nanoLogSingleton.cyclesScanningAndCompressing);
-    double workTime = outputTime + compressPlusLocking;
+    uint64_t cyclesAtBgThreadStart = nanoLogSingleton.cycleAtThreadStart;
+    Metrics m = nanoLogSingleton.metrics;
 
-    double totalBytesWrittenDouble = static_cast<double>(
-            nanoLogSingleton.totalBytesWritten);
-    double totalBytesReadDouble = static_cast<double>(
-            nanoLogSingleton.totalBytesRead);
-    double padBytesWrittenDouble = static_cast<double>(
-            nanoLogSingleton.padBytesWritten);
-    double numEventsProcessedDouble = static_cast<double>(
-            nanoLogSingleton.logsProcessed);
+    double outputTime = PerfUtils::Cycles::toSeconds(m.cyclesDiskIO_upperBound);
+    double compressS = PerfUtils::Cycles::toSeconds(
+                                                m.cyclesCompressingOnly);
+    double compressingWithConsume = PerfUtils::Cycles::toSeconds(
+                                                m.cyclesCompressingWithConsume);
+    double compressPlusLockS = PerfUtils::Cycles::toSeconds(
+                                                m.cyclesCompressAndLock);
+    double scanAndCompressS = PerfUtils::Cycles::toSeconds(
+                                                m.cyclesScanningAndCompressing);
+
+    double bytesWritten = static_cast<double>(m.totalBytesWritten);
+    double bytesRead = static_cast<double>(m.totalBytesRead);
+    double padBytesWritten = static_cast<double>(m.padBytesWritten);
+    double numEventsProcessedDouble = static_cast<double>(m.logsProcessed);
 
     snprintf(buffer, 1024,
                "\r\nWrote %lu events (%0.2lf MB) in %0.3lf seconds "
                    "(%0.3lf seconds spent compressing)\r\n",
-               nanoLogSingleton.logsProcessed,
-               totalBytesWrittenDouble / 1.0e6,
-               workTime,
-               compressPlusLocking);
+             m.logsProcessed,
+             bytesWritten / 1.0e6,
+             outputTime,
+             compressPlusLockS);
     out << buffer;
 
     snprintf(buffer, 1024,
            "There were %u file flushes and the final sync time was %lf sec\r\n",
-           nanoLogSingleton.numAioWritesCompleted,
+           m.numAioWritesCompleted,
            PerfUtils::Cycles::toSeconds(stop - start));
     out << buffer;
 
     double secondsAwake =
-            PerfUtils::Cycles::toSeconds(nanoLogSingleton.cyclesActive);
-    double secondsThreadHasBeenAlive = PerfUtils::Cycles::toSeconds(
-            PerfUtils::Cycles::rdtsc() - nanoLogSingleton.cycleAtThreadStart);
+            PerfUtils::Cycles::toSeconds(m.cyclesActive);
+    double totalTime = PerfUtils::Cycles::toSeconds(
+            PerfUtils::Cycles::rdtsc() - cyclesAtBgThreadStart);
     snprintf(buffer, 1024,
                "Compression Thread was active for %0.3lf out of %0.3lf seconds "
                    "(%0.2lf %%)\r\n",
                secondsAwake,
-               secondsThreadHasBeenAlive,
-               100.0 * secondsAwake / secondsThreadHasBeenAlive);
+             totalTime,
+               100.0 * secondsAwake / totalTime);
     out << buffer;
 
     snprintf(buffer, 1024,
                 "On average, that's\r\n\t%0.2lf MB/s or "
                     "%0.2lf ns/byte w/ processing\r\n",
-               (totalBytesWrittenDouble / 1.0e6) / (workTime),
-               (workTime * 1.0e9) / totalBytesWrittenDouble);
+             (bytesWritten / 1.0e6) / (totalTime),
+             (totalTime * 1.0e9) / bytesWritten);
     out << buffer;
 
     // Since we sleep at 1µs intervals and check for completion at wake up,
     // it's possible the IO finished before we woke-up, thus enlarging the time.
     snprintf(buffer, 1024,
                 "\t%0.2lf MB/s or %0.2lf ns/byte disk throughput (min)\r\n",
-                (totalBytesWrittenDouble / 1.0e6) / outputTime,
-                (outputTime * 1.0e9) / totalBytesWrittenDouble);
+             (bytesWritten / 1.0e6) / outputTime,
+             (outputTime * 1.0e9) / bytesWritten);
     out << buffer;
 
     snprintf(buffer, 1024,
-                "\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
-                (totalBytesWrittenDouble / 1.0e6) /
-                                         nanoLogSingleton.numAioWritesCompleted,
-                totalBytesWrittenDouble * 1.0 / numEventsProcessedDouble);
+             "\t%0.2lf MB per flush with %0.1lf bytes/event\r\n",
+             (bytesWritten / 1.0e6) / m.numAioWritesCompleted,
+             bytesWritten * 1.0 / numEventsProcessedDouble);
     out << buffer;
 
     snprintf(buffer, 1024,
-                "\t%0.2lf ns/event in total\r\n"
                 "\t%0.2lf ns/event compress only\r\n"
-                "\t%0.2lf ns/event compressing with synchronization\r\n"
-                "\t%0.2lf ns/event scan+compress\r\n",
-                (workTime) * 1.0e9 / numEventsProcessedDouble,
-                compressOnlyTime * 1.0e9 / numEventsProcessedDouble,
-                compressPlusLocking * 1.0e9 / numEventsProcessedDouble,
-                scanAndCompressTime* 1.0e9 / numEventsProcessedDouble);
+                "\t%0.2lf ns/event compressing with consume\r\n"
+                "\t%0.2lf ns/event compressing with locking\r\n"
+                "\t%0.2lf ns/event scan+compress\r\n"
+                "\t%0.2lf ns/event I/O time\r\n"
+                "\t%0.2lf ns/event in total\r\n",
+                compressS * 1.0e9 / numEventsProcessedDouble,
+                compressingWithConsume * 1.0e9 / numEventsProcessedDouble,
+                compressPlusLockS * 1.0e9 / numEventsProcessedDouble,
+                scanAndCompressS * 1.0e9 / numEventsProcessedDouble,
+                outputTime * 1.0e9 / double(m.totalMgsWritten),
+                totalTime * 1.0e9 / numEventsProcessedDouble);
     out << buffer;
 
     snprintf(buffer, 1024, "The compression ratio was %0.2lf-%0.2lfx "
                    "(%lu bytes in, %lu bytes out, %lu pad bytes)\n",
-           1.0 * totalBytesReadDouble / (totalBytesWrittenDouble
-                                         + padBytesWrittenDouble),
-           1.0 * totalBytesReadDouble / totalBytesWrittenDouble,
-           nanoLogSingleton.totalBytesRead,
-           nanoLogSingleton.totalBytesWritten,
-           nanoLogSingleton.padBytesWritten);
+                    1.0 * bytesRead / (bytesWritten + padBytesWritten),
+                    1.0 * bytesRead / bytesWritten,
+                    m.totalBytesRead,
+                    m.totalBytesWritten,
+                    m.padBytesWritten);
     out << buffer;
 
     return out.str();
@@ -258,13 +247,13 @@ RuntimeLogger::getHistograms()
     snprintf(buffer, 1024, "Distribution of StagingBuffer.peek() sizes\r\n");
     out << buffer;
     size_t numIntervals =
-            Util::arraySize(nanoLogSingleton.stagingBufferPeekDist);
+            Util::arraySize(nanoLogSingleton.metrics.stagingBufferPeekDist);
     for (size_t i = 0; i < numIntervals; ++i) {
         snprintf(buffer, 1024
                 , "\t%02lu - %02lu%%: %lu\r\n"
                 , i*100/numIntervals
                 , (i+1)*100/numIntervals
-                , nanoLogSingleton.stagingBufferPeekDist[i]);
+                , nanoLogSingleton.metrics.stagingBufferPeekDist[i]);
         out << buffer;
     }
 
@@ -345,9 +334,49 @@ RuntimeLogger::waitForAIO() {
         } else if (ret < 0) {
             perror("LogCompressor's Posix AIO Write operation failed");
         }
-        ++numAioWritesCompleted;
+        ++metrics.numAioWritesCompleted;
         hasOutstandingOperation = false;
     }
+}
+
+
+/**
+ * Metrics subtraction operator that takes the difference between all internal
+ * member variables from two Metrics objects and effectively returns one
+ * equivalent to (this - other).
+ *
+ * \param other
+ *      Second Metrics struct to subtract by
+ * \return
+ *      Metrics struct containing the result of the subtraction
+ */
+RuntimeLogger::Metrics
+RuntimeLogger::Metrics::operator-(const RuntimeLogger::Metrics &other)
+{
+    RuntimeLogger::Metrics result = *this;
+
+    result.cyclesCompressingOnly -= other.cyclesCompressingOnly;
+    result.cyclesCompressingWithConsume -= other.cyclesCompressingWithConsume;
+    result.cyclesCompressAndLock -= other.cyclesCompressAndLock;
+    result.cyclesScanningAndCompressing -= other.cyclesScanningAndCompressing;
+    result.cyclesActive -= other.cyclesActive;
+    result.cyclesSleeping_outOfWork -= other.cyclesSleeping_outOfWork;
+    result.cyclesDiskIO_upperBound -= other.cyclesDiskIO_upperBound;
+    result.numCompressBatches -= other.numCompressBatches;
+    result.numCompressingAndLocks -= other.numCompressingAndLocks;
+    result.numScansAndCompress -= other.numScansAndCompress;
+    result.numSleeps_outOfWork -= other.numSleeps_outOfWork;
+    result.totalBytesRead -= other.totalBytesRead;
+    result.totalBytesWritten -= other.totalBytesWritten;
+    result.logsProcessed -= other.logsProcessed;
+    result.totalMgsWritten -= other.totalMgsWritten;
+    result.padBytesWritten -= other.padBytesWritten;
+    result.numAioWritesCompleted -= other.numAioWritesCompleted;
+
+    for (uint64_t i = 0; i < Util::arraySize(stagingBufferPeekDist); ++i)
+        result.stagingBufferPeekDist[i] -= other.stagingBufferPeekDist[i];
+
+    return result;
 }
 
 /**
@@ -360,8 +389,8 @@ RuntimeLogger::compressionThreadMain() {
     size_t lastStagingBufferChecked = 0;
 
     // Marks when the thread wakes up. This value should be used to calculate
-    // the number of cyclesActive right before blocking/sleeping and then updated
-    // to the latest rdtsc() when the thread re-awakens.
+    // the number of cyclesActive right before blocking/sleeping and then
+    // updated to the latest rdtsc() when the thread re-awakens.
     uint64_t cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
     cycleAtThreadStart = cyclesAwakeStart;
 
@@ -373,13 +402,24 @@ RuntimeLogger::compressionThreadMain() {
     bool outputBufferFull = false;
 
     // Indicates that in scanning the StagingBuffers, we have passed the
-    // zero-th index, but have not yet encoded that in he compressed output
+    // zero-th index, but have not yet encoded that bit in the compressed output
     bool wrapAround = false;
 
     // Keeps a shadow mapping of the log identifiers to static information
     // to allow the logging threads to register in parallel with compression
-    // lookup
+    // lookup without locking
     std::vector<StaticLogInfo> shadowStaticInfo;
+
+    // Marks when the last I/O started; used to calculate bandwidth
+    uint64_t lastIOStartedTimestamp = 0;
+
+#ifdef PRINT_BG_OPERATIONS
+    // Gathers various metrics
+    Metrics lastMetrics = metrics;
+
+    // Timestamp where lastMetrics was taken
+    uint64_t timestampOfLastMetrics = cyclesAwakeStart;
+#endif
 
     PerfUtils::TimeTrace::record("Compression Thread Started");
 
@@ -427,15 +467,17 @@ RuntimeLogger::compressionThreadMain() {
 
                 // If there's work, unlock to perform it
                 if (peekBytes > 0) {
-                    uint64_t start = PerfUtils::Cycles::rdtsc();
+                    uint64_t peekStart = PerfUtils::Cycles::rdtsc();
                     lock.unlock();
 
+#ifdef RECORD_PRODUCER_STATS
                     // Record metrics on the peek size
-                    size_t sizeOfDist = Util::arraySize(stagingBufferPeekDist);
+                    size_t sizeOfDist =
+                            Util::arraySize(metrics.stagingBufferPeekDist);
                     size_t distIndex = (sizeOfDist*peekBytes)/
                                             NanoLogConfig::STAGING_BUFFER_SIZE;
-                    ++(stagingBufferPeekDist[distIndex]);
-
+                    ++(metrics.stagingBufferPeekDist[distIndex]);
+#endif
 
                     // Encode the data in RELEASE_THRESHOLD chunks
                     uint32_t remaining = downCast<uint32_t>(peekBytes);
@@ -451,7 +493,7 @@ RuntimeLogger::compressionThreadMain() {
                                 bytesToEncode,
                                 sb->getId(),
                                 wrapAround,
-                                &logsProcessed);
+                                &metrics.logsProcessed);
 #else
                         long bytesRead = encoder.encodeLogMsgs(
                                 peekPosition + (peekBytes - remaining),
@@ -459,11 +501,11 @@ RuntimeLogger::compressionThreadMain() {
                                 sb->getId(),
                                 wrapAround,
                                 shadowStaticInfo,
-                                &logsProcessed);
+                                &metrics.logsProcessed);
 #endif
-                        cyclesCompressingOnly +=
+                        metrics.cyclesCompressingOnly +=
                                 PerfUtils::Cycles::rdtsc() - startCompressOnly;
-
+                        metrics.numCompressBatches++;
 
                         if (bytesRead == 0) {
                             lastStagingBufferChecked = i;
@@ -474,12 +516,16 @@ RuntimeLogger::compressionThreadMain() {
                         wrapAround = false;
                         remaining -= downCast<uint32_t>(bytesRead);
                         sb->consume(bytesRead);
-                        totalBytesRead += bytesRead;
+                        metrics.totalBytesRead += bytesRead;
                         bytesConsumedThisIteration += bytesRead;
+                        metrics.cyclesCompressingWithConsume +=
+                                PerfUtils::Cycles::rdtsc() - startCompressOnly;
                     }
+
                     lock.lock();
-                    cyclesCompressPlusLocking
-                                        += PerfUtils::Cycles::rdtsc() - start;
+                    metrics.numCompressingAndLocks++;
+                    metrics.cyclesCompressAndLock
+                                        += PerfUtils::Cycles::rdtsc() - peekStart;
                 } else {
                     // If there's no work, check if we're supposed to delete
                     // the stagingBuffer
@@ -513,7 +559,9 @@ RuntimeLogger::compressionThreadMain() {
                     break;
             }
 
-            cyclesScanningAndCompressing += PerfUtils::Cycles::rdtsc() - start;
+            metrics.cyclesScanningAndCompressing +=
+                                             PerfUtils::Cycles::rdtsc() - start;
+            metrics.numScansAndCompress++;
         }
 
         // If there's no data to output, go to sleep.
@@ -527,7 +575,8 @@ RuntimeLogger::compressionThreadMain() {
                 continue;
             }
 
-            cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
+            metrics.cyclesActive +=
+                        PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
 
             hintQueueEmptied.notify_one();
             workAdded.wait_for(lock, std::chrono::microseconds(
@@ -544,10 +593,17 @@ RuntimeLogger::compressionThreadMain() {
                     // If the output buffer is full and we're not done,
                     // wait for completion
                     PerfUtils::TimeTrace::record("Going to sleep (buffer full)");
-                    cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
+                    uint64_t sleepStart = PerfUtils::Cycles::rdtsc();
+                    metrics.cyclesActive += sleepStart - cyclesAwakeStart;
                     int err = aio_suspend(aiocb_list, 1, NULL);
-                    cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                    uint64_t sleepEnd = PerfUtils::Cycles::rdtsc();
+                    cyclesAwakeStart = sleepEnd;
                     PerfUtils::TimeTrace::record("Wakeup from sleep");
+#ifdef PRINT_BG_OPERATIONS
+                    printf("Fell asleep for %0.2lf ns\r\n",
+                           1.0e9*PerfUtils::Cycles::toSeconds(
+                                   sleepEnd - sleepStart));
+#endif
                     if (err != 0)
                         perror("LogCompressor's Posix AIO "
                                        "suspend operation failed");
@@ -556,24 +612,35 @@ RuntimeLogger::compressionThreadMain() {
                     if (bytesConsumedThisIteration == 0 &&
                         NanoLogConfig::POLL_INTERVAL_DURING_IO_US > 0) {
                         std::unique_lock<std::mutex> lock(condMutex);
-                        cyclesActive += PerfUtils::Cycles::rdtsc() -
-                                       cyclesAwakeStart;
+                        uint64_t sleepStart = PerfUtils::Cycles::rdtsc();
+                        metrics.cyclesActive += sleepStart - cyclesAwakeStart;
+                        PerfUtils::TimeTrace::record(sleepStart, "No work sleep");
                         workAdded.wait_for(lock, std::chrono::microseconds(
                                 NanoLogConfig::POLL_INTERVAL_DURING_IO_US));
-                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                        uint64_t sleepEnd = PerfUtils::Cycles::rdtsc();
+                        cyclesAwakeStart = sleepEnd;
+                        PerfUtils::TimeTrace::record(sleepEnd,"Wakeup from sleep");
+                        metrics.cyclesSleeping_outOfWork += sleepEnd - sleepStart;
+                        ++metrics.numSleeps_outOfWork;
+#ifdef PRINT_BG_OPERATIONS
+                        printf("Outta Work sleep for %0.2lf ns\r\n",
+                                1.0e9*PerfUtils::Cycles::toSeconds(
+                                                      sleepEnd - sleepStart));
+#endif
                     }
 
-                    if (aio_error(&aioCb) == EINPROGRESS) {
-                        cyclesDiskIO_upperBound += (PerfUtils::Cycles::rdtsc() - start);
+                    if (aio_error(&aioCb) == EINPROGRESS)
                         continue;
-                    }
                 }
             }
 
             // Finishing up the IO
             int err = aio_error(&aioCb);
             ssize_t ret = aio_return(&aioCb);
+            metrics.cyclesDiskIO_upperBound += PerfUtils::Cycles::rdtsc()
+                                                    - lastIOStartedTimestamp;
             PerfUtils::TimeTrace::record("IO Complete");
+
 
             if (err != 0) {
                 fprintf(stderr, "LogCompressor's POSIX AIO failed"
@@ -581,8 +648,132 @@ RuntimeLogger::compressionThreadMain() {
             } else if (ret < 0) {
                 perror("LogCompressor's Posix AIO Write failed");
             }
-            ++numAioWritesCompleted;
+            ++metrics.numAioWritesCompleted;
             hasOutstandingOperation = false;
+
+#ifdef PRINT_BG_OPERATIONS
+            // Gather and print metrics after an I/O operation is completed.
+            uint64_t now = PerfUtils::Cycles::rdtsc();
+            uint64_t extraActiveTime = now - cyclesAwakeStart;
+            uint64_t timestampOfNewMetrics = now;
+
+            Metrics newMetrics = metrics;
+            Metrics diff = newMetrics - lastMetrics;
+
+            double elapsedS = PerfUtils::Cycles::toSeconds(
+                                            now - timestampOfLastMetrics);
+            double compressOnlyS = PerfUtils::Cycles::toSeconds(
+                                        diff.cyclesCompressingOnly);
+            double compressingAndLockingS = PerfUtils::Cycles::toSeconds(
+                                        diff.cyclesCompressAndLock);
+            double scanningAndCompressingS = PerfUtils::Cycles::toSeconds(
+                                        diff.cyclesScanningAndCompressing);
+            double bgActiveS = PerfUtils::Cycles::toSeconds(
+                                        diff.cyclesActive + extraActiveTime);
+            double ioS = PerfUtils::Cycles::toSeconds(
+                                        diff.cyclesDiskIO_upperBound);
+            double bgIdleS = (elapsedS - scanningAndCompressingS);
+            double bytesCompressed = double(encoder.getEncodedBytes());
+            double diskBW_MBps = 1e-6*(double(diff.totalBytesWritten))/ioS;
+            double logMsgsCompressed = double(diff.logsProcessed);
+
+            printf("At +%0.6lf seconds, compression thread compressed %lu "
+                   "messages at %0.1lf bytes/msg\r\n It was active %0.2lf%% "
+                   "of the time (%0.2lf us active; %0.2lf us idle).\r\n",
+                   PerfUtils::Cycles::toSeconds(now - timestampOfLastMetrics),
+                   diff.logsProcessed,
+                   bytesCompressed/(logMsgsCompressed),
+                   100.0*bgActiveS/elapsedS,
+                   1.0e6*bgActiveS,
+                   1.0e6*bgIdleS
+            );
+
+            // Stores metrics for the first logging thread only. These metrics
+            // ARE SLOPPY, and are only intended for deep debugging with
+            // a single logging thread.
+            static uint32_t lastProducerBufferId = 0;
+            static uint64_t lastProducerBlockedCycles = 0;
+            static uint64_t lastProducerNumBlocks = 0;
+            static uint64_t lastProducerNumAllocations = 0;
+
+            StagingBuffer *sb = nullptr;
+            {
+                std::unique_lock<std::mutex> _(bufferMutex);
+                if (threadBuffers.size() > 0)
+                    sb = threadBuffers.at(0);
+            }
+
+            if (sb != nullptr && sb->id == lastProducerBufferId) {
+                double producerBlockedS = PerfUtils::Cycles::toSeconds(
+                         sb->cyclesProducerBlocked - lastProducerBlockedCycles);
+                double estimatedRecordS = elapsedS - producerBlockedS;
+                uint64_t numBlocks = sb->numTimesProducerBlocked
+                                                - lastProducerNumBlocks;
+                uint64_t numAllocations = sb->numAllocations
+                                                - lastProducerNumAllocations;
+
+                printf("Producer blocks %lu of %lu records "
+                       "(%0.2lf%%) for an average length of %0.2lf ns.\r\n",
+                       numBlocks,
+                       numAllocations,
+                       100.0*double(numBlocks)/double(numAllocations),
+                       1e9*producerBlockedS/double(numBlocks)
+                );
+
+                printf("\t%6.2lf* ns/log or %6.2lf Mlog/s Only Producer\r\n",
+                       (1e9*estimatedRecordS)/double(numAllocations),
+                       double(numAllocations)/(1e6*estimatedRecordS)
+                );
+            }
+
+            if (sb != nullptr) {
+                lastProducerBufferId = sb->id;
+                lastProducerBlockedCycles = sb->cyclesProducerBlocked;
+                lastProducerNumBlocks = sb->numTimesProducerBlocked;
+                lastProducerNumAllocations = sb->numAllocations;
+            }
+            // End sloppy producer metrics
+
+            printf("\t%6.2lf  ns/log or %6.2lf Mlog/s Compress Only\r\n",
+                   1e9*compressOnlyS/double(logMsgsCompressed),
+                   logMsgsCompressed / (1e6 * compressOnlyS)
+            );
+            printf("\t%6.2lf  ns/log or %6.2lf Mlog/s Compress w/ locks\r\n",
+                   1e9 * compressingAndLockingS / logMsgsCompressed,
+                   logMsgsCompressed / (1e6 * compressingAndLockingS)
+            );
+            printf("\t%6.2lf* ns/log or %6.2lf Mlog/s Compress w/ scan\r\n",
+                   1e9 * scanningAndCompressingS / logMsgsCompressed,
+                   logMsgsCompressed / (1e6 * scanningAndCompressingS)
+            );
+
+            printf("\t%6.2lf* ns/log or %6.2lf Mlog/s Compress (w/ all)\r\n",
+                   1e9 * bgActiveS / logMsgsCompressed,
+                   logMsgsCompressed / (1e6 * bgActiveS)
+            );
+
+            printf("\t%6.2lf  ns/log or %6.2lf Mlog/s at %0.2lfMB/s "
+                   "Disk Bandwidth at %0.1lf bytes/msg\r\n",
+                   1e9*ioS/double(diff.totalMgsWritten),
+                   double(diff.totalMgsWritten)/(1e6*ioS),
+                   diskBW_MBps,
+                   double(diff.totalBytesWritten)/double(diff.totalMgsWritten)
+            );
+
+            printf("Last I/O was %0.3lf MBs\r\n", double(diff.totalBytesWritten)*1e-6);
+
+            // Metrics marked with an asterisks makes the assumption that the
+            // application code is logging flat out.
+            // This means if additional code executes between log statements
+            // or delays are inserted, then these values are not accurate.
+            // Additionally, even if the application is running flat out,
+            // the first/last output may not be accurate as the test ramps
+            // up/down. Be warned.
+            printf("* These may not be accurate (see comments in code)\r\n");
+
+            lastMetrics = newMetrics;
+            timestampOfLastMetrics = timestampOfNewMetrics;
+#endif
         }
 
         // At this point, compressed items exist in the buffer and the double
@@ -595,17 +786,24 @@ RuntimeLogger::compressionThreadMain() {
             if (bytesOver != 0) {
                 memset(compressingBuffer, 0, 512 - bytesOver);
                 bytesToWrite = bytesToWrite + 512 - bytesOver;
-                padBytesWritten += (512 - bytesOver);
+                metrics.padBytesWritten += (512 - bytesOver);
             }
         }
 
         aioCb.aio_fildes = outputFd;
         aioCb.aio_buf = compressingBuffer;
         aioCb.aio_nbytes = bytesToWrite;
-        totalBytesWritten += bytesToWrite;
+        metrics.totalBytesWritten += bytesToWrite;
+        metrics.totalMgsWritten = metrics.logsProcessed;
 
+        lastIOStartedTimestamp = PerfUtils::Cycles::rdtsc();
         PerfUtils::TimeTrace::record("Issuing I/O Of size %u bytes",
                                         int(bytesToWrite));
+#ifdef PRINT_BG_OPERATIONS
+        printf("Issuing I/O Of size %0.3lf MB\r\n",
+               int(bytesToWrite)/(1024.0*1024));
+#endif
+
         if (aio_write(&aioCb) == -1)
             fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
 
@@ -616,16 +814,15 @@ RuntimeLogger::compressionThreadMain() {
                            NanoLogConfig::OUTPUT_BUFFER_SIZE);
         std::swap(outputDoubleBuffer, compressingBuffer);
         outputBufferFull = false;
-
-        cyclesDiskIO_upperBound += (PerfUtils::Cycles::rdtsc() - start);
     }
 
     if (hasOutstandingOperation) {
-        uint64_t start = PerfUtils::Cycles::rdtsc();
         // Wait for any outstanding AIO to finish
         while (aio_error(&aioCb) == EINPROGRESS);
         int err = aio_error(&aioCb);
         ssize_t ret = aio_return(&aioCb);
+        metrics.cyclesDiskIO_upperBound +=
+                          (PerfUtils::Cycles::rdtsc() - lastIOStartedTimestamp);
 
         if (err != 0) {
             fprintf(stderr, "LogCompressor's POSIX AIO failed with %d: %s\r\n",
@@ -633,13 +830,11 @@ RuntimeLogger::compressionThreadMain() {
         } else if (ret < 0) {
             perror("LogCompressor's Posix AIO Write operation failed");
         }
-        ++numAioWritesCompleted;
+        ++metrics.numAioWritesCompleted;
         hasOutstandingOperation = false;
-        cyclesDiskIO_upperBound += (PerfUtils::Cycles::rdtsc() - start);
     }
 
     cycleAtThreadStart = 0;
-    cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
 }
 
 // Documentation in NanoLog.h
@@ -767,8 +962,9 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
     const char *endOfBuffer = storage + NanoLogConfig::STAGING_BUFFER_SIZE;
 
 #ifdef RECORD_PRODUCER_STATS
-    uint64_t start = PerfUtils::Cycles::rdtsc();
 #endif
+
+    uint64_t start = PerfUtils::Cycles::rdtsc();
 
     // There's a subtle point here, all the checks for remaining
     // space are strictly < or >, not <= or => because if we allow
@@ -812,9 +1008,10 @@ RuntimeLogger::StagingBuffer::reserveSpaceInternal(size_t nbytes, bool blocking)
             return nullptr;
     }
 
-#ifdef RECORD_PRODUCER_STATS
+
     uint64_t cyclesBlocked = PerfUtils::Cycles::rdtsc() - start;
     cyclesProducerBlocked += cyclesBlocked;
+#ifdef RECORD_PRODUCER_STATS
 
     size_t maxIndex = Util::arraySize(cyclesProducerBlockedDist) - 1;
     size_t index = std::min(cyclesBlocked/cyclesIn10Ns, maxIndex);

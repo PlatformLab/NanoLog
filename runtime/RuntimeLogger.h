@@ -153,11 +153,8 @@ using namespace NanoLog;
         static RuntimeLogger nanoLogSingleton;
 
         RuntimeLogger();
-
         ~RuntimeLogger();
-
         void compressionThreadMain();
-
         void setLogFile_internal(const char *filename);
 
         void waitForAIO();
@@ -182,6 +179,113 @@ using namespace NanoLog;
                 threadBuffers.push_back(stagingBuffer);
             }
         }
+
+        /**
+         * Stores performance metrics related to the operations of the
+         * background compression thread.
+         */
+        struct Metrics {
+            Metrics() : cyclesCompressingOnly(0)
+                        , cyclesCompressingWithConsume(0)
+                        , cyclesCompressAndLock(0)
+                        , cyclesScanningAndCompressing(0)
+                        , cyclesActive(0)
+                        , cyclesSleeping_outOfWork(0)
+                        , cyclesDiskIO_upperBound(0)
+                        , numCompressBatches(0)
+                        , numCompressingAndLocks(0)
+                        , numScansAndCompress(0)
+                        , numSleeps_outOfWork(0)
+                        , stagingBufferPeekDist{0}
+                        , totalBytesRead(0)
+                        , totalBytesWritten(0)
+                        , logsProcessed(0)
+                        , totalMgsWritten(0)
+                        , padBytesWritten(0)
+                        , numAioWritesCompleted(0)
+            { }
+
+            Metrics operator-(const Metrics &other);
+
+            // Number of cycles the background thread spent compressing log data
+            uint64_t cyclesCompressingOnly;
+
+            // Number of cycles spent compressing log data and releasing buffer
+            // space back to the logging threads (inclusive of above)
+            uint64_t cyclesCompressingWithConsume;
+
+            // Number of cycles spent compressing the dynamic log data
+            // including all synchronization overheads (inclusive of above)
+            uint64_t cyclesCompressAndLock;
+
+            // Number of cycles spent both scanning for work in the staging
+            // buffers and compressing the contents (inclusive of the above).
+            // This metric also includes cycles where the background thread
+            // scanned for work, but found none.
+            uint64_t cyclesScanningAndCompressing;
+
+            // Total number of cycles the background compression thread ran for.
+            // This includes all the time spent compressing, synchronizing,
+            // scanning, and issuing I/O (i.e. superset of above). Note that
+            // this value is only updated when the thread goes to sleep/exits;
+            // to get an accurate value while the thread is running, one needs
+            // to add the additional time since the background thread last slept
+            uint64_t cyclesActive;
+
+            // Total number of cycles the background thread slept because it
+            // believe it was out of work (i.e. no messages to compress).
+            uint64_t cyclesSleeping_outOfWork;
+
+            // Upper bound on the amount of cycles spent on asynchronous I/O.
+            // It is a strict upper bound since the background thread polls for
+            // completion while performing other work; as a result, the exact
+            // completion time may slip a little bit.
+            uint64_t cyclesDiskIO_upperBound;
+
+            // Number of times the background thread compressed a chunk of
+            // log data.Corresponds with the number of measurements taken by
+            // cyclesCompressingOnly
+            uint64_t numCompressBatches;
+
+            // Number of times the background thread locked/unlocked the
+            // global staging buffer vector before compressing. Corresponds with
+            // the number of measurements taken by cyclesCompressAndLock
+            uint64_t numCompressingAndLocks;
+
+            // Number of times the background thread scanned for work before
+            // locking and compressing; corresponds with the number of
+            // measurements taken by cyclesCompressAndLock
+            uint64_t numScansAndCompress;
+
+            // Total number of times the background thread fell asleep due to
+            // a lack of work (i.e. no messages to compress). Corresponds with
+            // measurements taken by cyclesSleeping_outOfWork
+            uint64_t numSleeps_outOfWork;
+
+            // Stores the distribution of StagingBuffer peek() sizes (i.e. how
+            // full the staging buffer are when the bg thread queries) in 5%
+            // increments relative to the max size of the Staging Buffer.
+            uint64_t stagingBufferPeekDist[20];
+
+            // Number of bytes read in from the staging buffers
+            uint64_t totalBytesRead;
+
+            // Number of bytes written to the output file (includes padding)
+            uint64_t totalBytesWritten;
+
+            // Number of log statements compressed (but may not be output yet)
+            uint64_t logsProcessed;
+
+            // Number of log message output to the log file
+            uint64_t totalMgsWritten;
+
+            // Number of pad bytes written to round the file to the nearest 512B
+            // (applicable only for kernel AIO implementations).
+            uint64_t padBytesWritten;
+
+            // Number of times an AIO write was completed.
+            uint32_t numAioWritesCompleted;
+        };
 
         // Globally the thread-local stagingBuffers
         std::vector<StagingBuffer *> threadBuffers;
@@ -224,9 +328,6 @@ using namespace NanoLog;
         // POSIX AIO structure used to communicate async IO requests
         struct aiocb aioCb;
 
-        // Used to stage the compressed log messages before passing it on to the
-        // POSIX AIO library.
-
         // Dynamically allocated buffer to stage compressed log message before
         // handing it over to the POSIX AIO library for output.
         char *compressingBuffer;
@@ -243,44 +344,8 @@ using namespace NanoLog;
         // running. A value of 0 indicates the compression thread is not running
         uint64_t cycleAtThreadStart;
 
-        // Metric: Number of cycles compression thread is doing work
-        uint64_t cyclesActive;
-
-        // Metric: Amount of time spent compressing the dynamic log data
-        uint64_t cyclesCompressingOnly;
-
-        // Metric: Amount of time spent compressing the dynamic log data
-        // including synchronization overheads
-        uint64_t cyclesCompressPlusLocking;
-
-        // Metric: Stores the distribution of StagingBuffer peek sizes in 5%
-        // increments relative to the full size. This distribution should show
-        // how well the background thread keeps up with the logging threads.
-        uint64_t stagingBufferPeekDist[20];
-
-        // Metric: Amount of time spent scanning the buffers for work and
-        // compressing events found.
-        uint64_t cyclesScanningAndCompressing;
-
-        // Metric: Upper bound on the amount of time spent on fsync() and disk
-        // writes. It is an upper bound since the code polls for the async IO
-        uint64_t cyclesDiskIO_upperBound;
-
-        // Metric: Number of bytes read in from the staging buffers
-        uint64_t totalBytesRead;
-
-        // Metric: Number of bytes written to the output file (includes padding)
-        uint64_t totalBytesWritten;
-
-        // Metric: Number of pad bytes written to round the file to the nearest
-        // 512B
-        uint64_t padBytesWritten;
-
-        // Metric: Number of log statements compressed and outputted.
-        uint64_t logsProcessed;
-
-        // Metric: Number of times an AIO write was completed.
-        uint32_t numAioWritesCompleted;
+        // Stores the metrics produced by the background compression thread
+        Metrics metrics;
 
         // Stores the last coreId that the background thread ran in.
         int coreId;
