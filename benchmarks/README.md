@@ -1,6 +1,9 @@
-# Benchmarks
+# WARNING
 
-This directory houses some of the benchmarks of the NanoLog system ported over from the benchmark branch. The user is never supposed to build or run the executables directly, but instead rely on the ``run_*.sh`` scripts in the directory. Some of these benchmarks are used to produce the figures in the NanoLog Paper (ATC 2018).
+The benchmarks in this directory are primarily used for creating figures for the NanoLog Publications (i.e. for ATC 2018 and thesis dissertations). As a result, they may be of bad form, output hard to understand metrics, and/or access internal NanoLog variables in an unsafe way. Thus, one *should not* use these benchmarks as examples of how to use NanoLog, and one should be weary of directly trusting the output without scrutinizing the code. You have been warned.
+
+## Description
+This directory houses some of the benchmarks of the NanoLog system ported over from the benchmark branch. The user is never supposed to build or run the executables directly, but instead rely on the ``run_*.sh`` scripts in the directory. Some of these benchmarks are used to produce the figures in the NanoLog Paper (ATC 2018) and dissertation.
 
 ## Run Scripts
 
