@@ -19,6 +19,7 @@
 #include <aio.h>
 #include <cassert>
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -451,19 +452,19 @@ using namespace NanoLog;
             }
 
             StagingBuffer(uint32_t bufferId)
-                    : producerPos(storage)
+                    : consumerPos(storage)
+                    , shouldDeallocate(false)
+                    , id(bufferId)
+                    , cacheLineSpacer()
+                    , producerPos(storage)
                     , endOfRecordedSpace(storage
                                            + NanoLogConfig::STAGING_BUFFER_SIZE)
                     , minFreeSpace(NanoLogConfig::STAGING_BUFFER_SIZE)
+                    , numAllocations(0)
                     , cyclesProducerBlocked(0)
                     , numTimesProducerBlocked(0)
-                    , numAllocations(0)
                     , cyclesProducerBlockedDist()
                     , cyclesIn10Ns(PerfUtils::Cycles::fromNanoseconds(10))
-                    , cacheLineSpacer()
-                    , consumerPos(storage)
-                    , shouldDeallocate(false)
-                    , id(bufferId)
                     , storage() {
                 // Empty function, but causes the C++ runtime to instantiate the
                 // sbc thread_local (see documentation in function).
@@ -483,6 +484,25 @@ using namespace NanoLog;
 
             char *reserveSpaceInternal(size_t nbytes, bool blocking = true);
 
+            // Position within the storage buffer where the consumer will consume
+            // the next bytes from. This value is only updated by the consumer.
+            char *consumerPos;
+
+            // Indicates that the thread owning this StagingBuffer has been
+            // destructed (i.e. no more messages will be logged to it) and thus
+            // should be cleaned up once the buffer has been emptied by the
+            // compression thread.
+            bool shouldDeallocate;
+
+            // Uniquely identifies this StagingBuffer for this execution. It's
+            // similar to ThreadId, but is only assigned to threads that NANO_LOG).
+            uint32_t id;
+
+            // An extra cache-line to separate the variables that are primarily
+            // updated/read by the producer (above) from the ones by the
+            // consumer(below)
+            char cacheLineSpacer[Util::BYTES_PER_CACHE_LINE];
+
             // Position within storage[] where the producer may place new data
             char *producerPos;
 
@@ -494,6 +514,10 @@ using namespace NanoLog;
             // rolling over the producerPos or stalling behind the consumer
             uint64_t minFreeSpace;
 
+            // Number of times reserveProducerSpace was invoked (to allocate
+            // space for the producer).
+            uint64_t numAllocations;
+
             // Number of cycles producer was blocked while waiting for space to
             // free up in the StagingBuffer for an allocation.
             uint64_t cyclesProducerBlocked;
@@ -501,9 +525,6 @@ using namespace NanoLog;
             // Number of times the producer was blocked while waiting for space
             // to free up in the StagingBuffer for an allocation
             uint32_t numTimesProducerBlocked;
-
-            // Number of alloc()'s performed
-            uint64_t numAllocations;
 
             // Distribution of the number of times Producer was blocked
             // allocating space in 10ns increments. The last slot includes
@@ -514,25 +535,6 @@ using namespace NanoLog;
             // Cycles::toNanoseconds() call to calculate the bucket in the
             // cyclesProducerBlockedDist distribution.
             uint64_t cyclesIn10Ns;
-
-            // An extra cache-line to separate the variables that are primarily
-            // updated/read by the producer (above) from the ones by the
-            // consumer(below)
-            char cacheLineSpacer[2*Util::BYTES_PER_CACHE_LINE];
-
-            // Position within the storage buffer where the consumer will consume
-            // the next bytes from. This value is only updated by the consumer.
-            char* volatile consumerPos;
-
-            // Indicates that the thread owning this StagingBuffer has been
-            // destructed (i.e. no more messages will be logged to it) and thus
-            // should be cleaned up once the buffer has been emptied by the
-            // compression thread.
-            bool shouldDeallocate;
-
-            // Uniquely identifies this StagingBuffer for this execution. It's
-            // similar to ThreadId, but is only assigned to threads that NANO_LOG).
-            uint32_t id;
 
             // Backing store used to implement the circular queue
             char storage[NanoLogConfig::STAGING_BUFFER_SIZE];

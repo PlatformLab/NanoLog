@@ -183,11 +183,21 @@ namespace NanoLogConfig {
                                     BENCHMARK_POLL_INTERVAL_NO_WORK_US;
 
     // How often should the background compression thread wake up and
-    // check for more log messages when it's stalled waiting for an IO
-    // to complete. Due to overheads in the kernel, this number will
-    // be a lower bound and the actual time spent sleeping may be higher.
-    static const uint32_t POLL_INTERVAL_DURING_IO_US =
+    // check for log messages in microseconds when the perceived logging
+    // rate is low (as defined by LOW_WORK_THRESHOLD). These two values
+    // are used to throttle the background thread so that it does not
+    // incur unnecessary cache coherence traffic for the logging thread.
+    static const uint32_t POLL_INTERVAL_DURING_LOW_WORK_US =
                                     BENCHMARK_POLL_INTERVAL_DURING_IO_US;
+
+    // Byte threshold at which the background compression thread will
+    // back off from continuously polling and poll at the slower rate of
+    // (POLL_INTERVAL_DURING_LOW_WORK_US). One way to think of this
+    // parameter roughly is how underutilized the staging buffers must
+    // be in order for the background thread to switch to a less
+    // aggressive polling strategy. By default it's set to roughly ~12%
+    // of the staging buffer size.
+    static const uint32_t LOW_WORK_THRESHOLD = STAGING_BUFFER_SIZE>>3;
 }
 
 #endif /* CONFIG_H */

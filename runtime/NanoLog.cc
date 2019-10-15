@@ -12,18 +12,21 @@ namespace NanoLog {
     }
 
     void printConfig() {
+        constexpr double MB = 1024*1024;
         printf("==== NanoLog Configuration ====\r\n");
 
-        printf("StagingBuffer size: %u MB\r\n",
-               NanoLogConfig::STAGING_BUFFER_SIZE / 1000000);
-        printf("Output Buffer size: %u MB\r\n",
-               NanoLogConfig::OUTPUT_BUFFER_SIZE / 1000000);
-        printf("Release Threshold : %u MB\r\n",
-               NanoLogConfig::RELEASE_THRESHOLD / 1000000);
+        printf("StagingBuffer size: %4.2lf MB\r\n",
+               NanoLogConfig::STAGING_BUFFER_SIZE / MB);
+        printf("Output Buffer size: %4.2lf MB\r\n",
+               NanoLogConfig::OUTPUT_BUFFER_SIZE / MB);
+        printf("Release Threshold : %4.2lf MB\r\n",
+               NanoLogConfig::RELEASE_THRESHOLD / MB);
+        printf("Low Work Threshold: %4.2lf MB\r\n",
+               NanoLogConfig::LOW_WORK_THRESHOLD / MB);
         printf("Idle Poll Interval: %u µs\r\n",
                NanoLogConfig::POLL_INTERVAL_NO_WORK_US);
         printf("IO Poll Interval  : %u µs\r\n",
-               NanoLogConfig::POLL_INTERVAL_DURING_IO_US);
+               NanoLogConfig::POLL_INTERVAL_DURING_LOW_WORK_US);
     }
 
     void preallocate() {

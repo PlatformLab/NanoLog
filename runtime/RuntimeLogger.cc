@@ -468,6 +468,8 @@ RuntimeLogger::compressionThreadMain() {
                 // If there's work, unlock to perform it
                 if (peekBytes > 0) {
                     uint64_t peekStart = PerfUtils::Cycles::rdtsc();
+                    PerfUtils::TimeTrace::record(peekStart,
+                            "Peak Bytes was %d", int(peekBytes));
                     lock.unlock();
 
 #ifdef RECORD_PRODUCER_STATS
@@ -519,13 +521,13 @@ RuntimeLogger::compressionThreadMain() {
                         metrics.totalBytesRead += bytesRead;
                         bytesConsumedThisIteration += bytesRead;
                         metrics.cyclesCompressingWithConsume +=
-                                PerfUtils::Cycles::rdtsc() - startCompressOnly;
+                                 PerfUtils::Cycles::rdtsc() - startCompressOnly;
                     }
 
                     lock.lock();
                     metrics.numCompressingAndLocks++;
                     metrics.cyclesCompressAndLock
-                                        += PerfUtils::Cycles::rdtsc() - peekStart;
+                                      += PerfUtils::Cycles::rdtsc() - peekStart;
                 } else {
                     // If there's no work, check if we're supposed to delete
                     // the stagingBuffer
@@ -608,18 +610,20 @@ RuntimeLogger::compressionThreadMain() {
                         perror("LogCompressor's Posix AIO "
                                        "suspend operation failed");
                 } else {
-                    // If there's no new data, go to sleep.
-                    if (bytesConsumedThisIteration == 0 &&
-                        NanoLogConfig::POLL_INTERVAL_DURING_IO_US > 0) {
+                    // If not a lot of data was consumed, then go to sleep for
+                    // a short while to avoid incurring additional/unnecessary
+                    // cache misses for the producer.
+                    using namespace NanoLogConfig;
+                    if (bytesConsumedThisIteration <= LOW_WORK_THRESHOLD
+                        && POLL_INTERVAL_DURING_LOW_WORK_US > 0)
+                    {
                         std::unique_lock<std::mutex> lock(condMutex);
                         uint64_t sleepStart = PerfUtils::Cycles::rdtsc();
                         metrics.cyclesActive += sleepStart - cyclesAwakeStart;
-                        PerfUtils::TimeTrace::record(sleepStart, "No work sleep");
                         workAdded.wait_for(lock, std::chrono::microseconds(
-                                NanoLogConfig::POLL_INTERVAL_DURING_IO_US));
+                                NanoLogConfig::POLL_INTERVAL_DURING_LOW_WORK_US));
                         uint64_t sleepEnd = PerfUtils::Cycles::rdtsc();
                         cyclesAwakeStart = sleepEnd;
-                        PerfUtils::TimeTrace::record(sleepEnd,"Wakeup from sleep");
                         metrics.cyclesSleeping_outOfWork += sleepEnd - sleepStart;
                         ++metrics.numSleeps_outOfWork;
 #ifdef PRINT_BG_OPERATIONS
