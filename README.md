@@ -61,7 +61,7 @@ The C++17 version of NanoLog works like a traditional library; just [``#include 
 
 To build the C++17 NanoLog Runtime library, go in the [runtime directory](./runtime/) and invoke ```make```. This will produce ```./libNanoLog.a``` to against link your application and a ```./decompressor``` application that can be used to re-inflate the binary logs.
 
-When you compile your application, be sure to include the NanoLog header directory ([``-I ./runtime``](./runtime/)), and link against NanoLog, pthreads, and POSIX AIO (``-L ./runtime/ -lNanoLog -lpthread -lrt``). Sample g++ invocations can be found in the [sample GNUmakefile](./sample/GNUmakefile).
+When you compile your application, be sure to include the NanoLog header directory ([``-I ./runtime``](./runtime/)), and link against NanoLog, pthreads, and POSIX AIO (``-L ./runtime/ -lNanoLog -lrt -pthread``). Sample g++ invocations can be found in the [sample GNUmakefile](./sample/GNUmakefile).
 
 After you compile and run the application, the log file generated can then be passed to the ```./decompressor``` application to generate the full human-readable log file (instructions below).
 
@@ -81,7 +81,8 @@ To use the NanoLog system in the code, one just has to include the NanoLog heade
 #include "NanoLogCpp17.h"`
 using namespace NanoLog::LogLevels;
 
-int main() {
+int main() 
+{
   NANO_LOG(NOTICE, "Hello World! This is an integer %d and a double %lf\r\n", 1, 2.0);
   return 0;
 }
