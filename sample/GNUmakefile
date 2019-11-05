@@ -6,7 +6,7 @@
 # The main requirements are
 #  (a) include the NanoLog runtime directory with -I when compiling
 #  (b) link the NanoLog runtime library (-lNanoLog) and external
-#      libraries (-lpthread -lrt) into the final executable
+#      libraries (-pthread -lrt) into the final executable
 #
 #####################################################################
 
