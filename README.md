@@ -78,7 +78,7 @@ Additionally, the compilation should also generate a ```./decompressor``` execut
 To use the NanoLog system in the code, one just has to include the NanoLog header (either [NanoLogCpp17.h](./runtime/NanoLogCpp17.h) for C++17 NanoLog or [NanoLog.h](./runtime/NanoLog.h) for Preprocessor NanoLog) and invoke the ```NANO_LOG()``` function in a similar fashion to printf, with the exception of a log level before it. Example below:
 
 ```cpp
-#include "NanoLogCpp17.h"`
+#include "NanoLogCpp17.h"
 using namespace NanoLog::LogLevels;
 
 int main() {
