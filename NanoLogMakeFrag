@@ -4,8 +4,9 @@
 ## and the rules required to build the NanoLog library.
 ##
 ## Users are expected to:
-##	 1) Define the macros NANOLOG_DIR to point to the NanoLog directory,
-##      USER_OBJS to mark when compilation is finished.
+##	 1) Define the macro NANOLOG_DIR to point to the NanoLog directory
+##      and the macro USER_OBJS to list all *.o to be produced by the
+##      user executing run-cxx on their source files.
 ##	 2) Use run-cxx to compile their sources (see documentation below)
 ##   3) include this MakeFrag in their main GNUMakefile
 #######

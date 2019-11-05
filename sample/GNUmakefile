@@ -6,7 +6,7 @@
 # The main requirements are
 #  (a) include the NanoLog runtime directory with -I when compiling
 #  (b) link the NanoLog runtime library (-lNanoLog) and external
-#      libraries (-lpthread -lrt) into the final executable
+#      libraries (-pthread -lrt) into the final executable
 #
 #####################################################################
 
@@ -24,7 +24,7 @@ all: sampleApplication decompressor
 
 # (b) Make the final application linking NanoLog, pthreads, and POSIX aio
 sampleApplication: main.o libNanoLog.a
-	$(CXX) $(CXXFLAGS) -o sampleApplication main.o -L. -lNanoLog -lpthread -lrt
+	$(CXX) $(CXXFLAGS) -o sampleApplication main.o -L. -lNanoLog -pthread -lrt
 
 clean:
 	@rm -f *.o sampleApplication /tmp/logFile compressedLog
