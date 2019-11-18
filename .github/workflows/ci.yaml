@@ -1,0 +1,40 @@
+name: Build Tests
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/setup-python@v1
+      with:
+        python-version: '2.x'
+        architecture: 'x64'
+
+    - name: Run Preprocessor Unit Tests
+      run: |
+        cd ${GITHUB_WORKSPACE}/preprocessor
+        python ./UnitTests.py
+
+    - name: Build Sample App
+      run: |
+        cd ${GITHUB_WORKSPACE}/sample
+        make clean-all
+        make depend -C ../runtime
+        make -j10 > /dev/null
+
+    - name: Build Preprocessor Sample App
+      run: |
+        cd ${GITHUB_WORKSPACE}/sample_preprocessor
+        make clean-all
+        make depend -C ../runtime
+        make -j10 > /dev/null
+
+    - name: Run Integration Test
+      run: |
+        cd ${GITHUB_WORKSPACE}/integrationTest
+        make clean-all  > /dev/null
+        ./run.sh
