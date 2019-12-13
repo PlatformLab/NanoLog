@@ -1,3 +1,4 @@
+#pragma once
 /* Copyright (c) 2018 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -21,7 +22,8 @@
 #include <algorithm>
 #include <iostream>
 #include <utility>
-
+#include <numeric>
+#include <fstream>
 #include "Common.h"
 #include "Cycles.h"
 #include "Packer.h"
@@ -257,7 +259,8 @@ template<int N, std::size_t... Indices>
 constexpr std::array<ParamType, sizeof...(Indices)>
 analyzeFormatStringHelper(const char (&fmt)[N], std::index_sequence<Indices...>)
 {
-    return {{ getParamInfo(fmt, Indices)... }};
+
+    return { getParamInfo(fmt, Indices)... };
 }
 
 
@@ -564,6 +567,7 @@ getArgSize(const ParamType fmtType,
 {
     if (fmtType == ParamType::DYNAMIC_PRECISION)
         previousPrecision = as_uint64_t(arg);
+
 
     return sizeof(T);
 }
@@ -955,6 +959,259 @@ compress(int numNibbles, const ParamType *paramTypes, char **input, char **outpu
     *output = out;
 }
 
+//adding by wezhu
+
+/*
+
+// Indicates that there is a problem with the parameter
+INVALID = -6,
+
+// Indicates a dynamic width (i.e. the '*' in  %*.d)
+DYNAMIC_WIDTH = -5,
+
+// Indicates dynamic precision (i.e. the '*' in %.*d)
+DYNAMIC_PRECISION = -4,
+
+// Indicates that the parameter is not a string type (i.e. %d, %lf)
+NON_STRING = -3,
+
+// Indicates the parameter is a string and has a dynamic precision
+// (i.e. '%.*s' )
+STRING_WITH_DYNAMIC_PRECISION = -2,
+
+// Indicates a string with no precision specified (i.e. '%s' )
+STRING_WITH_NO_PRECISION = -1,
+
+// All non-negative values indicate a string with a precision equal to its
+// enum value casted as an int32_t
+STRING = 0
+
+
+*/
+
+template<typename T>
+bool copySingleArg(const StaticLogInfo&info,char**input, std::vector<char *> &printBufAddrVec, char **printfBuf, int printfBufSizeTotal, int&printBufWrittenlen)
+{
+    
+    int curIndex = printBufAddrVec.size();
+    auto fmtType = info.paramTypes[curIndex];
+
+    char * writeAddress = (*printfBuf) + printBufWrittenlen;
+    
+    if ((fmtType == ParamType::DYNAMIC_WIDTH)
+        || (fmtType == ParamType::DYNAMIC_PRECISION)
+        || (fmtType == ParamType::NON_STRING)
+        || (fmtType == ParamType::STRING_WITH_DYNAMIC_PRECISION)
+        )
+    {
+        if ((printBufWrittenlen + sizeof(T)) > printfBufSizeTotal)
+        {
+            return false;
+        }
+
+        *reinterpret_cast<T*>(writeAddress) = *reinterpret_cast<T*>(*input);
+        printBufWrittenlen += sizeof(T);
+        *input += sizeof(T);
+        printBufAddrVec.push_back(writeAddress);
+
+    }
+    else if ((fmtType == ParamType::STRING_WITH_NO_PRECISION)
+        || (fmtType >= ParamType::STRING))
+    {
+        uint32_t strSize = *reinterpret_cast<uint32_t*>(*input);
+
+        if ((printBufWrittenlen + strSize + 1) > printfBufSizeTotal)
+        {
+            return false;
+        }
+
+
+        *input += sizeof(uint32_t);
+
+        memcpy(writeAddress, *input,strSize);
+        writeAddress[strSize] = '\0';
+        
+        *input += strSize ; // input has no '\0'
+        printBufWrittenlen += strSize + 1; // output adds  '\0'
+        printBufAddrVec.push_back(writeAddress);
+        
+        
+    }
+    else
+    {
+    }
+
+    
+    return true;
+}
+template<typename... Ts>
+bool copyToPrintBuf(const StaticLogInfo&info,char**input, std::vector<char *> &printBufAddrVec, char **printfBuf, int printfBufSizeTotal, int&printBufWrittenlen);
+
+template<>
+inline bool copyToPrintBuf(const StaticLogInfo&info,char**input, std::vector<char *> &printBufAddrVec, char **printfBuf, int printfBufSizeTotal, int&printBufWrittenlen)
+{
+    return true;
+}
+
+
+template<typename T1, typename... Ts>
+inline bool copyToPrintBuf_helper(const StaticLogInfo&info,char**input, std::vector<char *> &printBufAddrVec, char **printfBuf, int printfBufSizeTotal, int&printBufWrittenlen)
+{
+    if (!copySingleArg<T1>(info, input, printBufAddrVec, printfBuf, printfBufSizeTotal, printBufWrittenlen))
+    {
+        return false;
+    }
+    return copyToPrintBuf<Ts...>(info, input, printBufAddrVec, printfBuf, printfBufSizeTotal, printBufWrittenlen);
+}
+
+
+template<typename... Ts>
+bool copyToPrintBuf(const StaticLogInfo&info,char**input, std::vector<char *> &printBufAddrVec, char **printfBuf, int printfBufSizeTotal, int&printBufWrittenlen)
+{
+    return copyToPrintBuf_helper<Ts...>(info,input, printBufAddrVec, printfBuf, printfBufSizeTotal, printBufWrittenlen);
+
+}
+
+
+template<typename T>
+inline
+typename std::enable_if<!std::is_same<T, const wchar_t*>::value
+                        && !std::is_same<T, const char*>::value
+                        && !std::is_same<T, wchar_t*>::value
+                        && !std::is_same<T, char*>::value
+                        && !std::is_same<T, const void*>::value
+                        && !std::is_same<T, void*>::value
+                        , T>::type
+getArgByIndex(int &argIndexFromRight , int totalSize, const StaticLogInfo&info, std::vector<char *> & printBufAddrVec)
+{
+    argIndexFromRight ++ ;
+    int argIndexFromLeft =(totalSize - argIndexFromRight);  //tricks for args parsed from right most, so we could do this
+
+    if (argIndexFromLeft >= printBufAddrVec.size())
+    {
+        return 0;
+    }
+    else
+    {
+        T argument = *reinterpret_cast<T*>(printBufAddrVec[argIndexFromLeft]);
+        
+        return argument;
+    }
+}
+
+template<typename T>
+inline
+typename std::enable_if<std::is_same<T, wchar_t*>::value
+                        || std::is_same<T, char*>::value
+                        || std::is_same<T, void*>::value
+                        || std::is_same<T, const char*>::value
+                        || std::is_same<T, const void*>::value
+                        ||std::is_same<T, const wchar_t*>::value
+                        , T>::type
+getArgByIndex(int &argIndexFromRight , int totalSize, const StaticLogInfo&info, std::vector<char *> & printBufAddrVec)
+{
+    argIndexFromRight ++ ;
+    int argIndexFromLeft =(totalSize - argIndexFromRight);  //tricks for args parsed from right most, so we could do this
+
+
+    return reinterpret_cast<T>(printBufAddrVec[argIndexFromLeft]);
+}
+
+
+inline void __attribute__((always_inline)) reallocateBuf(char **printfBuf, int &printfBufSizeTotal)
+{
+    printfBufSizeTotal *= 2; //double size
+    if(printfBufSizeTotal < 0)
+    {
+        throw std::runtime_error("ERROR! printfBufSizeTotal less zero");
+    }
+    
+    delete(*printfBuf);
+    *printfBuf = (char *)malloc(printfBufSizeTotal);
+    
+}
+
+
+
+std::string inline getTimeString(uint64_t timeStamp, const Log::Checkpoint & checkPoint)
+{
+    double secondsSinceCheckpoint , nanos= 0.0;
+    char timeString[0x100];
+    char timeStringWithNano[0x200];
+
+    // Convert to absolute time
+    secondsSinceCheckpoint = PerfUtils::Cycles::toSeconds(
+                                timeStamp - checkPoint.rdtsc,
+                                checkPoint.cyclesPerSecond);
+    int64_t wholeSeconds = static_cast<int64_t>(secondsSinceCheckpoint);
+    nanos = 1.0e9 * (secondsSinceCheckpoint
+                    - static_cast<double>(wholeSeconds));
+
+
+
+
+                    
+    std::time_t absTime = wholeSeconds + checkPoint.unixTime;
+    std::tm *tm = localtime(&absTime);
+    strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", tm);    
+
+    
+    sprintf(timeStringWithNano, "%s.%09.0lf",timeString, nanos);
+    return timeStringWithNano;
+}
+
+inline void printfLogHeader(FILE * fHandler, const StaticLogInfo&info, Log::UncompressedEntry*entry,uint32_t threadId, const Log::Checkpoint & checkPoint)
+{
+    std::string timeString = getTimeString(entry->timestamp, checkPoint);
+    int32_t logLevel = info.severity;
+    
+    int32_t runtimeId = threadId;
+
+    static const char* logLevelNames[] = {"(none)", "ERROR", "WARNING","NOTICE", "DEBUG"};
+
+    fprintf(fHandler,"%s %s:%u %s[%u]: ", timeString.c_str(), info.filename, info.lineNum, logLevelNames[logLevel], runtimeId);
+
+}
+
+template<typename... Ts>
+inline void __attribute__((always_inline)) printLog(FILE * fHandler, const StaticLogInfo&info, Log::UncompressedEntry*entry, uint32_t threadId,const Log::Checkpoint & checkPoint,char **printfBuf, int &printfBufSizeTotal)
+{
+    std::vector<char *> printBufAddrVec ;
+    int printBufWrittenlen= 0;
+
+    char *argData = entry->argData;
+    
+    memset(*printfBuf, 0x0,printfBufSizeTotal);// for we will have string copy
+    while(!copyToPrintBuf<Ts ...>(info, &argData, printBufAddrVec, printfBuf, printfBufSizeTotal, printBufWrittenlen)) //repeat to success. for it will be reallocation for the printfBuf
+    {
+        printBufAddrVec.clear();
+        //reset read params
+        argData = entry->argData;
+        printBufWrittenlen = 0;
+        //reallocate printBufsize 
+        reallocateBuf(printfBuf, printfBufSizeTotal);
+        memset(*printfBuf, 0x0,printfBufSizeTotal);
+        
+    }
+
+
+    printfLogHeader(fHandler, info, entry,threadId, checkPoint);
+    
+    int argIndexFromRight = 0;
+    int totalSize = sizeof...(Ts);
+    fprintf(fHandler, info.formatString, getArgByIndex<Ts>(argIndexFromRight,totalSize, info, printBufAddrVec)...);
+    fprintf(fHandler,"\n");
+}
+
+
+
+template<typename... Ts>
+inline void dumpDirect(FILE * fHandler, const StaticLogInfo&info, Log::UncompressedEntry*entry, uint32_t threadId,const Log::Checkpoint & checkPoint,char **printfBuf, int &printfBufSizeTotal) 
+{
+    printLog<Ts...>(fHandler, info, entry, threadId,checkPoint,printfBuf, printfBufSizeTotal);
+}
+//end of adding
+
 /**
  * Logs a log message in the NanoLog system given all the static and dynamic
  * information associated with the log message. This function is meant to work
@@ -1008,6 +1265,7 @@ log(int &logId,
     if (logId == UNASSIGNED_LOGID) {
         const ParamType *array = paramTypes.data();
         StaticLogInfo info(&compress<Ts...>,
+                        &dumpDirect<Ts...>,
                         filename,
                         linenum,
                         severity,
@@ -1015,7 +1273,6 @@ log(int &logId,
                         sizeof...(Ts),
                         numNibbles,
                         array);
-
         RuntimeLogger::registerInvocationSite(info, logId);
     }
 
@@ -1024,6 +1281,9 @@ log(int &logId,
     size_t stringSizes[N + 1] = {}; //HACK: Zero length arrays are not allowed
     size_t allocSize = getArgSizes(paramTypes, previousPrecision,
                             stringSizes, args...) + sizeof(UncompressedEntry);
+
+    //printf("allocSize %d argsize %d \n",allocSize, getArgSizes(paramTypes, previousPrecision,stringSizes, args...));
+
 
     char *writePos = NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize);
     auto originalWritePos = writePos;

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # NanoLog
 ![](https://github.com/PlatformLab/NanoLog/workflows/Build%20Tests/badge.svg)
 
@@ -152,3 +153,8 @@ make test
 ./test --gtest_filter=-*assert*
 ```
 Note: The gtest filter is used to removed tests with assert death statements in them.
+=======
+1. Txt format logs
+  For hft won't have too many logs and real-time checking by human is a requirement, I add the feature for dumping txt-format logs directly .
+  The log's name is "xx.log" at the run directory.
+>>>>>>> 3a87786 (Adding support  for TXT format logs dumping directlly.)
