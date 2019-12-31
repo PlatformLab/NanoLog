@@ -9,25 +9,10 @@
  One that should be "end"? end
  Hello world number 2 of 10 (0.20%)! This is Stephen!
  This is a string of many strings, like this one, this other one, and this third one with a number 12345670 and a final string with spacers              far out
-
  A const void* pointer 0x7ffe075cbe7d
  I'm a small log with a small string
- Let's try out all the types!
-Pointer = 0x7ffe075cbe7d
-uint8_t = 10
-uint16_t = 33
-uint32_t = 99991
-uint64_t = 18446744073709551615
-float = 121.121002
-double = 212.212000
-hexadecimal = ff
-Just a normal character = a
- how about some negative numbers?
-int8_t -10
-int16_t -9991
-int32_t -99991
-int64_t -1
-int -12356
+ Let's try out all the types! Pointer = 0x7ffe075cbe7d! uint8_t = 10! uint16_t = 33! uint32_t = 99991! uint64_t = 18446744073709551615! float = 121.121002! double = 212.212000! hexadecimal = ff! Just a normal character = a
+ how about some negative numbers? int8_t -10; int16_t -9991; int32_t -99991; int64_t -1; int -12356
  How about variable width + precision?  12345.12        123        end
  How about a variable length string that should end here
  And another one that should end here
@@ -37,7 +22,7 @@ int -12356
  11) SDF
  12) NEWLinesSoEvil NANO_LOG()
  13) Yup
-ie
+ieieieieieieie1
  13.5) This should be =2: 2
  14) Hello 5
  14) Hello 6
@@ -62,7 +47,7 @@ ie
  TEST
  14) Hello 5
  13) Yup
-ie
+ieieieieieieie2
  Ending on different lines
  1) Simple times
  This string should end soon with 4 'a''s here: aaaa

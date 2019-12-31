@@ -75,12 +75,16 @@ rm -f ./testLog
 chmod 666 ./testLog
 
 printf "Checking static dictionary lookups..."
-./decompressor find ./testLog "" > dictionary_lookup.txt
-diff -w expected/dictionaryFindAll.txt dictionary_lookup.txt
+# The 'cut | sort' removes the log id's and gives the messages a repeatable ordering
+./decompressor find ./testLog "" | cut -c 8- | sort > dictionary_lookup.txt
+cat expected/dictionaryFindAll.txt | cut -c 8- | sort > dictionaryFindAll.txt
+diff -w dictionaryFindAll.txt dictionary_lookup.txt
+rm -f dictionaryFindAll.txt
 
-./decompressor find ./testLog "Debug" > dictionary_lookup.txt
-diff -w expected/dictionaryFindDebug.txt dictionary_lookup.txt
-rm -f dictionary_lookup.txt
+./decompressor find ./testLog "Debug" | cut -c 8- | sort > dictionary_lookup.txt
+cat expected/dictionaryFindDebug.txt | cut -c 8- | sort > dictionaryFindDebug.txt
+diff -w dictionaryFindDebug.txt dictionary_lookup.txt
+rm -f dictionaryFindAll.txt dictionary_lookup.txt dictionaryFindDebug.txt
 printf " OK!\r\n"
 
 printf "\r\nIntegration Tests completed without error for Preprocessor NanoLog!\r\n"

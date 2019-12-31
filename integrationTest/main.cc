@@ -61,7 +61,7 @@ evilTestCase(NANO_LOG* log) {
 
     NANO_LOG(NOTICE,
                 "This is a string of many strings, like %s, %s, and %s"
-                " with a number %d and a final string with spacers %*s\r\n",
+                " with a number %d and a final string with spacers %*s",
                 "this one",
                 "this other one",
                 "this third one",
@@ -84,15 +84,15 @@ evilTestCase(NANO_LOG* log) {
     float Float = 121.121f;
     double Double = 212.212;
 
-    NANO_LOG(NOTICE, "Let's try out all the types!\n"
-                "Pointer = %p\n"
-                "uint8_t = %u\n"
-                "uint16_t = %u\n"
-                "uint32_t = %u\n"
-                "uint64_t = %lu\n"
-                "float = %f\n"
-                "double = %lf\n"
-                "hexadecimal = %x\n"
+    NANO_LOG(NOTICE, "Let's try out all the types! "
+                "Pointer = %p! "
+                "uint8_t = %u! "
+                "uint16_t = %u! "
+                "uint32_t = %u! "
+                "uint64_t = %lu! "
+                "float = %f! "
+                "double = %lf! "
+                "hexadecimal = %x! "
                 "Just a normal character = %c",
             pointer, small, medium, large, ultra_large, Float, Double,
             0xFF, 'a'
@@ -102,11 +102,11 @@ evilTestCase(NANO_LOG* log) {
     int16_t mediumNeg= -9991;
     int32_t largeNeg = -99991;
     int64_t ultra_large_neg = -1;
-    NANO_LOG(NOTICE, "how about some negative numbers?\n"
-        "int8_t %d\n"
-        "int16_t %d\n"
-        "int32_t %d\n"
-        "int64_t %ld\n"
+    NANO_LOG(NOTICE, "how about some negative numbers? "
+        "int8_t %d; "
+        "int16_t %d; "
+        "int32_t %d; "
+        "int64_t %ld; "
         "int %d",
         smallNeg, mediumNeg, largeNeg, ultra_large_neg, -12356
         );
@@ -139,7 +139,7 @@ evilTestCase(NANO_LOG* log) {
     ++falsePositive;
     NANO_LOG(NOTICE, "10) NANO_LOG() \"NANO_LOG(\"Hi \")\"");
 
-    printf("Regular Print: NANO_LOG()\r\n");
+    printf("Regular Print: NANO_LOG()");
 
 
     ////////
@@ -152,7 +152,7 @@ evilTestCase(NANO_LOG* log) {
             "NANO_LOG()");
 
     int i = 0;
-    ++i; NANO_LOG(NOTICE, "13) Yup\n" "ie"); ++i;
+    ++i; NANO_LOG(NOTICE, "13) Yup\n" "ieieieieieieie1"); ++i;
     NANO_LOG(NOTICE, "13.5) This should be =2: %d", i);
 
 
@@ -254,7 +254,7 @@ CE, "The worse");
         "o %d",
         5);
 
-    ++i; NANO_LOG(NOTICE, "13) Yup\n" "ie"); ++i;
+    ++i; NANO_LOG(NOTICE, "13) Yup\n" "ieieieieieieie2"); ++i;
 
     NANO_LOG(NOTICE, "Ending on different lines"
     )
