@@ -37,6 +37,12 @@ if(BUILD_SAMPLE)
     add_subdirectory(sample)
 endif()
 
+option(BUILD_TEST "Build unit tests" ON)
+if(BUILD_TEST)
+    enable_testing ()
+    add_subdirectory(tests)
+endif()
+
 include(GNUInstallDirs)
 
 install(TARGETS ${PROJECT_NAME} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
