@@ -22,8 +22,20 @@ set_target_properties(${PROJECT_NAME} PROPERTIES PUBLIC_HEADER "${HEADERS}")
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/${PROJECT_NAME}.pc.in ${PROJECT_NAME}.pc @ONLY)
 
-add_subdirectory(decompressor)
-add_subdirectory(perf)
+option(BUILD_DECOPRESSOR "Build decompressor app" ON)
+if(BUILD_DECOPRESSOR)
+    add_subdirectory(decompressor)
+endif()
+
+option(BUILD_PERF "Build perf app" OFF)
+if(BUILD_PERF)
+    add_subdirectory(perf)
+endif()
+
+option(BUILD_SAMPLE "Build sample app" OFF)
+if(BUILD_SAMPLE)
+    add_subdirectory(sample)
+endif()
 
 include(GNUInstallDirs)
 
