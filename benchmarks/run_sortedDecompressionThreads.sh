@@ -36,7 +36,7 @@ TMP_UNSORTED="/tmp/$(date +%Y%m%d%H%M%S)_2.txt"
 TMP_SORTED_NULL="/tmp/$(date +%Y%m%d%H%M%S)_3.txt"
 TMP_UNSORTED_NULL="/tmp/$(date +%Y%m%d%H%M%S)_4.txt"
 
-for ((threads=1; threads<=1024; threads*=2))
+for ((threads=1; threads<=4096; threads*=2))
 # for ((threads=1; threads<=1; threads*=2))
 do
     ((itterations = $ITTRS/$threads))

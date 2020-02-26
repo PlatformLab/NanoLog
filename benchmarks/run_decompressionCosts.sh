@@ -9,7 +9,7 @@ if [[ ! -z "$SUDO_POWER" ]]; then
     exit 1
 fi
 
-THREADS_MAX=1024
+THREADS_MAX=4096
 # Even power of 2
 ITTRS=8388608
 declare -A BENCH_OPS
