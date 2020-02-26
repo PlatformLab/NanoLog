@@ -33,8 +33,16 @@ do
 done
 
 
+echo "" |& tee -a $LOG_FILE
 echo "# All results are in millions of operations per second." |& tee -a $LOG_FILE
-echo "# Threads $BENCH_OPS_ORDERING" |& tee -a $LOG_FILE
+
+printf "\r\n# Legend (numbers are threads)\r\n" |& tee -a $LOG_FILE
+printf "# BenchOp " |& tee -a $LOG_FILE
+
+for (( threads = 1; threads <= $THREADS_MAX; threads*=4 )); do
+    printf " & $threads" |& tee -a $LOG_FILE
+done
+echo "" |& tee -a $LOG_FILE
 
 SORTED_LOG_FILE="./sorted.tmp"
 STATS_LOG_FILE="./stats.tmp"
@@ -50,14 +58,15 @@ printf "\r\n\r\n\r\n#Random Statistics\r\n" > $STATS_LOG_FILE
 # Threads OP1 OP2 OP3 ...
 #####
 
-for (( threads = 1; threads <= $THREADS_MAX; threads*=4 )); do
-    ((itterations = $ITTRS/$threads))
-
-    printf "$threads " >> tee -a $LOG_FILE
-
-    for OP_KEY in $BENCH_OPS_ORDERING
+for OP_KEY in $BENCH_OPS_ORDERING
     do
-        BENCH_OP=${BENCH_OPS[$OP_KEY]}
+
+    BENCH_OP=${BENCH_OPS[$OP_KEY]}
+    echo -n "$OP_KEY" >> $LOG_FILE
+    echo -n "$OP_KEY" >> $SORTED_LOG_FILE
+
+    for (( threads = 1; threads <= $THREADS_MAX; threads*=4 )); do
+        ((itterations = $ITTRS/$threads))
 
         python genConfig.py --iterations=${itterations} --benchOp="$BENCH_OP" --threads=${threads} > /dev/null
         ./run_bench.sh decompSetup > /dev/null
@@ -72,9 +81,9 @@ for (( threads = 1; threads <= $THREADS_MAX; threads*=4 )); do
         SORTED_THROUGHPUT=$(echo "scale=2;   $ITTRS/(1000000*${SORTED_TIME})" | bc)
 
         printf "At $threads threads, $OP_KEY had unsorted/sorted throughputs of "
-        printf " 0%s" $UNSORTED_THROUGHPUT |& tee -a $LOG_FILE
+        printf " & 0%s" $UNSORTED_THROUGHPUT |& tee -a $LOG_FILE
         printf " / "
-        printf " 0%s" $SORTED_THROUGHPUT |& tee -a $SORTED_LOG_FILE
+        printf " & 0%s" $SORTED_THROUGHPUT |& tee -a $SORTED_LOG_FILE
         echo ""
 
         # (/usr/bin/time -f " %e " ./decompressor decompress /tmp/logFile > /tmp/decomp) |& tee -a $SORTED_LOG_FILE
