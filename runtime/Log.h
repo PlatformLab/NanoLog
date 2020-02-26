@@ -903,6 +903,9 @@ namespace Log {
             uint64_t getNextLogTimestamp() const;
         };
 
+        static bool compareBufferFragments(const BufferFragment *a,
+                                           const BufferFragment *b);
+
         bool readDictionary(FILE *fd, bool flushOldDictionary);
         bool readDictionaryFragment(FILE *fd);
 
