@@ -13,11 +13,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-// Unfortunately, unit tests based on gtest can't access private members
-// of classes.  If the following uppercase versions of "private" and
-// "protected" are used instead, it works around the problem:  when
-// compiling unit test files (anything that includes TestUtil.h)
-// everything becomes public.
+#include <cassert>
 
 #ifndef COMMON_H
 #define COMMON_H
@@ -26,6 +22,12 @@
 //#define ENABLE_DEBUG_PRINTING
 
 namespace NanoLogInternal {
+
+// Unfortunately, unit tests based on gtest can't access private members
+// of classes.  If the following uppercase versions of "private" and
+// "protected" are used instead, it works around the problem:  when
+// compiling unit test files (anything that includes TestUtil.h)
+// everything becomes public.
 
 #ifdef EXPOSE_PRIVATES
 #define PRIVATE public
@@ -44,7 +46,6 @@ namespace NanoLogInternal {
     TypeName& operator=(const TypeName&) = delete;
 #endif
 
-#include <cassert>
 /**
  * Cast one size of int down to another one.
  * Asserts that no precision is lost at runtime.

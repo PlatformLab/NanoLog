@@ -13,9 +13,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <assert.h>
+#include <cassert>
 #include <cstdlib>
-#include <stdio.h>
+#include <cstdio>
 #include <fstream>
 
 #include "TestUtil.h"
