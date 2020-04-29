@@ -1771,6 +1771,27 @@ Log::Decoder::internalDecompressUnordered(FILE* outputFd,
     return good;
 }
 
+
+/**
+ * Compares two BufferFragments (a, b) based on the timestamps of
+ * their next decompress-able log statements. Returns true if
+ * a's timestamp chronologically occurs after b's timestamp.
+ *
+ * \param a
+ *      First BufferFragment to compare
+ * \param b
+ *      Second BufferFragment to compare
+ *
+ * \return
+ *      True if a > b; False otherwise
+ */
+bool
+Log::Decoder::compareBufferFragments(const BufferFragment *a,
+                                     const BufferFragment *b)
+{
+    return a->getNextLogTimestamp() > b->getNextLogTimestamp();
+};
+
 /**
  * Decompress the log file that was open()-ed and print the log messages out
  * in chronological order.
@@ -1872,14 +1893,10 @@ Log::Decoder::decompressTo(FILE* outputFd)
                 break;
         }
 
-        // Step 2: Sort all BufferFragments within the stages from
+        // Step 2: Heapify all BufferFragments within the stages from
         // front=max to back=min
         for (auto &stage : stages) {
-            std::sort(stage.begin(), stage.end(),
-                [](const BufferFragment *a, const BufferFragment *b) -> bool
-                {
-                    return a->getNextLogTimestamp() > b->getNextLogTimestamp();
-                });
+            std::make_heap(stage.begin(), stage.end(), compareBufferFragments);
         }
 
         // Step 3: Deplete the first stage
@@ -1890,9 +1907,9 @@ Log::Decoder::decompressTo(FILE* outputFd)
                 if (stages[i].empty())
                     continue;
 
-                uint64_t next = stages[i].back()->getNextLogTimestamp();
+                uint64_t next = stages[i].front()->getNextLogTimestamp();
                 if (minStage == nullptr ||
-                        next < minStage->back()->getNextLogTimestamp()) {
+                        next < minStage->front()->getNextLogTimestamp()) {
                     minStage = &(stages[i]);
                 }
             }
@@ -1902,20 +1919,21 @@ Log::Decoder::decompressTo(FILE* outputFd)
                 break;
 
             // Step 3b: Output the log message
-            BufferFragment *bf = minStage->back();
+            BufferFragment *bf = minStage->front();
             bf->decompressNextLogStatement(outputFd, logMsgsPrinted,
                                            logArguments, checkpoint,
                                            fmtId2metadata);
 
+            // Moves the minimum element to the end of the array
+            std::pop_heap(minStage->begin(), minStage->end(),
+                    compareBufferFragments);
+
             if (bf->hasNext()) {
-                std::sort(minStage->begin(), minStage->end(),
-                    [](const BufferFragment *a, const BufferFragment *b) -> bool
-                    {
-                        return a->getNextLogTimestamp() >
-                                                       b->getNextLogTimestamp();
-                    });
+                // If there's more, re-heapify the last element
+                std::push_heap(minStage->begin(), minStage->end(),
+                              compareBufferFragments);
             } else {
-                // Buffer is depleted, remove it
+                // Otherwise, buffer is depleted -> remove it
                 minStage->pop_back();
                 freeBufferFragment(bf);
             }

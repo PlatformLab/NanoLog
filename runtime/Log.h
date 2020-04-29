@@ -16,7 +16,7 @@
 #include <ctime>
 #include <vector>
 
-#include <assert.h>
+#include <cassert>
 #include <stdio.h>
 
 #include "Config.h"
@@ -904,6 +904,9 @@ namespace Log {
                                  void (*aggregationFn)(const char*, ...)=NULL);
             uint64_t getNextLogTimestamp() const;
         };
+
+        static bool compareBufferFragments(const BufferFragment *a,
+                                           const BufferFragment *b);
 
         bool readDictionary(FILE *fd, bool flushOldDictionary);
         bool readDictionaryFragment(FILE *fd);

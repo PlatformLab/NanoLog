@@ -19,7 +19,7 @@
 #include <time.h>
 #include <stdint.h>
 #include <sched.h>
-#include <assert.h>
+#include <cassert>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <sys/ioctl.h>

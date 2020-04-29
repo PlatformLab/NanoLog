@@ -52,10 +52,10 @@ grep MemTotal /proc/meminfo   >> $SETUP_FILE
 
 ### Printing to GIT_FILE
 printf "=== Git Log (relative to master) ===\r\n"  >  $GIT_FILE
-git log benchmark...master^   >> $GIT_FILE
+git log -n 3   >> $GIT_FILE
 
-printf "\r\n\r\n=== Git Diff (from benchmark head) ===\r\n" >> $GIT_FILE
-git diff                      >> $GIT_FILE
+# printf "\r\n\r\n=== Git Diff (from benchmark head) ===\r\n" >> $GIT_FILE
+# git diff                      >> $GIT_FILE
 
 printf "\r\n\r\n=== Git Diff (to master) === \r\n" >> $GIT_FILE
 git diff master               >> $GIT_FILE
