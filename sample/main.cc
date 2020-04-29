@@ -48,9 +48,7 @@ int main(int argc, char** argv) {
     NANO_LOG(DEBUG, "This message wont be logged since it is lower "
                         "than the current log level.");
 
-    // Log levels can be named explicitly if one does not import the LogLevels
-    // namespace with 'using'
-    NANO_LOG(NanoLog::DEBUG, "Another message.");
+    NANO_LOG(DEBUG, "Another message.");
 
     // All the standard printf specifiers (except %n) can be used
     char randomString[] = "Hello World";

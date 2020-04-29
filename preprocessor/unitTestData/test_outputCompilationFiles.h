@@ -31,8 +31,8 @@ namespace {
 
 using namespace NanoLog::LogLevels;
 
-inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char* fmtStr ) {
-    extern const uint32_t __fmtId__B__mar46cc__294__;
+inline void __syang0__fl__A__mar46cc__293__(NanoLog::LogLevel level, const char* fmtStr ) {
+    extern const uint32_t __fmtId__A__mar46cc__293__;
 
     if (level > NanoLog::getLogLevel())
         return;
@@ -42,7 +42,7 @@ inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char*
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
-    re->fmtId = __fmtId__B__mar46cc__294__;
+    re->fmtId = __fmtId__A__mar46cc__293__;
     re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
@@ -60,7 +60,7 @@ inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__B__mar46cc__294__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
+compressArgs__A__mar46cc__293__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -90,7 +90,7 @@ compressArgs__B__mar46cc__294__(NanoLogInternal::Log::UncompressedEntry *re, cha
 
 
 inline void
-decompressPrintArgs__B__mar46cc__294__ (const char **in,
+decompressPrintArgs__A__mar46cc__293__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
@@ -103,16 +103,16 @@ decompressPrintArgs__B__mar46cc__294__ (const char **in,
     // Find all the strings
     
 
-    const char *fmtString = "B";
+    const char *fmtString = "A";
     const char *filename = "mar.cc";
-    const int linenum = 294;
+    const int linenum = 293;
     const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
-        fprintf(outputFd, "B" "\r\n" );
+        fprintf(outputFd, "A" "\r\n" );
 
     if (aggFn)
-        (*aggFn)("B" );
+        (*aggFn)("A" );
 }
 
 
@@ -201,8 +201,8 @@ decompressPrintArgs__A__mar46h__1__ (const char **in,
 }
 
 
-inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char* fmtStr ) {
-    extern const uint32_t __fmtId__E__del46cc__199__;
+inline void __syang0__fl__B__mar46cc__294__(NanoLog::LogLevel level, const char* fmtStr ) {
+    extern const uint32_t __fmtId__B__mar46cc__294__;
 
     if (level > NanoLog::getLogLevel())
         return;
@@ -212,7 +212,7 @@ inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char*
     size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
-    re->fmtId = __fmtId__E__del46cc__199__;
+    re->fmtId = __fmtId__B__mar46cc__294__;
     re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
@@ -230,7 +230,7 @@ inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char*
 
 
 inline ssize_t
-compressArgs__E__del46cc__199__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
+compressArgs__B__mar46cc__294__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
@@ -260,7 +260,7 @@ compressArgs__E__del46cc__199__(NanoLogInternal::Log::UncompressedEntry *re, cha
 
 
 inline void
-decompressPrintArgs__E__del46cc__199__ (const char **in,
+decompressPrintArgs__B__mar46cc__294__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
     BufferUtils::TwoNibbles nib[0];
@@ -273,101 +273,16 @@ decompressPrintArgs__E__del46cc__199__ (const char **in,
     // Find all the strings
     
 
-    const char *fmtString = "E";
-    const char *filename = "del.cc";
-    const int linenum = 199;
-    const NanoLog::LogLevel logLevel = DEBUG;
-
-    if (outputFd)
-        fprintf(outputFd, "E" "\r\n" );
-
-    if (aggFn)
-        (*aggFn)("E" );
-}
-
-
-inline void __syang0__fl__A__mar46cc__293__(NanoLog::LogLevel level, const char* fmtStr ) {
-    extern const uint32_t __fmtId__A__mar46cc__293__;
-
-    if (level > NanoLog::getLogLevel())
-        return;
-
-    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
-    ;
-    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
-    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
-
-    re->fmtId = __fmtId__A__mar46cc__293__;
-    re->timestamp = timestamp;
-    re->entrySize = static_cast<uint32_t>(allocSize);
-
-    char *buffer = re->argData;
-
-    // Record the non-string arguments
-    
-
-    // Record the strings (if any) at the end of the entry
-    
-
-    // Make the entry visible
-    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
-}
-
-
-inline ssize_t
-compressArgs__A__mar46cc__293__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
-    char *originalOutPtr = out;
-
-    // Allocate nibbles
-    BufferUtils::TwoNibbles *nib = reinterpret_cast<BufferUtils::TwoNibbles*>(out);
-    out += 0;
-
-    char *args = re->argData;
-
-    // Read back all the primitives
-    
-
-    // Pack all the primitives
-    
-
-    if (false) {
-        // memcpy all the strings without compression
-        size_t stringBytes = re->entrySize - ( 0)
-                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
-        if (stringBytes > 0) {
-            memcpy(out, args, stringBytes);
-            out += stringBytes;
-        }
-    }
-
-    return out - originalOutPtr;
-}
-
-
-inline void
-decompressPrintArgs__A__mar46cc__293__ (const char **in,
-                        FILE *outputFd,
-                        void (*aggFn)(const char*, ...)) {
-    BufferUtils::TwoNibbles nib[0];
-    memcpy(&nib, (*in), 0);
-    (*in) += 0;
-
-    // Unpack all the non-string argments
-    
-
-    // Find all the strings
-    
-
-    const char *fmtString = "A";
+    const char *fmtString = "B";
     const char *filename = "mar.cc";
-    const int linenum = 293;
+    const int linenum = 294;
     const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
-        fprintf(outputFd, "A" "\r\n" );
+        fprintf(outputFd, "B" "\r\n" );
 
     if (aggFn)
-        (*aggFn)("A" );
+        (*aggFn)("B" );
 }
 
 
@@ -456,6 +371,95 @@ decompressPrintArgs__C__mar46cc__200__ (const char **in,
 }
 
 
+inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const char* fmtStr , int arg0) {
+    extern const uint32_t __fmtId__D3237d__s46cc__100__;
+
+    if (level > NanoLog::getLogLevel())
+        return;
+
+    uint64_t timestamp = PerfUtils::Cycles::rdtsc();
+    ;
+    size_t allocSize = sizeof(arg0) +   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
+
+    re->fmtId = __fmtId__D3237d__s46cc__100__;
+    re->timestamp = timestamp;
+    re->entrySize = static_cast<uint32_t>(allocSize);
+
+    char *buffer = re->argData;
+
+    // Record the non-string arguments
+    	NanoLogInternal::Log::recordPrimitive(buffer, arg0);
+
+
+    // Record the strings (if any) at the end of the entry
+    
+
+    // Make the entry visible
+    NanoLogInternal::RuntimeLogger::finishAlloc(allocSize);
+}
+
+
+inline ssize_t
+compressArgs__D3237d__s46cc__100__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
+    char *originalOutPtr = out;
+
+    // Allocate nibbles
+    BufferUtils::TwoNibbles *nib = reinterpret_cast<BufferUtils::TwoNibbles*>(out);
+    out += 1;
+
+    char *args = re->argData;
+
+    // Read back all the primitives
+    	int arg0; std::memcpy(&arg0, args, sizeof(int)); args +=sizeof(int);
+
+
+    // Pack all the primitives
+    	nib[0].first = 0x0f & static_cast<uint8_t>(BufferUtils::pack(&out, arg0));
+
+
+    if (false) {
+        // memcpy all the strings without compression
+        size_t stringBytes = re->entrySize - (sizeof(arg0) +  0)
+                                            - sizeof(NanoLogInternal::Log::UncompressedEntry);
+        if (stringBytes > 0) {
+            memcpy(out, args, stringBytes);
+            out += stringBytes;
+        }
+    }
+
+    return out - originalOutPtr;
+}
+
+
+inline void
+decompressPrintArgs__D3237d__s46cc__100__ (const char **in,
+                        FILE *outputFd,
+                        void (*aggFn)(const char*, ...)) {
+    BufferUtils::TwoNibbles nib[1];
+    memcpy(&nib, (*in), 1);
+    (*in) += 1;
+
+    // Unpack all the non-string argments
+    	int arg0 = BufferUtils::unpack<int>(in, nib[0].first);
+
+
+    // Find all the strings
+    
+
+    const char *fmtString = "D %d";
+    const char *filename = "s.cc";
+    const int linenum = 100;
+    const NanoLog::LogLevel logLevel = DEBUG;
+
+    if (outputFd)
+        fprintf(outputFd, "D %d" "\r\n" , arg0);
+
+    if (aggFn)
+        (*aggFn)("D %d" , arg0);
+}
+
+
 inline void __syang0__fl__E32374s3237424642lf__s46cc__100__(NanoLog::LogLevel level, const char* fmtStr , const char* arg0, int arg1, int arg2, double arg3) {
     extern const uint32_t __fmtId__E32374s3237424642lf__s46cc__100__;
 
@@ -498,9 +502,9 @@ compressArgs__E32374s3237424642lf__s46cc__100__(NanoLogInternal::Log::Uncompress
     char *args = re->argData;
 
     // Read back all the primitives
-    	int arg1 = *reinterpret_cast<int*>(args); args +=sizeof(int);
-	int arg2 = *reinterpret_cast<int*>(args); args +=sizeof(int);
-	double arg3 = *reinterpret_cast<double*>(args); args +=sizeof(double);
+    	int arg1; std::memcpy(&arg1, args, sizeof(int)); args +=sizeof(int);
+	int arg2; std::memcpy(&arg2, args, sizeof(int)); args +=sizeof(int);
+	double arg3; std::memcpy(&arg3, args, sizeof(double)); args +=sizeof(double);
 
 
     // Pack all the primitives
@@ -556,26 +560,25 @@ decompressPrintArgs__E32374s3237424642lf__s46cc__100__ (const char **in,
 }
 
 
-inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const char* fmtStr , int arg0) {
-    extern const uint32_t __fmtId__D3237d__s46cc__100__;
+inline void __syang0__fl__E__del46cc__199__(NanoLog::LogLevel level, const char* fmtStr ) {
+    extern const uint32_t __fmtId__E__del46cc__199__;
 
     if (level > NanoLog::getLogLevel())
         return;
 
     uint64_t timestamp = PerfUtils::Cycles::rdtsc();
     ;
-    size_t allocSize = sizeof(arg0) +   sizeof(NanoLogInternal::Log::UncompressedEntry);
+    size_t allocSize =   sizeof(NanoLogInternal::Log::UncompressedEntry);
     NanoLogInternal::Log::UncompressedEntry *re = reinterpret_cast<NanoLogInternal::Log::UncompressedEntry*>(NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize));
 
-    re->fmtId = __fmtId__D3237d__s46cc__100__;
+    re->fmtId = __fmtId__E__del46cc__199__;
     re->timestamp = timestamp;
     re->entrySize = static_cast<uint32_t>(allocSize);
 
     char *buffer = re->argData;
 
     // Record the non-string arguments
-    	NanoLogInternal::Log::recordPrimitive(buffer, arg0);
-
+    
 
     // Record the strings (if any) at the end of the entry
     
@@ -586,26 +589,24 @@ inline void __syang0__fl__D3237d__s46cc__100__(NanoLog::LogLevel level, const ch
 
 
 inline ssize_t
-compressArgs__D3237d__s46cc__100__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
+compressArgs__E__del46cc__199__(NanoLogInternal::Log::UncompressedEntry *re, char* out) {
     char *originalOutPtr = out;
 
     // Allocate nibbles
     BufferUtils::TwoNibbles *nib = reinterpret_cast<BufferUtils::TwoNibbles*>(out);
-    out += 1;
+    out += 0;
 
     char *args = re->argData;
 
     // Read back all the primitives
-    	int arg0 = *reinterpret_cast<int*>(args); args +=sizeof(int);
-
+    
 
     // Pack all the primitives
-    	nib[0].first = 0x0f & static_cast<uint8_t>(BufferUtils::pack(&out, arg0));
-
+    
 
     if (false) {
         // memcpy all the strings without compression
-        size_t stringBytes = re->entrySize - (sizeof(arg0) +  0)
+        size_t stringBytes = re->entrySize - ( 0)
                                             - sizeof(NanoLogInternal::Log::UncompressedEntry);
         if (stringBytes > 0) {
             memcpy(out, args, stringBytes);
@@ -618,43 +619,42 @@ compressArgs__D3237d__s46cc__100__(NanoLogInternal::Log::UncompressedEntry *re, 
 
 
 inline void
-decompressPrintArgs__D3237d__s46cc__100__ (const char **in,
+decompressPrintArgs__E__del46cc__199__ (const char **in,
                         FILE *outputFd,
                         void (*aggFn)(const char*, ...)) {
-    BufferUtils::TwoNibbles nib[1];
-    memcpy(&nib, (*in), 1);
-    (*in) += 1;
+    BufferUtils::TwoNibbles nib[0];
+    memcpy(&nib, (*in), 0);
+    (*in) += 0;
 
     // Unpack all the non-string argments
-    	int arg0 = BufferUtils::unpack<int>(in, nib[0].first);
-
+    
 
     // Find all the strings
     
 
-    const char *fmtString = "D %d";
-    const char *filename = "s.cc";
-    const int linenum = 100;
+    const char *fmtString = "E";
+    const char *filename = "del.cc";
+    const int linenum = 199;
     const NanoLog::LogLevel logLevel = DEBUG;
 
     if (outputFd)
-        fprintf(outputFd, "D %d" "\r\n" , arg0);
+        fprintf(outputFd, "E" "\r\n" );
 
     if (aggFn)
-        (*aggFn)("D %d" , arg0);
+        (*aggFn)("E" );
 }
 
 
 } // end empty namespace
 
 // Assignment of numerical ids to format NANO_LOG occurrences
-extern const int __fmtId__B__mar46cc__294__ = 0; // mar.cc:294 "B"
+extern const int __fmtId__A__mar46cc__293__ = 0; // mar.cc:293 "A"
 extern const int __fmtId__A__mar46h__1__ = 1; // mar.h:1 "A"
-extern const int __fmtId__E__del46cc__199__ = 2; // del.cc:199 "E"
-extern const int __fmtId__A__mar46cc__293__ = 3; // mar.cc:293 "A"
-extern const int __fmtId__C__mar46cc__200__ = 4; // mar.cc:200 "C"
+extern const int __fmtId__B__mar46cc__294__ = 2; // mar.cc:294 "B"
+extern const int __fmtId__C__mar46cc__200__ = 3; // mar.cc:200 "C"
+extern const int __fmtId__D3237d__s46cc__100__ = 4; // s.cc:100 "D %d"
 extern const int __fmtId__E32374s3237424642lf__s46cc__100__ = 5; // s.cc:100 "E %4s %*.*lf"
-extern const int __fmtId__D3237d__s46cc__100__ = 6; // s.cc:100 "D %d"
+extern const int __fmtId__E__del46cc__199__ = 6; // del.cc:199 "E"
 
 // Start new namespace for generated ids and code
 namespace GeneratedFunctions {
@@ -662,26 +662,26 @@ namespace GeneratedFunctions {
 // Map of numerical ids to log message metadata
 struct LogMetadata logId2Metadata[7] =
 {
-    {"B", "mar.cc", 294, DEBUG},
+    {"A", "mar.cc", 293, DEBUG},
 {"A", "mar.h", 1, DEBUG},
-{"E", "del.cc", 199, DEBUG},
-{"A", "mar.cc", 293, DEBUG},
+{"B", "mar.cc", 294, DEBUG},
 {"C", "mar.cc", 200, DEBUG},
+{"D %d", "s.cc", 100, DEBUG},
 {"E %4s %*.*lf", "s.cc", 100, DEBUG},
-{"D %d", "s.cc", 100, DEBUG}
+{"E", "del.cc", 199, DEBUG}
 };
 
 // Map of numerical ids to compression functions
 ssize_t
 (*compressFnArray[7]) (NanoLogInternal::Log::UncompressedEntry *re, char* out)
 {
-    compressArgs__B__mar46cc__294__,
+    compressArgs__A__mar46cc__293__,
 compressArgs__A__mar46h__1__,
-compressArgs__E__del46cc__199__,
-compressArgs__A__mar46cc__293__,
+compressArgs__B__mar46cc__294__,
 compressArgs__C__mar46cc__200__,
+compressArgs__D3237d__s46cc__100__,
 compressArgs__E32374s3237424642lf__s46cc__100__,
-compressArgs__D3237d__s46cc__100__
+compressArgs__E__del46cc__199__
 };
 
 // Map of numerical ids to decompression functions
@@ -690,13 +690,13 @@ void
                                         FILE *outputFd,
                                         void (*aggFn)(const char*, ...))
 {
-    decompressPrintArgs__B__mar46cc__294__,
+    decompressPrintArgs__A__mar46cc__293__,
 decompressPrintArgs__A__mar46h__1__,
-decompressPrintArgs__E__del46cc__199__,
-decompressPrintArgs__A__mar46cc__293__,
+decompressPrintArgs__B__mar46cc__294__,
 decompressPrintArgs__C__mar46cc__200__,
+decompressPrintArgs__D3237d__s46cc__100__,
 decompressPrintArgs__E32374s3237424642lf__s46cc__100__,
-decompressPrintArgs__D3237d__s46cc__100__
+decompressPrintArgs__E__del46cc__199__
 };
 
 // Writes the metadata needed by the decompressor to interpret the log messages
@@ -706,7 +706,7 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
     char *startPos = buffer;
     
 {
-    // mar.cc:294 - "B"
+    // mar.cc:293 - "A"
     FormatMetadata *fm;
     PrintFragment *pf;
     if (buffer + sizeof(FormatMetadata) + 7 >= endOfBuffer)
@@ -718,14 +718,14 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
     fm->numNibbles = 0;
     fm->numPrintFragments = 1;
     fm->logLevel = DEBUG;
-    fm->lineNumber = 294;
+    fm->lineNumber = 293;
     fm->filenameLength = 7;
 
     buffer = stpcpy(buffer, "mar.cc") + 1;
 
             // Fragment 0
             if (buffer + sizeof(PrintFragment)
-                        + sizeof("B")/sizeof(char) >= endOfBuffer)
+                        + sizeof("A")/sizeof(char) >= endOfBuffer)
                 return -1;
 
             pf = reinterpret_cast<PrintFragment*>(buffer);
@@ -734,9 +734,9 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
             pf->argType = NONE;
             pf->hasDynamicWidth = false;
             pf->hasDynamicPrecision = false;
-            pf->fragmentLength = sizeof("B")/sizeof(char);
+            pf->fragmentLength = sizeof("A")/sizeof(char);
 
-            buffer = stpcpy(buffer, "B") + 1;
+            buffer = stpcpy(buffer, "A") + 1;
 }
 
 
@@ -780,7 +780,7 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
 
 
 {
-    // del.cc:199 - "E"
+    // mar.cc:294 - "B"
     FormatMetadata *fm;
     PrintFragment *pf;
     if (buffer + sizeof(FormatMetadata) + 7 >= endOfBuffer)
@@ -792,51 +792,14 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
     fm->numNibbles = 0;
     fm->numPrintFragments = 1;
     fm->logLevel = DEBUG;
-    fm->lineNumber = 199;
-    fm->filenameLength = 7;
-
-    buffer = stpcpy(buffer, "del.cc") + 1;
-
-            // Fragment 0
-            if (buffer + sizeof(PrintFragment)
-                        + sizeof("E")/sizeof(char) >= endOfBuffer)
-                return -1;
-
-            pf = reinterpret_cast<PrintFragment*>(buffer);
-            buffer += sizeof(PrintFragment);
-
-            pf->argType = NONE;
-            pf->hasDynamicWidth = false;
-            pf->hasDynamicPrecision = false;
-            pf->fragmentLength = sizeof("E")/sizeof(char);
-
-            buffer = stpcpy(buffer, "E") + 1;
-}
-
-
-
-
-{
-    // mar.cc:293 - "A"
-    FormatMetadata *fm;
-    PrintFragment *pf;
-    if (buffer + sizeof(FormatMetadata) + 7 >= endOfBuffer)
-        return -1;
-
-    fm = reinterpret_cast<FormatMetadata*>(buffer);
-    buffer += sizeof(FormatMetadata);
-
-    fm->numNibbles = 0;
-    fm->numPrintFragments = 1;
-    fm->logLevel = DEBUG;
-    fm->lineNumber = 293;
+    fm->lineNumber = 294;
     fm->filenameLength = 7;
 
     buffer = stpcpy(buffer, "mar.cc") + 1;
 
             // Fragment 0
             if (buffer + sizeof(PrintFragment)
-                        + sizeof("A")/sizeof(char) >= endOfBuffer)
+                        + sizeof("B")/sizeof(char) >= endOfBuffer)
                 return -1;
 
             pf = reinterpret_cast<PrintFragment*>(buffer);
@@ -845,9 +808,9 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
             pf->argType = NONE;
             pf->hasDynamicWidth = false;
             pf->hasDynamicPrecision = false;
-            pf->fragmentLength = sizeof("A")/sizeof(char);
+            pf->fragmentLength = sizeof("B")/sizeof(char);
 
-            buffer = stpcpy(buffer, "A") + 1;
+            buffer = stpcpy(buffer, "B") + 1;
 }
 
 
@@ -885,6 +848,43 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
             pf->fragmentLength = sizeof("C")/sizeof(char);
 
             buffer = stpcpy(buffer, "C") + 1;
+}
+
+
+
+
+{
+    // s.cc:100 - "D %d"
+    FormatMetadata *fm;
+    PrintFragment *pf;
+    if (buffer + sizeof(FormatMetadata) + 5 >= endOfBuffer)
+        return -1;
+
+    fm = reinterpret_cast<FormatMetadata*>(buffer);
+    buffer += sizeof(FormatMetadata);
+
+    fm->numNibbles = 1;
+    fm->numPrintFragments = 1;
+    fm->logLevel = DEBUG;
+    fm->lineNumber = 100;
+    fm->filenameLength = 5;
+
+    buffer = stpcpy(buffer, "s.cc") + 1;
+
+            // Fragment 0
+            if (buffer + sizeof(PrintFragment)
+                        + sizeof("D %d")/sizeof(char) >= endOfBuffer)
+                return -1;
+
+            pf = reinterpret_cast<PrintFragment*>(buffer);
+            buffer += sizeof(PrintFragment);
+
+            pf->argType = int_t;
+            pf->hasDynamicWidth = false;
+            pf->hasDynamicPrecision = false;
+            pf->fragmentLength = sizeof("D %d")/sizeof(char);
+
+            buffer = stpcpy(buffer, "D %d") + 1;
 }
 
 
@@ -943,37 +943,37 @@ long int writeDictionary(char *buffer, char *endOfBuffer) {
 
 
 {
-    // s.cc:100 - "D %d"
+    // del.cc:199 - "E"
     FormatMetadata *fm;
     PrintFragment *pf;
-    if (buffer + sizeof(FormatMetadata) + 5 >= endOfBuffer)
+    if (buffer + sizeof(FormatMetadata) + 7 >= endOfBuffer)
         return -1;
 
     fm = reinterpret_cast<FormatMetadata*>(buffer);
     buffer += sizeof(FormatMetadata);
 
-    fm->numNibbles = 1;
+    fm->numNibbles = 0;
     fm->numPrintFragments = 1;
     fm->logLevel = DEBUG;
-    fm->lineNumber = 100;
-    fm->filenameLength = 5;
+    fm->lineNumber = 199;
+    fm->filenameLength = 7;
 
-    buffer = stpcpy(buffer, "s.cc") + 1;
+    buffer = stpcpy(buffer, "del.cc") + 1;
 
             // Fragment 0
             if (buffer + sizeof(PrintFragment)
-                        + sizeof("D %d")/sizeof(char) >= endOfBuffer)
+                        + sizeof("E")/sizeof(char) >= endOfBuffer)
                 return -1;
 
             pf = reinterpret_cast<PrintFragment*>(buffer);
             buffer += sizeof(PrintFragment);
 
-            pf->argType = int_t;
+            pf->argType = NONE;
             pf->hasDynamicWidth = false;
             pf->hasDynamicPrecision = false;
-            pf->fragmentLength = sizeof("D %d")/sizeof(char);
+            pf->fragmentLength = sizeof("E")/sizeof(char);
 
-            buffer = stpcpy(buffer, "D %d") + 1;
+            buffer = stpcpy(buffer, "E") + 1;
 }
 
 

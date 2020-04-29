@@ -218,13 +218,13 @@ class PreprocesorTestCase(unittest.TestCase):
         self.assertEqual(FilePosition(5, 8), args[3].endPos)
 
     def test_parseLogStatement_missingSemicolonOrParen(self):
-        with self.assertRaisesRegexp(ValueError, "Expected ';'"):
+        with self.assertRaisesRegex(ValueError, "Expected ';'"):
             parseLogStatement(["NANO_LOG(\"1\") }"], FilePosition(0, 0))
 
-        with self.assertRaisesRegexp(ValueError, "Expected ';'"):
+        with self.assertRaisesRegex(ValueError, "Expected ';'"):
             parseLogStatement(["NANO_LOG(\"1\")"], FilePosition(0, 0))
 
-        with self.assertRaisesRegexp(ValueError, "Cannot find end"):
+        with self.assertRaisesRegex(ValueError, "Cannot find end"):
             parseLogStatement(["NANO_LOG(\"1\""], FilePosition(0, 0))
 
     def test_peekNextMeaningfulChar(self):
@@ -291,7 +291,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
 
         # Invalid types
         fmtString = "%S %qosiwieud"
-        with self.assertRaisesRegexp(ValueError,
+        with self.assertRaisesRegex(ValueError,
                                      "Unrecognized Format Specifier"):
             splitAndParseTypesInFmtString(fmtString)
 
@@ -323,10 +323,10 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         self.assertEqual(splitAndParseTypesInFmtString(" %d"),
                          [FmtType("int", None, None, " %d")])
 
-        with self.assertRaisesRegexp(ValueError, "not supported"):
+        with self.assertRaisesRegex(ValueError, "not supported"):
             splitAndParseTypesInFmtString("%hhn")
 
-        with self.assertRaisesRegexp(ValueError, "Unrecognized Format"):
+        with self.assertRaisesRegex(ValueError, "Unrecognized Format"):
             splitAndParseTypesInFmtString("%hhj")
 
     def test_parseTypesInFmtString_jzt(self):
@@ -346,19 +346,19 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                           FmtType('ptrdiff_t', None, None, " %tu"),
                           FmtType("ptrdiff_t", None, None, " %td")])
 
-        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
+        with self.assertRaisesRegex(ValueError, "specifier not supported"):
             splitAndParseTypesInFmtString("%jn %zn zn %tn")
 
         # Unexpected characters!
-        with self.assertRaisesRegexp(ValueError,
+        with self.assertRaisesRegex(ValueError,
                                      "Unrecognized Format Specifier: \"%z"):
             splitAndParseTypesInFmtString("%z\r\n")
 
-        with self.assertRaisesRegexp(ValueError,
+        with self.assertRaisesRegex(ValueError,
                                      "Unrecognized Format Specifier: \"%j"):
             splitAndParseTypesInFmtString("%j\r\n")
 
-        with self.assertRaisesRegexp(ValueError,
+        with self.assertRaisesRegex(ValueError,
                                      "Unrecognized Format Specifier: \"%t"):
             splitAndParseTypesInFmtString("%t\r\n")
 
@@ -391,7 +391,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                           FmtType("double", None, None, " %llf")])
 
         # Check for errors
-        with self.assertRaisesRegexp(ValueError, "Invalid arguments for"):
+        with self.assertRaisesRegex(ValueError, "Invalid arguments for"):
             splitAndParseTypesInFmtString("%Lu")
 
     def test_parseTypesInFmtString_basicIntegerTypes(self):
@@ -410,7 +410,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                           FmtType("const char*", None, None, " %s"),
                           FmtType("const void*", None, None, " %p")])
 
-        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
+        with self.assertRaisesRegex(ValueError, "specifier not supported"):
             splitAndParseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_cspn(self):
@@ -423,7 +423,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                          [FmtType("const wchar_t*", None, None, "%ls"),
                           FmtType("wint_t", None, None, " %lc asdf")])
 
-        with self.assertRaisesRegexp(ValueError, "not supported"):
+        with self.assertRaisesRegex(ValueError, "not supported"):
             splitAndParseTypesInFmtString("%n")
 
     def test_parseTypesInFmtString_precision(self):
@@ -457,7 +457,7 @@ class FunctionGeneratorTestCase(unittest.TestCase):
                           FmtType("size_t", None, None, " %zu"),
                           FmtType("ptrdiff_t", 9, 2, " %09.2tu")])
 
-        with self.assertRaisesRegexp(ValueError, "specifier not supported"):
+        with self.assertRaisesRegex(ValueError, "specifier not supported"):
             splitAndParseTypesInFmtString("%hhn %hn %ln %lln %jn %zn %tn")
 
     def test_generateLogFunctions_empty(self):
@@ -535,11 +535,12 @@ class FunctionGeneratorTestCase(unittest.TestCase):
         # same log, diff compilation unit, but same originating file
         fg.generateLogFunctions("DEBUG", "A", "s.cc", "mar.cc", 293)
 
-        ids = fg.logId2Code.keys()
-        self.assertEqual(['__A__mar46cc__293__',
+        ids = list(fg.logId2Code)
+        ids.sort()
+        self.assertEqual(['__A__mar46cc__200__',
+                          '__A__mar46cc__293__',
                           '__A__s46cc__100__',
                           '__B__mar46cc__293__',
-                          '__A__mar46cc__200__',
                           '__INVALID__INVALID__INVALID__'], ids)
 
     def test_getRecordFunctionDefinitionsFor(self):
@@ -586,14 +587,15 @@ inline void __syang0__fl{logId}(NanoLog::LogLevel level, const char* fmtStr ) {{
         self.assertEqual(0, len(fg.getRecordFunctionDefinitionsFor("asdf.cc")))
 
         funcs = fg.getRecordFunctionDefinitionsFor("mar.cc")
+        funcs.sort()
 
         logId = generateLogIdStr("A", "mar.cc", 293)
         self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[0])
 
-        logId = generateLogIdStr("C", "mar.cc", 200)
+        logId = generateLogIdStr("B", "mar.cc", 293)
         self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[1])
 
-        logId = generateLogIdStr("B", "mar.cc", 293)
+        logId = generateLogIdStr("C", "mar.cc", 200)
         self.assertMultiLineEqual(emptyRec.format(logId=logId), funcs[2])
 
         logId = generateLogIdStr("D", "mar.cc", 100)

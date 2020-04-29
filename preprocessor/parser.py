@@ -299,7 +299,7 @@ def peekNextMeaningfulChar(lines, filePos):
     line = lines[lineNum]
     while offset < len(line):
       c = line[offset]
-      if isprintable(c) and not c.isspace():
+      if not c.isspace():
         return (c, FilePosition(lineNum, offset))
       offset = offset + 1
     offset = 0
@@ -552,8 +552,8 @@ def processFile(inputFile, mapOutputFilename):
 
           lastChar = c
     except ValueError as e:
-        print "\r\n%s:%d: Error - %s\r\n\r\n%s\r\n" % (
-            ppFileName, ppLineNum, e.args[0], "".join(e.args[1]))
+        print("\r\n%s:%d: Error - %s\r\n\r\n%s\r\n" % (
+            ppFileName, ppLineNum, e.args[0], "".join(e.args[1])))
         sys.exit(1)
 
     # Last step, retrieve the generated code and insert it at the end

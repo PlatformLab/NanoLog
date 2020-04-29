@@ -638,10 +638,12 @@ namespace Log {
                 bool skipCheckpoint=false,
                 bool forceDictionaryOutput=false);
 
+#ifdef PREPROCESSOR_NANOLOG
         long encodeLogMsgs(char *from, uint64_t nbytes,
                            uint32_t bufferId,
                            bool wrapAround,
                            uint64_t *numEventsCompressed);
+#endif // PREPROCESSOR_NANOLOG
 
         long encodeLogMsgs(char *from, uint64_t nbytes,
                                     uint32_t bufferId,
@@ -675,7 +677,7 @@ namespace Log {
 
         // A pointer to the last encoded BufferExtent's length to allow updating
         // the value as the user performs more encodeLogMsgs with the same id.
-        uint32_t *currentExtentSize;
+        void *currentExtentSize;
 
         // Metric: Total number of encode failures due to missing metadata. This
         // is typically due to a benign race condition, but could indicate an

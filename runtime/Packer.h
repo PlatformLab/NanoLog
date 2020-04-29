@@ -120,7 +120,7 @@ pack(char **buffer, T val) {
     // Although we store the entire value here, we take advantage of the fact
     // that x86-64 is little-endian (storing the least significant bits first)
     // and lop off the rest by only partially incrementing the buffer pointer
-    *reinterpret_cast<T*>(*buffer) = val;
+    std::memcpy(*buffer, &val, sizeof(T));
     *buffer += numBytes;
 
     return numBytes;
@@ -222,7 +222,7 @@ pack(char **in, T* pointer) {
 template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, int>::type
 pack(char **buffer, T val) {
-    *((T*)*buffer) = val;
+    std::memcpy(*buffer, &val, sizeof(T));
     *buffer += sizeof(T);
     return sizeof(T);
 }
@@ -271,7 +271,8 @@ template<typename T>
 inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
 unpack(const char **in, uint8_t packNibble) {
     if (packNibble == sizeof(float)) {
-        const float result = *reinterpret_cast<const float*>(*in);
+        float result;
+        std::memcpy(&result, *in, sizeof(float));
         *in += sizeof(float);
         return result;
     }

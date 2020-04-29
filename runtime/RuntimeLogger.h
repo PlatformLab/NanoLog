@@ -106,6 +106,7 @@ using namespace NanoLog;
             if (stagingBuffer == nullptr)
                 nanoLogSingleton.ensureStagingBufferAllocated();
 
+            // NOLINTNEXTLINE(clang-analyzer-core.CallAndMessage)
             return stagingBuffer->reserveProducerSpace(nbytes);
         }
 

@@ -30,6 +30,8 @@
 
 using namespace NanoLogInternal::Log;
 
+
+#ifdef PREPROCESSOR_NANOLOG
 /**
  * Find all the original NANO_LOG format strings in the user sources that
  * statically contain the searchString and print them out in the format
@@ -63,6 +65,7 @@ printLogMetadataContainingSubstring(std::string searchString)
                                                                 lm.fmtString);
     }
 }
+#endif // PREPROCESSOR_NANOLOG
 
 /**
  * Produces a GNUPlot graphable reverse CDF graph to stdout given a vector of
@@ -130,6 +133,7 @@ void printHelp(const char *exe) {
     printf("when there is one runtime logging thread:\r\n");
     printf("\t%s rcdfTime <logFile>\r\n\r\n", exe);
 
+#ifdef PREPROCESSOR_NANOLOG
     printf("== Note ==\r\n");
     printf("The following 2 commands only work with logs produced by the\r\n");
     printf("preprocessor version of NanoLog\r\n");
@@ -142,6 +146,7 @@ void printHelp(const char *exe) {
     printf("Get the logIds with static log format messages "
             "matching a substring (case sensitive)\r\n");
     printf("\t%s find <logFile> <substring>\r\n\r\n", exe);
+#endif
 }
 
 /**
@@ -170,7 +175,9 @@ int main(int argc, char** argv) {
         outputFd = stdout;
     }  else if (strcmp(command, "rcdfTime") == 0) {
         doRCDF = true;
-    } else if (strcmp(command, "minMaxMean") == 0) {
+    } 
+#ifdef PREPROCESSOR_NANOLOG
+    else if (strcmp(command, "minMaxMean") == 0) {
         if (argc < 4) {
             printHelp(argv[0]);
             exit(1);
@@ -197,7 +204,9 @@ int main(int argc, char** argv) {
         }
 
         find = true;
-    } else {
+    } 
+#endif // PREPROCESSOR_NANOLOG
+    else {
         printHelp(argv[0]);
         exit(1);
     }
@@ -209,7 +218,9 @@ int main(int argc, char** argv) {
     }
 
     if (find) {
+#ifdef PREPROCESSOR_NANOLOG
         printLogMetadataContainingSubstring(argv[3]);
+#endif // PREPROCESSOR_NANOLOG
         return 0;
     }
 
@@ -305,9 +316,11 @@ int main(int argc, char** argv) {
     uint64_t stop = PerfUtils::Cycles::rdtsc();
     double time = PerfUtils::Cycles::toSeconds(stop - start);
 
+#ifdef PREPROCESSOR_NANOLOG
     printf("Aggregating log message \"%s\" (logId=%d)\r\n",
                 GeneratedFunctions::logId2Metadata[filterId].fmtString,
                 filterId);
+#endif // PREPROCESSOR_NANOLOG
     printf("Logs Encountered: %lu\r\n", numLogs);
     printf("Matching Logs: %ld (%0.2lf%%)\r\n", count,
             (100.0*(double)count)/(double)numLogs);
