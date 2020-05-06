@@ -12,7 +12,6 @@
 
 # -DNDEBUG and -O3 should always be passed for high performance
 CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
-CXX=g++
 
 NANOLOG_RUNTIME_DIR=../runtime
 
@@ -29,9 +28,6 @@ sampleApplication: main.o libNanoLog.a
 clean:
 	@rm -f *.o sampleApplication /tmp/logFile compressedLog
 
-
-
-
 # These (optional) rules copy in the NanoLog library and decompressor.
 # An alternative is to run "make" in the runtime directory and copy out
 # the library and decompressor executable.
@@ -39,7 +35,7 @@ libNanoLog.a:
 	$(MAKE) libNanoLog.a -C $(NANOLOG_RUNTIME_DIR)
 	cp $(NANOLOG_RUNTIME_DIR)/libNanoLog.a .
 
-decompressor:
+decompressor: libNanoLog.a
 	$(MAKE) decompressor -C $(NANOLOG_RUNTIME_DIR)
 	cp $(NANOLOG_RUNTIME_DIR)/decompressor .
 

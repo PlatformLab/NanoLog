@@ -26,7 +26,6 @@ endif
 include $(NANOLOG_DIR)/NanoLogMakeFrag
 
 CXXFLAGS= -std=c++17 -O3 $(CXXWARNS) -Werror
-CXX=g++
 
 all: testApp basic_decompressor
 

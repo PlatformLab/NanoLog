@@ -332,8 +332,10 @@ Log::Encoder::encodeLogMsgs(char *from,
                 fprintf(stderr, "NanoLog Error: Metadata missing for a dynamic "
                                 "log message (id=%u) during compression. If "
                                 "you are using Preprocessor NanoLog, there is "
-                                "be a problem with your integration.\r\n",
-                                entry->fmtId);
+                                "be a problem with your integration (static "
+                                "logs detected=%lu).\r\n",
+                                entry->fmtId,
+                                 GeneratedFunctions::numLogIds);
             }
 
             break;
@@ -1388,7 +1390,7 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         GeneratedFunctions::decompressAndPrintFnArray[nextLogId](&readPos,
                                                                  outputFd,
                                                                  aggFn);
-    } else 
+    } else
 #endif // PREPROCESSOR_NANOLOG
     {
         using namespace BufferUtils;

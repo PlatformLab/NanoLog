@@ -1,5 +1,5 @@
 ########
-## This file expresses the rules required to compile with NanoLog.
+## This file expresses the rules required to compile with Preprocessor NanoLog.
 ## It defines a macro (run-cxx) to preprocess and compile user source files,
 ## and the rules required to build the NanoLog library.
 ##
@@ -8,7 +8,11 @@
 ##      and the macro USER_OBJS to list all *.o to be produced by the
 ##      user executing run-cxx on their source files.
 ##	 2) Use run-cxx to compile their sources (see documentation below)
-##   3) include this MakeFrag in their main GNUMakefile
+##   3) Add the following variable definition in their sources
+##					EXTRA_NANOLOG_FLAGS=-DPREPROCESSOR_NANOLOG
+##   4) Include this MakeFrag in their main GNUmakefile
+##
+## The sample_preprocessor/GNUmakefile shows an example of the integration.
 #######
 
 RUNTIME_DIR=$(NANOLOG_DIR)/runtime
@@ -57,7 +61,7 @@ libNanoLog.a: $(RUNTIME_OBJS) generated/GeneratedCode.o decompressor
 	ar -cr libNanoLog.a $(RUNTIME_OBJS) generated/GeneratedCode.o
 
 decompressor: generated/GeneratedCode.o $(RUNTIME_DIR)/Cycles.o $(RUNTIME_DIR)/Util.o $(RUNTIME_DIR)/Log.o $(RUNTIME_DIR)/LogDecompressor.cc
-	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS)
+	$(CXX) $(RUNTIME_CXX_FLAGS) $(CXXWARNS) $^ -o decompressor -I$(RUNTIME_DIR) -Igenerated -Werror $(NANO_LOG_LIBRARY_LIBS) $(EXTRA_NANOLOG_FLAGS)
 
 clean-all: clean
 	@rm -f libNanoLog.a $(RUNTIME_OBJS) decompressor

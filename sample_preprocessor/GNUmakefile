@@ -42,7 +42,6 @@ include $(NANOLOG_DIR)/NanoLogMakeFrag
 ####
 # -DNDEBUG and -O3 should always be passed for high performance
 CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
-CXX=g++
 
 all: sampleApplication
 
