@@ -1030,18 +1030,18 @@ log(int &logId,
     char *writePos = NanoLogInternal::RuntimeLogger::reserveAlloc(allocSize);
     auto originalWritePos = writePos;
 
-    UncompressedEntry entry;
-    entry.fmtId = logId;
-    entry.timestamp  = timestamp;
-    entry.entrySize = downCast<uint32_t>(allocSize);
-    std::memcpy(writePos, &entry, sizeof(entry));
+    UncompressedEntry *ue = new(writePos) UncompressedEntry();
+    writePos += sizeof(UncompressedEntry);
 
-    writePos += sizeof(entry.fmtId) + sizeof(entry.timestamp) + sizeof(entry.entrySize);;
     store_arguments(paramTypes, stringSizes, &writePos, args...);
+
+    ue->fmtId = logId;
+    ue->timestamp = timestamp;
+    ue->entrySize = downCast<uint32_t>(allocSize);
 
 #ifdef ENABLE_DEBUG_PRINTING
     printf("\r\nRecording %d:'%s' of size %u\r\n",
-                        logId, info.formatString, entry.entrySize);
+                        logId, info.formatString, ue->entrySize);
 #endif
 
     assert(allocSize == downCast<uint32_t>((writePos - originalWritePos)));
