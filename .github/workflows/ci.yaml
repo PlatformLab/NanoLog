@@ -1,6 +1,6 @@
 name: Build Tests
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -11,7 +11,7 @@ jobs:
     - uses: actions/checkout@v1
     - uses: actions/setup-python@v1
       with:
-        python-version: '2.x'
+        python-version: '3.x'
         architecture: 'x64'
 
     - name: Run Preprocessor Unit Tests
