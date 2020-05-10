@@ -7,6 +7,13 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        cxx: [g++, g++-7, g++-8, g++-9]
+
+    env:
+      CXX: ${{ matrix.cxx }}
+
     steps:
     - uses: actions/checkout@v1
     - uses: actions/setup-python@v1

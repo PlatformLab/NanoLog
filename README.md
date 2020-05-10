@@ -45,7 +45,7 @@ Log messages used in the benchmarks above. *Italics* indicate dynamic log argume
 
 ## Prerequisites
 NanoLog depends on the following:
-* C++17 Compiler: [GNU gcc 8.3.0](https://gcc.gnu.org) or greater
+* C++17 Compiler: [GNU g++ 7.5.0](https://gcc.gnu.org) or newer
 * [GNU Make 4.0](https://www.gnu.org/software/make/) or greater
 * [Python 3.4.2](https://www.python.org) or greater
 * POSIX AIO and Threads (usually installed with Linux)
