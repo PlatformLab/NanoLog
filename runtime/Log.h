@@ -191,7 +191,7 @@ namespace Log {
 
         // After this header are the uncompressed arguments required by
         // the original format string
-        char argData[];
+        char argData[0];
     };
 
     /**
