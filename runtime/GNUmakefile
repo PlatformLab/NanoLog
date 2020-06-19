@@ -68,8 +68,12 @@ clean-all: clean
 install: libNanoLog.a
 	install -d $(DESTDIR)$(PREFIX)/lib/
 	install -m 644 libNanoLog.a $(DESTDIR)$(PREFIX)/lib/
-	install -d $(DESTDIR)$(PREFIX)/include/
-	install -m 644 NanoLogCpp17.h $(DESTDIR)$(PREFIX)/include/
+	install -d $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 NanoLogCpp17.h $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 Common.h $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 Cycles.h $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 Packer.h $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 NanoLog.h $(DESTDIR)$(PREFIX)/include/NanoLog/
 	install -m 755 decompressor $(DESTDIR)$(PREFIX)/bin/
 # Automatic rules to build *.h dependencies. Taken from
 # https://stackoverflow.com/questions/2394609/makefile-header-dependencies
