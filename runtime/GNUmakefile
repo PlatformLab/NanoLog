@@ -64,7 +64,10 @@ clean:
 
 clean-all: clean
 	rm -f libgtest.a testHelper/GeneratedCode.cc
-
+	
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
 install: libNanoLog.a
 	install -d $(DESTDIR)$(PREFIX)/lib/
 	install -m 644 libNanoLog.a $(DESTDIR)$(PREFIX)/lib/
