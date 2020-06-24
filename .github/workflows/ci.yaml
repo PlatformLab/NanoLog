@@ -54,3 +54,5 @@ jobs:
         make clean-all
         make -j10
         sudo make install
+        cd ${GITHUB_WORKSPACE}/sample
+        make sampleApplication_system
