@@ -53,6 +53,4 @@ jobs:
         cd ${GITHUB_WORKSPACE}/runtime
         make clean-all
         make -j10
-        make install
-        cd ${GITHUB_WORKSPACE}/sample
-        make -j10 > /dev/null
+        sudo make install
