@@ -5,7 +5,7 @@ Nanolog is an extremely performant nanosecond scale logging system for C++ that 
 
 How it achieves this insane performance is by extracting static log information at compile-time, only logging the dynamic components in runtime hotpath, and deferring formatting to an offline process. This basically shifts work out of the runtime and into the compilation and post-execution phases.
 
-More information about the techniques used in this logging system can be found in the [NanoLog Paper published in the 2018 USENIX Annual Technical Conference](https://www.usenix.org/conference/atc18/presentation/yang-stephen).
+For more information about the techniques used in this logging system, please refer to either the [NanoLog Paper](https://www.usenix.org/conference/atc18/presentation/yang-stephen) published in the 2018 USENIX Annual Technical Conference or the original author's [doctoral thesis](https://web.stanford.edu/~ouster/cgi-bin/papers/YangPhD.pdf).
 
 ## Performance
 
@@ -44,7 +44,7 @@ Log messages used in the benchmarks above. *Italics* indicate dynamic log argume
 # Using NanoLog
 
 ## Prerequisites
-NanoLog depends on the following:
+Currently NanoLog only works for Linux-based systems and depends on the following:
 * C++17 Compiler: [GNU g++ 7.5.0](https://gcc.gnu.org) or newer
 * [GNU Make 4.0](https://www.gnu.org/software/make/) or greater
 * [Python 3.4.2](https://www.python.org) or greater
