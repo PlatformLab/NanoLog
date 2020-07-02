@@ -45,7 +45,7 @@ clean-all: clean
 	$(MAKE) clean-all -C $(NANOLOG_RUNTIME_DIR)
 
 main-install.o: main.cc
-	$(CXX) -I /usr/local/include -c -o $@ $< $(CXXFLAGS)
+	$(CXX) -I /usr/local/include/NanoLog/ -c -o $@ $< $(CXXFLAGS)
 
 sampleApplication_system: main-install.o 
 	$(CXX) $(CXXFLAGS) -o sampleApplication main-install.o -L/usr/local/lib/ -lNanoLog -pthread -lrt
