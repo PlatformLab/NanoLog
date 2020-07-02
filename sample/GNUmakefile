@@ -43,6 +43,9 @@ decompressor: libNanoLog.a
 clean-all: clean
 	@rm -f libNanoLog.a decompressor
 	$(MAKE) clean-all -C $(NANOLOG_RUNTIME_DIR)
-	
-sampleApplication_system: main.o 
-	$(CXX) $(CXXFLAGS) -o sampleApplication main.o -L/usr/local/lib/ -lNanoLog -pthread -lrt
+
+main-install.o: main.cc
+	$(CXX) -I /usr/local/include -c -o $@ $< $(CXXFLAGS)
+
+sampleApplication_system: main-install.o 
+	$(CXX) $(CXXFLAGS) -o sampleApplication main-install.o -L/usr/local/lib/ -lNanoLog -pthread -lrt
