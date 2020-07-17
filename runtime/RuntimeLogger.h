@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2017 Stanford University
+/* Copyright (c) 2016-2020 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -201,12 +201,20 @@ using namespace NanoLog;
         // Indicates there's an operation in aioCb that should be waited on
         bool hasOutstandingOperation;
 
-        // Flag signaling the compressionThread to stop running
+        // Flag signaling the compressionThread to stop running. This is
+        // typically only set in testing or when the application is exiting.
         bool compressionThreadShouldExit;
 
-        // Indicates that a sync request has been made but is not completed
-        // by the background thread yet.
-        bool syncRequested;
+        // Marks the progress of flushing all log messages to disk after a user
+        // invokes the sync() API. To complete the operation, the background
+        // thread has to make two passes through the staging buffers and wait
+        // on the AIO to complete before waking up the user thread.
+        enum {
+            SYNC_REQUESTED,         // User invoked a sync() operation
+            PERFORMING_SECOND_PASS, // Background thread is making a second pass
+            WAITING_ON_AIO,         // Background thread is waiting on AIO
+            SYNC_COMPLETED          // Operation complete/no requests
+        } syncStatus;
 
         // Protects the condition variables below
         std::mutex condMutex;
@@ -214,9 +222,9 @@ using namespace NanoLog;
         // Signal for when the compression thread should wakeup
         std::condition_variable workAdded;
 
-        // Signaled when the LogCompressor makes a complete pass through all the
-        // thread staging buffers and finds no log messages to output.
-        std::condition_variable hintQueueEmptied;
+        // Signaled when the background thread completes a sync() operation and
+        // the user thread should wake up.
+        std::condition_variable hintSyncCompleted;
 
         // File handle for the output file; should only be opened once at the
         // construction of the LogCompressor
@@ -243,6 +251,9 @@ using namespace NanoLog;
         // Marks the rdtsc() when the current compression thread first started
         // running. A value of 0 indicates the compression thread is not running
         uint64_t cycleAtThreadStart;
+
+        // Marks the rdtsc() when the last I/O operation started
+        uint64_t cyclesAtLastAIOStart;
 
         // Metric: Number of cycles compression thread is doing work
         uint64_t cyclesActive;
