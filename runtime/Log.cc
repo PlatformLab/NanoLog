@@ -1,4 +1,4 @@
-/* Copyright (c) 2017-2018 Stanford University
+/* Copyright (c) 2017-2020 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1352,6 +1352,14 @@ Log::Decoder::BufferFragment::decompressNextLogStatement(FILE *outputFd,
         int64_t wholeSeconds = static_cast<int64_t>(secondsSinceCheckpoint);
         nanos = 1.0e9 * (secondsSinceCheckpoint
                                 - static_cast<double>(wholeSeconds));
+
+        // If the timestamp occurred before the checkpoint, we may have to
+        // adjust the times so that nanos remains positive.
+        if (nanos < 0.0) {
+            wholeSeconds--;
+            nanos += 1.0e9;
+        }
+
         std::time_t absTime = wholeSeconds + checkpoint.unixTime;
         std::tm *tm = localtime(&absTime);
         strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", tm);

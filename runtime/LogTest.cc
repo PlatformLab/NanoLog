@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018 Stanford University
+/* Copyright (c) 2016-2020 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -1918,7 +1918,7 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     LogMessage logMsg;
 
     UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
-    ue->timestamp = 10e9;
+    ue->timestamp = 10e9 + 1;
     ue->fmtId = noParamsId;
     ue->entrySize = sizeof(UncompressedEntry);
 
@@ -1959,7 +1959,7 @@ TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     ASSERT_TRUE(iFile.good());
 
     const char* expectedLines[] = {
-        "1969-12-31 16:00:20.000000000 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r"
+        "1969-12-31 16:00:20.000000001 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r"
     };
 
     std::string iLine;
