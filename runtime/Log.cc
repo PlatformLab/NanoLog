@@ -1893,11 +1893,9 @@ Log::Decoder::decompressTo(FILE* outputFd)
 
             // If we reach a logical end to the current stage,
             // make the current stage available for consumption
-            if (((mustDepleteAllStages || !good) && !stages[0].empty()) ||
-                    newStage)
-            {
+            bool needFlush = (mustDepleteAllStages || !good);
+            if (newStage || (needFlush && !stages[stagesBuffered].empty()))
                 ++stagesBuffered;
-            }
 
             if (stagesBuffered == stagesToBuffer)
                 break;
@@ -1925,8 +1923,10 @@ Log::Decoder::decompressTo(FILE* outputFd)
             }
 
             // If nothing was found, we're done
-            if (minStage == nullptr)
+            if (minStage == nullptr) {
+                stagesBuffered = 0; // All the stages we know about are clear
                 break;
+            }
 
             // Step 3b: Output the log message
             BufferFragment *bf = minStage->front();

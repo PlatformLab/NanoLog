@@ -1910,6 +1910,119 @@ TEST_F(LogTest, Decoder_internalDecompress_fileBreaks) {
     std::remove(decomp);
 }
 
+TEST_F(LogTest, Decoder_internalDecompress_fileBreaks2) {
+    // This test is what happens if we have a break in a file. It should
+    // in theory output up to that point and no more.
+    char inputBuffer[1000], outputBuffer[1000];
+    const char *testFile = "/tmp/testFile";
+    const char *decomp = "/tmp/testFile2";
+
+    UncompressedEntry* ue = reinterpret_cast<UncompressedEntry*>(inputBuffer);
+    for (int i = 0; i < 5; ++i) {
+        ue->timestamp = i;
+        ue->fmtId = noParamsId;
+        ue->entrySize = sizeof(UncompressedEntry);
+        ++ue;
+    }
+
+    /// Simulate a file that's been written to 3x by using
+    /// 3 encoders on the same file.
+    uint64_t compressedLogs = 0;
+    Encoder encoder(outputBuffer, 1000);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint = (Checkpoint*)outputBuffer;
+    checkpoint->cyclesPerSecond = 1e9;
+    checkpoint->rdtsc = 0;
+    checkpoint->unixTime = 1;
+
+    long bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                           1*sizeof(UncompressedEntry),
+                                           5,
+                                           true,
+                                           &compressedLogs);
+    EXPECT_EQ(1, compressedLogs);
+    EXPECT_EQ(1*sizeof(UncompressedEntry), bytesRead);
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      2*sizeof(UncompressedEntry),
+                                      5,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(3, compressedLogs);
+    EXPECT_EQ(2*sizeof(UncompressedEntry), bytesRead);
+
+
+    bytesRead = encoder.encodeLogMsgs(inputBuffer,
+                                      2*sizeof(UncompressedEntry),
+                                      5,
+                                      true,
+                                      &compressedLogs);
+    EXPECT_EQ(5, compressedLogs);
+    EXPECT_EQ(2*sizeof(UncompressedEntry), bytesRead);
+
+    std::ofstream oFile;
+    oFile.open(testFile);
+    oFile.write(outputBuffer, encoder.getEncodedBytes());
+
+    Encoder encoder3(outputBuffer, 1000);
+
+    // Hack to load fake Checkpoint values to get a consistent time output
+    Checkpoint *checkpoint3 = (Checkpoint*)outputBuffer;
+    checkpoint3->cyclesPerSecond = 1e9;
+    checkpoint3->rdtsc = 0;
+    checkpoint3->unixTime = 1;
+
+    bytesRead = encoder3.encodeLogMsgs(inputBuffer,
+                                       1*sizeof(UncompressedEntry),
+                                       1,
+                                       false,
+                                       &compressedLogs);
+    EXPECT_EQ(1, compressedLogs);
+    EXPECT_EQ(1*sizeof(UncompressedEntry), bytesRead);
+    oFile.write(outputBuffer, encoder3.getEncodedBytes());
+    oFile.close();
+
+    // Now let's attempt to parse it back and read the output
+    const char* expectedLines[] = {
+            "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+            "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+            "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+            "1969-12-31 16:00:01.000000001 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+            "1969-12-31 16:00:01.000000001 testHelper/client.cc:20 NOTICE[5]: Simple log message with 0 parameters\r",
+            "\r",
+            "# New execution started\r",
+            "1969-12-31 16:00:01.000000000 testHelper/client.cc:20 NOTICE[1]: Simple log message with 0 parameters\r"
+    };
+
+    // Try the ordered case
+    Decoder dc;
+    dc.open(testFile);
+
+    FILE* outputFd = fopen(decomp, "w");
+    ASSERT_NE(nullptr, outputFd);
+    dc.decompressTo(outputFd);
+    EXPECT_EQ(6, dc.logMsgsPrinted);
+    EXPECT_EQ(4, dc.numBufferFragmentsRead);
+    EXPECT_EQ(2, dc.numCheckpointsRead);
+    fclose(outputFd);
+
+    std::string iLine;
+    std::ifstream iFile;
+
+    iFile.open(decomp);
+    for (const char *line : expectedLines) {
+        ASSERT_TRUE(iFile.good());
+        std::getline(iFile, iLine);
+        EXPECT_STREQ(line, iLine.c_str());
+    }
+    EXPECT_FALSE(iFile.eof());
+    iFile.close();
+
+    std::remove(testFile);
+    std::remove(decomp);
+}
+
 TEST_F(LogTest, Decoder_decompressNextLogStatement_timeTravel) {
     // Tests what happen when the checkpoint is newer than the log message.
     char inputBuffer[1000], outputBuffer[1000];
