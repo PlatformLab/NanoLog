@@ -493,6 +493,30 @@ TEST_F(PackerTest, nibbler) {
     EXPECT_EQ(int64_t(-(1LL<<48)), nb.getNext<int64_t>());
     EXPECT_EQ(int64_t(-(1LL<<56)), nb.getNext<int64_t>());
 
+}
+
+TEST_F(PackerTest, nibbler_assert) {
+    BufferUtils::TwoNibbles nibbles[1000];
+    char backing_buffer[1024];
+    char *buffer = backing_buffer;
+
+    // Start packing some data
+    int nibbleCntr = 0;
+    nibbles[nibbleCntr++/2].first = pack(&buffer, (float)(0.1));
+    nibbles[nibbleCntr++/2].second = pack(&buffer, (double)(0.2));
+
+    // Now let's squash the nibbles and pack()-ed values into one stream.
+    uint32_t packedBytes = buffer - backing_buffer;
+    uint32_t nibbleBytes = (nibbleCntr+1)/2;
+
+    memmove(backing_buffer + nibbleBytes, backing_buffer, packedBytes);
+    memcpy(backing_buffer, nibbles, nibbleBytes);
+
+    Nibbler nb(backing_buffer, nibbleCntr);
+
+    // Consume all the data and prepare for death
+    EXPECT_EQ((float)0.1, nb.getNext<float>());
+    EXPECT_EQ((double)0.2, nb.getNext<double>());
     EXPECT_DEATH(nb.getNext<int>(), "");
 }
 

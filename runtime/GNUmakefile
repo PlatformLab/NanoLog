@@ -18,7 +18,7 @@ ifeq ($(PREPROCESSOR_NANOLOG),yes)
 EXTRA_NANOLOG_FLAGS+=-DPREPROCESSOR_NANOLOG
 endif
 
-all: test Perf decompressor libNanoLog.a
+all: decompressor libNanoLog.a
 
 %.o:%.cc %.h
 	$(CXX) $(CXX_ARGS) $(EXTRA_NANOLOG_FLAGS) $(INCLUDES) -c $< -o $@

@@ -26,6 +26,15 @@ jobs:
         cd ${GITHUB_WORKSPACE}/preprocessor
         python ./UnitTests.py
 
+    - name: Run Library Unit Tests
+      run: |
+        cd ${GITHUB_WORKSPACE}
+        git submodule update --init
+        cd runtime
+        make test -j2
+        # Excludes assert/death tests
+        ./test --gtest_filter=-NanoLogTest.StagingBuffer_finishReservation_asserts:PackerTest.nibbler_assert
+
     - name: Build Sample App
       run: |
         cd ${GITHUB_WORKSPACE}/sample
