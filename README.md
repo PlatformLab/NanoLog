@@ -102,3 +102,53 @@ The execution of the user application should generate a compressed, binary log f
 ```
 
 After building the NanoLog library, the decompressor executable can be found in either the [./runtime directory](./runtime/) (for C++17 NanoLog) or the user app directory (for Preprocessor NanoLog).
+
+## Unit Tests
+The NanoLog project contains a plethora of tests to ensure correctness. Below is a description of each and how to access/build/execute them.
+
+
+#### Integration Tests
+The integration tests build and test the Nanolog system end-to-end. For both C++17 NanoLog and Preprocessor NanoLog, it compiles a client application with the NanoLog library, executes the application, and runs the resulting log file through the decompressor. It additionally compares the output of the decompressor to ensure that the log contents match the expected result.
+
+One can execute these tests with the following commands:
+```bash
+cd integrationTest
+./run.sh
+```
+
+#### Preprocessor and Library Unit Tests
+The NanoLog Library and Preprocessor engine also contain a suit of their own unit tests. These will test the inner-workings of each component by invoking individual functions and checking their returns match the expected results.
+
+To run the NanoLog preprocessor unit tests, execute the following commands:
+```bash
+cd preprocessor
+python UnitTests.py
+```
+
+To build and run the NanoLog library unit tests, execute the following commands:
+```bash
+git submodule update --init
+
+cd runtime
+make clean
+make test
+./test --gtest_filter=-*assert*
+```
+Note: The gtest filter is used to removed tests with assert death statements in them.
+
+#### Sample Applications
+The sample applications are intended as a guide for how users are to interface with the NanoLog library. Users can modify these applications to test NanoLog's various API and functionality. The C++17 and Preprocessor versions of these applications reside in [./sample](./sample) and [./sample_preprocessor](./sample_preprocessor) respectively. One can modify ```main.cc``` in each directory, build/run the application, and execute the decompressor to examine the results.
+
+Below is an example for C++17 NanoLog's [sample application](./sample).
+```bash
+cd sample
+
+# Modify the application
+nano main.cc
+
+make clean-all
+make
+./sampleApplication
+./decompressor decompress /tmp/logFile
+```
+Note: The sample application sets the log file to ```/tmp/logFile```.
