@@ -576,7 +576,7 @@ RuntimeLogger::compressionThreadMain() {
             }
             ++numAioWritesCompleted;
             hasOutstandingOperation = false;
-            cyclesDiskIO_upperBound += (cyclesAtLastAIOStart - start);
+            cyclesDiskIO_upperBound += (start - cyclesAtLastAIOStart);
 
             // We've completed an AIO, check if we need to notify
             if (syncStatus == WAITING_ON_AIO) {
