@@ -2,6 +2,7 @@
  More simplicity
  How about a number? 1900
  How about a second number? 1901
+ How about three numbers without a space? 123
  How about a double? 0.110000
  How about a nice little string? Stephen Rocks!
  A middle "Stephen Rocks!" string?
@@ -105,6 +106,7 @@ ieieieieieieie2
  More simplicity
  How about a number? 1900
  How about a second number? 1901
+ How about three numbers without a space? 123
  How about a double? 0.110000
  How about a nice little string? Stephen Rocks!
  A middle "Stephen Rocks!" string?
@@ -204,4 +206,4 @@ ieieieieieieie2
  Error
 
 
-# Decompression Complete after printing 198 log messages
+# Decompression Complete after printing 200 log messages

@@ -2774,6 +2774,61 @@ TEST_F(LogTest, createMicroCode) {
     EXPECT_TRUE(pf->hasDynamicPrecision);
 }
 
+TEST_F(LogTest, createMicroCode_specifiersWithoutSpaces) {
+    using namespace NanoLogInternal::Log;
+    FormatMetadata *fm;
+    PrintFragment *pf;
+    char backing_buffer[1024];
+    char *microCode = backing_buffer;
+    memset(backing_buffer, 'a', sizeof(backing_buffer));
+
+    microCode = backing_buffer;
+    const char *filename = "DatFile.txt";
+    const char *formatString = "%%%lf%Lf%*.*d";
+    EXPECT_TRUE(Decoder::createMicroCode(&microCode,
+                                         formatString,
+                                         filename,
+                                         1234,
+                                         1));
+
+    microCode = backing_buffer;
+    fm = push<FormatMetadata>(microCode);
+    microCode += fm->filenameLength;
+
+    EXPECT_STREQ(filename, fm->filename);
+    EXPECT_EQ(strlen(filename) + 1, fm->filenameLength);
+    EXPECT_EQ(1234, fm->lineNumber);
+    EXPECT_EQ(1, fm->logLevel);
+    EXPECT_EQ(5, fm->numNibbles);
+    EXPECT_EQ(3, fm->numPrintFragments);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::double_t, pf->argType);
+    EXPECT_STREQ("%%%lf", pf->formatFragment);
+    EXPECT_EQ(strlen("%%%lf") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::long_double_t, pf->argType);
+    EXPECT_STREQ("%Lf", pf->formatFragment);
+    EXPECT_EQ(strlen("%Lf") + 1, pf->fragmentLength);
+    EXPECT_FALSE(pf->hasDynamicWidth);
+    EXPECT_FALSE(pf->hasDynamicPrecision);
+    pf = push<PrintFragment>(microCode);
+    microCode += pf->fragmentLength;
+
+    EXPECT_EQ(FormatType::int_t, pf->argType);
+    EXPECT_STREQ("%*.*d", pf->formatFragment);
+    EXPECT_EQ(strlen("%*.*d") + 1, pf->fragmentLength);
+    EXPECT_TRUE(pf->hasDynamicWidth);
+    EXPECT_TRUE(pf->hasDynamicPrecision);
+}
+
 TEST_F(LogTest, readDictionaryFragment) {
     char testFile[] = "test.dic";
     char *buffer = static_cast<char*>(malloc(1024*1024));

@@ -46,6 +46,8 @@ evilTestCase(NANO_LOG* log) {
 
     NANO_LOG(NOTICE, "How about a second number? %d", 1901);
 
+    NANO_LOG(NOTICE, "How about three numbers without a space? %d%d%d", 1, 2, 3);
+
     NANO_LOG(NOTICE, "How about a double? %lf", 0.11);
 
     NANO_LOG(NOTICE, "How about a nice little string? %s", "Stephen Rocks!");

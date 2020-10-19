@@ -632,7 +632,7 @@ Log::Decoder::Decoder()
 }
 
 /**
- * Reads the metadata necessary to decompress log messsages from a log file.
+ * Reads the metadata necessary to decompress log messages from a log file.
  * This function can be invoked incrementally to build a larger dictionary from
  * smaller fragments in the file and it should only be invoked once per fragment
  *
@@ -886,7 +886,8 @@ Log::Decoder::createMicroCode(char **microCode,
             continue;
         }
 
-        // Advance the pointer to the end of the specifier
+        // Advance the pointer to the end of the specifier & reset the % counter
+        consecutivePercents = 0;
         i += match.length();
 
         // At this point we found a match, let's start analyzing it

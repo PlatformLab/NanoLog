@@ -403,7 +403,7 @@ namespace Log {
         bool hasDynamicWidth:1;
         bool hasDynamicPrecision:1;
 
-        //TODO(syang0) is this necessary? The format framgnet is null-terminated
+        //TODO(syang0) is this necessary? The format fragment is null-terminated
         // Length of the format fragment
         uint16_t fragmentLength;
 
