@@ -215,7 +215,7 @@ TimeTrace::printInternal(std::vector<TimeTrace::Buffer*>* buffers, string* s)
 {
     bool printedAnything = false;
     for (uint32_t i = 0; i < buffers->size(); i++) {
-        buffers->at(i)->activeReaders.add(1);
+        buffers->at(i)->activeReaders.fetch_and(1);
     }
 
     // Initialize file for writing
@@ -331,7 +331,7 @@ TimeTrace::printInternal(std::vector<TimeTrace::Buffer*>* buffers, string* s)
     }
 
     for (uint32_t i = 0; i < buffers->size(); i++) {
-        buffers->at(i)->activeReaders.add(-1);
+        buffers->at(i)->activeReaders.fetch_and(-1);
     }
     if (output && output != stdout)
         fclose(output);
