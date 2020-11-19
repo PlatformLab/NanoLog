@@ -20,15 +20,17 @@
 #include <stdarg.h>
 #include <string>
 
+#include "Portability.h"
+
 using std::string;
 
 namespace NanoLogInternal {
 namespace Util {
-string format(const char* format, ...)
-    __attribute__((format(printf, 1, 2)));
+string format(NANOLOG_PRINTF_FORMAT const char* format, ...)
+    NANOLOG_PRINTF_FORMAT_ATTR(1, 2);
 
-string vformat(const char* format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
+string vformat(NANOLOG_PRINTF_FORMAT const char* format, va_list ap)
+    NANOLOG_PRINTF_FORMAT_ATTR(1, 0);
 
 /// A safe version of sprintf.
 std::string

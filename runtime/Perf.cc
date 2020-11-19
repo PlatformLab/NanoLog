@@ -48,6 +48,7 @@
 #include "Cycles.h"
 #include "Log.h"
 #include "PerfHelper.h"
+#include "Portability.h"
 #include "Util.h"
 #include "Fence.h"
 
@@ -93,7 +94,7 @@ void function(uint64_t cycles) {
  * Return the current value of the fine-grain CPU cycle counter
  * (accessed via the RDTSC instruction).
  */
-static __inline __attribute__((always_inline))
+static NANOLOG_ALWAYS_INLINE
 uint64_t
 rdtsc()
 {
@@ -106,7 +107,7 @@ rdtsc()
  * Return the current value of the fine-grain CPU cycle counter
  * (accessed via the RDTSCP instruction).
  */
-static __inline __attribute__((always_inline))
+static NANOLOG_ALWAYS_INLINE
 uint64_t
 rdtscp()
 {

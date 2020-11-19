@@ -25,6 +25,7 @@
 #include "Common.h"
 #include "Cycles.h"
 #include "Packer.h"
+#include "Portability.h"
 #include "NanoLog.h"
 
 /***
@@ -825,9 +826,9 @@ compressSingle(BufferUtils::TwoNibbles* nibbles,
  * https://stackoverflow.com/questions/23443511/how-to-match-empty-arguments-pack-in-variadic-template
  */
 template<typename... Ts>
-__attribute__((always_inline))
-inline void compress_internal(BufferUtils::TwoNibbles*, int,
-                              const bool*, bool, int, char **, char **);
+NANOLOG_ALWAYS_INLINE
+void compress_internal(BufferUtils::TwoNibbles*, int,
+                       const bool*, bool, int, char **, char **);
 
 /**
  * Recursively peels off an argument from an argument pack and compresses
@@ -855,15 +856,14 @@ inline void compress_internal(BufferUtils::TwoNibbles*, int,
  *      Output buffer to write the compressed results to
  */
 template<typename T1, typename... Ts>
-inline void
-__attribute__((always_inline))
-compressHelper(BufferUtils::TwoNibbles *nibbles,
-                int nibbleCnt,
-                const ParamType *paramTypes,
-                bool stringsOnly,
-                int argNum,
-                char **in,
-                char **out)
+NANOLOG_ALWAYS_INLINE
+void compressHelper(BufferUtils::TwoNibbles *nibbles,
+                    int nibbleCnt,
+                    const ParamType *paramTypes,
+                    bool stringsOnly,
+                    int argNum,
+                    char **in,
+                    char **out)
 {
     // Peel off the first argument, and recursively process the rest
     compressSingle<T1>(nibbles, &nibbleCnt, paramTypes[argNum], stringsOnly,
@@ -874,22 +874,20 @@ compressHelper(BufferUtils::TwoNibbles *nibbles,
 
 
 template<typename... Ts>
-inline void
-__attribute__((always_inline))
-compress_internal(BufferUtils::TwoNibbles *nibbles, int nibbleCnt,
-                  const ParamType *isArgString, bool stringsOnly, int argNum,
-                  char **in, char **out)
+NANOLOG_ALWAYS_INLINE 
+void compress_internal(BufferUtils::TwoNibbles *nibbles, int nibbleCnt,
+                       const ParamType *isArgString, bool stringsOnly, int argNum,
+                       char **in, char **out)
 {
     compressHelper<Ts...>(nibbles, nibbleCnt, isArgString, stringsOnly,
                                 argNum, in, out);
 }
 
 template<>
-inline void
-__attribute__((always_inline))
-compress_internal(BufferUtils::TwoNibbles *nibbles, int nibbleCnt,
-                  const ParamType *isArgString, bool stringsOnly, int argNum,
-                  char **in, char **out)
+NANOLOG_ALWAYS_INLINE 
+void compress_internal(BufferUtils::TwoNibbles *nibbles, int nibbleCnt,
+                       const ParamType *isArgString, bool stringsOnly, int argNum,
+                       char **in, char **out)
 {
     // This is a catch for compress when the template arguments are empty,
     // in which case we do nothing. This is needed since the head/tail pack
@@ -1058,8 +1056,8 @@ log(int &logId,
  *      format parameters
  */
 static void
-__attribute__ ((format (printf, 1, 2)))
-checkFormat(const char *, ...) {}
+NANOLOG_PRINTF_FORMAT_ATTR(1, 2)
+checkFormat(NANOLOG_PRINTF_FORMAT const char *, ...) {}
 
 
 /**

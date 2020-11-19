@@ -18,6 +18,7 @@
 
 #include <stdint.h>
 
+#include "Portability.h"
 
 namespace PerfUtils {
 
@@ -34,7 +35,7 @@ class Cycles {
      * Return the current value of the fine-grain CPU cycle counter
      * (accessed via the RDTSC instruction).
      */
-    static __inline __attribute__((always_inline))
+    static NANOLOG_ALWAYS_INLINE
     uint64_t
     rdtsc()
     {
@@ -48,7 +49,7 @@ class Cycles {
         return (((uint64_t)hi << 32) | lo);
     }
 
-    static __inline __attribute__((always_inline))
+    static NANOLOG_ALWAYS_INLINE
     double
     perSecond(){
         return getCyclesPerSec();
@@ -80,7 +81,7 @@ class Cycles {
      * Returns the conversion factor between cycles in seconds, using
      * a mock value for testing when appropriate.
      */
-    static __inline __attribute__((always_inline))
+    static NANOLOG_ALWAYS_INLINE
     double
     getCyclesPerSec()
     {

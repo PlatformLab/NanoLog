@@ -23,6 +23,7 @@
 #include "Common.h"
 #include "Cycles.h"
 #include "Packer.h"
+#include "Portability.h"
 #include "TestUtil.h"
 #include "Util.h"
 
@@ -221,10 +222,12 @@ namespace Log {
      * in the first two bits and this structure is used to extract those bits
      * when the type/identify is unknown.
      */
+    NANOLOG_PACK_PUSH
     struct UnknownHeader {
         uint8_t entryType:2;
         uint8_t other:6;
-    } __attribute((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     static_assert(sizeof(UnknownHeader) == 1, "Unknown Header should have a"
             " byte size of 1 to ensure that we can always determine the entry"
@@ -239,6 +242,7 @@ namespace Log {
      *      (1-8 bytes) pack()-ed rdtsc() timestamp
      *      (0-n bytes) arguments (determined by preprocessor)
      */
+    NANOLOG_PACK_PUSH
     struct CompressedEntry {
         // Byte representation of an EntryType::LOG_MSGS_OR_DIC to identify this
         // as a CompressedRecordEntry.
@@ -252,7 +256,8 @@ namespace Log {
 
         // Value returned by pack(timestamp)
         uint8_t additionalTimestampBytes:4;
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * Marker in the compressed log that indicates to which StagingBuffer/thread
@@ -261,6 +266,7 @@ namespace Log {
      * thread finishes processing a peek() and moves on to outputting the next
      * StagingBuffer.
      */
+    NANOLOG_PACK_PUSH
     struct BufferExtent {
         // Byte representation of EntryType::BUFFER_EXTENT
         uint8_t entryType:2;
@@ -289,7 +295,8 @@ namespace Log {
         static constexpr uint32_t maxSizeOfHeader() {
             return sizeof(BufferExtent) + sizeof(uint32_t);
         }
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * Synchronization data structure in the compressed log that correlates the
@@ -298,6 +305,7 @@ namespace Log {
      * once at the beginning of a new log. If multiple exist in the log file,
      * that means the file has been appended to.
      */
+    NANOLOG_PACK_PUSH
     struct Checkpoint {
         // Byte representation of an EntryType::CHECKPOINT
         uint64_t entryType:2;
@@ -322,7 +330,8 @@ namespace Log {
         // in the log file.
         uint32_t totalMetadataEntries;
 
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * A DictionaryFragment contains a partial mapping of unique identifiers to
@@ -330,6 +339,7 @@ namespace Log {
      * CompressedLogInfo. The order in which these log infos appear determine
      * its unique identifier (i.e. by order of appearance starting at 0).
      */
+    NANOLOG_PACK_PUSH
     struct DictionaryFragment {
         // Byte representation of an EntryType::LOG_MSG_OR_DIC to indicate
         // the start of a dictionary fragment.
@@ -341,12 +351,14 @@ namespace Log {
         // Total number of FormatMetadata encountered so far in the log
         // including this fragment (used as a sanity check only).
         uint32_t totalMetadataEntries;
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * Stores the static log information associated with a log message on disk.
      * Following this structure are the filename and format string.
      */
+    NANOLOG_PACK_PUSH
     struct CompressedLogInfo {
         // LogLevel severity of the original log invocation
         uint8_t severity;
@@ -361,7 +373,8 @@ namespace Log {
         // Length of the format string that is associated with this log
         // invocation and comes after filename.
         uint16_t formatStringLength;
-    } __attribute((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * Describes a unique log message within the user sources. The order in
@@ -369,6 +382,7 @@ namespace Log {
      * logId. Following this structure are the source filename and
      * PrintFragments required for this message.
      */
+    NANOLOG_PACK_PUSH
     struct FormatMetadata {
         // Number of nibbles in the dynamic data stream used to pack() arguments
         uint8_t numNibbles;
@@ -387,12 +401,14 @@ namespace Log {
 
         // Filename for the original source file containing the LOG statement
         char filename[];
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
     /**
      * Describes how to interpret the dynamic log stream and partially
      * reconstruct the original log message.
      */
+    NANOLOG_PACK_PUSH
     struct PrintFragment {
         // The type of the argument to pull from the dynamic buffer to the
         // partial format string (formatFragment)
@@ -410,7 +426,8 @@ namespace Log {
         // A fragment of the original LOG statement that contains at most
         // one format specifier.
         char formatFragment[];
-    } __attribute__((packed));
+    } NANOLOG_PACK_ATTR;
+    NANOLOG_PACK_POP
 
 
     /**
