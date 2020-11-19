@@ -42,7 +42,7 @@ class Cycles {
         if (mockTscValue)
             return mockTscValue;
 #endif
-        uint32_t lo, hi;
+        size_t lo, hi;
         __asm__ __volatile__("rdtsc" : "=a" (lo), "=d" (hi));
 //        __asm__ __volatile__("rdtscp" : "=a" (lo), "=d" (hi) : : "%rcx");
         return (((uint64_t)hi << 32) | lo);
