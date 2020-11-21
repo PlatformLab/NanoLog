@@ -281,7 +281,7 @@ unpack(const char **in, uint8_t packNibble) {
     T result;
     int bytes = packNibble == 0 ? 16 : packNibble;
     std::memcpy(&result, (*in), bytes);
-    (*in) += sizeof(T);
+    (*in) += bytes;
     
     return result;
 }
