@@ -25,7 +25,7 @@ endif
 # Must be specified AFTER defining NANOLOG_DIR and USER_OBJ's
 include $(NANOLOG_DIR)/NanoLogMakeFrag
 
-CXXFLAGS= -std=c++17 -O3 $(CXXWARNS) -Werror
+CXXFLAGS= -Wformat -std=c++17 -O3 $(CXXWARNS) -Werror
 
 all: testApp basic_decompressor
 

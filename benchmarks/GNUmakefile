@@ -35,7 +35,7 @@ USER_SRCS=Benchmark.cc
 ifeq ($(PREPROCESSOR_NANOLOG),yes)
 CXXFLAGS= -std=c++11 -DNDEBUG -O3 -g
 else
-CXXFLAGS= -std=c++17 -DNDEBUG -O3 -g
+CXXFLAGS= -Werror=format -std=c++17 -DNDEBUG -O3 -g
 endif
 CXX=g++
 
