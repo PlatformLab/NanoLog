@@ -52,8 +52,8 @@ test: $(PREPROCESSOR_OBJECTS) $(TEST_OBJS) $(GENERATED_OBJ) libgtest.a
 	$(CXX) $(CXX_ARGS) $(EXTRA_NANOLOG_FLAGS) $(INCLUDE) -isystem ${GTEST_DIR}/include $^ $(GTEST_DIR)/src/gtest_main.cc -o test $(LIBS)
 
 # Builds the internal benchmarks
-perf: Perf.o PerfHelper.o PerfHelper.h $(OBJECTS)
-	$(CXX) $(CXX_ARGS) $(EXTRA_NANOLOG_FLAGS) $^ -o Perf -lrt -pthread
+perf: Perf.o PerfHelper.o PerfHelper.h $(OBJECTS) $(GENERATED_OBJ)
+	$(CXX) $(CXX_ARGS) $(EXTRA_NANOLOG_FLAGS) $^ -o perf -lrt -pthread
 
 # Compiles a generic decompressor that works for C++17 and Preprocessor NanoLog.
 # Note: the GeneratedCode.o is only necessary for legacy code compatibility.
