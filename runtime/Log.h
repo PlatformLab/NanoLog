@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018 Stanford University
+/* Copyright (c) 2016-2020 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -226,7 +226,7 @@ namespace Log {
     struct UnknownHeader {
         uint8_t entryType:2;
         uint8_t other:6;
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     static_assert(sizeof(UnknownHeader) == 1, "Unknown Header should have a"
@@ -256,7 +256,7 @@ namespace Log {
 
         // Value returned by pack(timestamp)
         uint8_t additionalTimestampBytes:4;
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -295,7 +295,7 @@ namespace Log {
         static constexpr uint32_t maxSizeOfHeader() {
             return sizeof(BufferExtent) + sizeof(uint32_t);
         }
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -330,7 +330,7 @@ namespace Log {
         // in the log file.
         uint32_t totalMetadataEntries;
 
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -351,7 +351,7 @@ namespace Log {
         // Total number of FormatMetadata encountered so far in the log
         // including this fragment (used as a sanity check only).
         uint32_t totalMetadataEntries;
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -373,7 +373,7 @@ namespace Log {
         // Length of the format string that is associated with this log
         // invocation and comes after filename.
         uint16_t formatStringLength;
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -401,7 +401,7 @@ namespace Log {
 
         // Filename for the original source file containing the LOG statement
         char filename[];
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
     /**
@@ -426,7 +426,7 @@ namespace Log {
         // A fragment of the original LOG statement that contains at most
         // one format specifier.
         char formatFragment[];
-    } NANOLOG_PACK_ATTR;
+    };
     NANOLOG_PACK_POP
 
 

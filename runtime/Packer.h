@@ -1,4 +1,4 @@
-/* Copyright (c) 2016-2018 Stanford University
+/* Copyright (c) 2016-2020 Stanford University
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -76,7 +76,7 @@ NANOLOG_PACK_PUSH
 struct TwoNibbles {
     uint8_t first:4;
     uint8_t second:4;
-} NANOLOG_PACK_ATTR;
+};
 NANOLOG_PACK_POP
 
 /**
@@ -285,7 +285,7 @@ unpack(const char **in, uint8_t packNibble) {
     int bytes = packNibble == 0 ? 16 : packNibble;
     std::memcpy(&result, (*in), bytes);
     (*in) += bytes;
-    
+
     return result;
 }
 

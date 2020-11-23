@@ -18,15 +18,12 @@
 #endif
 
 #ifdef _MSC_VER
-#define NANOLOG_PACK_ATTR
 #define NANOLOG_PACK_PUSH __pragma(pack(push, 1))
 #define NANOLOG_PACK_POP __pragma(pack(pop))
 #elif defined(__GNUC__)
-#define NANOLOG_PACK_ATTR __attribute__((__packed__))
-#define NANOLOG_PACK_PUSH
-#define NANOLOG_PACK_POP
+#define NANOLOG_PACK_PUSH _Pragma("pack(push, 1)")
+#define NANOLOG_PACK_POP _Pragma("pack(pop)")
 #else
-#define NANOLOG_PACK_ATTR
 #define NANOLOG_PACK_PUSH
 #define NANOLOG_PACK_POP
 #endif
