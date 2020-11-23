@@ -16,12 +16,12 @@
 #ifndef PERFUTIL_TIMETRACE_H
 #define PERFUTIL_TIMETRACE_H
 
+#include <atomic>
 #include <string>
 #include <vector>
 #include <mutex>
 #include <xmmintrin.h>
 
-#include "Atomic.h"
 #include "Cycles.h"
 
 namespace PerfUtils {
@@ -169,7 +169,7 @@ class TimeTrace {
         // Count of number of calls to printInternal that are currently active
         // for this buffer; if nonzero, then it isn't safe to log new
         // entries, since this could interfere with readers.
-        Atomic<int> activeReaders;
+        std::atomic<int> activeReaders;
 
         // Holds information from the most recent calls to the record method.
         TimeTrace::Event events[BUFFER_SIZE];

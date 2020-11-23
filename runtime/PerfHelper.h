@@ -26,10 +26,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "Portability.h"
+
 namespace PerfHelper {
 
 void flushCache();
-uint64_t plusOne(uint64_t x) __attribute__ ((noinline));
+uint64_t plusOne(uint64_t x) NANOLOG_NOINLINE;
 
 // Simple function that performs no computation
 template<int addTo>

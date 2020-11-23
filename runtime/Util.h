@@ -30,6 +30,8 @@
 #include <string>
 #include <stdexcept>
 
+#include "Portability.h"
+
 namespace NanoLogInternal {
 
 /**
@@ -41,7 +43,7 @@ namespace Util {
 std::string hexDump(const void *buffer, uint64_t bytes);
 
 /* Doxygen is stupid and cannot distinguish between attributes and arguments. */
-#define FORCE_INLINE __inline __attribute__((always_inline))
+#define FORCE_INLINE NANOLOG_ALWAYS_INLINE
 
 /**
  * A utility for function for calling rdpmc and reading Intel's performance
