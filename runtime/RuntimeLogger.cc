@@ -43,14 +43,13 @@ RuntimeLogger::RuntimeLogger()
         , compressionThread()
         , hasOutstandingOperation(false)
         , compressionThreadShouldExit(false)
+        , writerThreadShouldExit(false)
         , syncStatus(SYNC_COMPLETED)
         , condMutex()
         , workAdded()
         , hintSyncCompleted()
         , outputFd(-1)
-        , aioCb()
-        , compressingBuffer(nullptr)
-        , outputDoubleBuffer(nullptr)
+        , buffer()
         , currentLogLevel(NOTICE)
         , cycleAtThreadStart(0)
         , cyclesAtLastAIOStart(0)
@@ -82,26 +81,9 @@ RuntimeLogger::RuntimeLogger()
         std::exit(-1);
     }
 
-    memset(&aioCb, 0, sizeof(aioCb));
-
-    int err = posix_memalign(reinterpret_cast<void **>(&compressingBuffer),
-                             512, NanoLogConfig::OUTPUT_BUFFER_SIZE);
-    if (err) {
-        perror("The NanoLog system was not able to allocate enough memory "
-                       "to support its operations. Quitting...\r\n");
-        std::exit(-1);
-    }
-
-    err = posix_memalign(reinterpret_cast<void **>(&outputDoubleBuffer),
-                         512, NanoLogConfig::OUTPUT_BUFFER_SIZE);
-    if (err) {
-        perror("The NanoLog system was not able to allocate enough memory "
-                       "to support its operations. Quitting...\r\n");
-        std::exit(-1);
-    }
-
 #ifndef BENCHMARK_DISCARD_ENTRIES_AT_STAGINGBUFFER
     compressionThread = std::thread(&RuntimeLogger::compressionThreadMain, this);
+    writerThread = std::thread(&RuntimeLogger::writerThreadMain, this);
 #endif
 }
 
@@ -116,19 +98,16 @@ RuntimeLogger::~RuntimeLogger() {
         nanoLogSingleton.workAdded.notify_all();
     }
 
+    // Stop the writer thread completely
+    writerThreadShouldExit = true;
+    buffer.swapBuffer(0);
+    writerThread.join();
+
     if (nanoLogSingleton.compressionThread.joinable())
         nanoLogSingleton.compressionThread.join();
 
-    // Free all the data structures
-    if (compressingBuffer) {
-        free(compressingBuffer);
-        compressingBuffer = nullptr;
-    }
-
-    if (outputDoubleBuffer) {
-        free(outputDoubleBuffer);
-        outputDoubleBuffer = nullptr;
-    }
+    if (nanoLogSingleton.writerThread.joinable())
+        nanoLogSingleton.writerThread.join();
 
     if (outputFd > 0)
         close(outputFd);
@@ -314,8 +293,8 @@ RuntimeLogger::preallocate() {
 }
 
 /**
-* Main compression thread that handles scanning through the StagingBuffers,
-* compressing log entries, and outputting a compressed log file.
+* Main compression thread that handles scanning through the StagingBuffers and
+* compressing log entries.
 */
 void
 RuntimeLogger::compressionThreadMain() {
@@ -329,7 +308,7 @@ RuntimeLogger::compressionThreadMain() {
     cycleAtThreadStart = cyclesAwakeStart;
 
     // Manages the state associated with compressing log messages
-    Log::Encoder encoder(compressingBuffer, NanoLogConfig::OUTPUT_BUFFER_SIZE);
+    Log::Encoder encoder(buffer.getCompressingBuffer(), NanoLogConfig::OUTPUT_BUFFER_SIZE);
 
     // Indicates whether a compression operation failed or not due
     // to insufficient space in the outputBuffer
@@ -502,51 +481,35 @@ RuntimeLogger::compressionThreadMain() {
         }
 
         if (hasOutstandingOperation) {
-            if (aio_error(&aioCb) == EINPROGRESS) {
-                const struct aiocb *const aiocb_list[] = {&aioCb};
-                if (outputBufferFull) {
-                    // If the output buffer is full and we're not done,
-                    // wait for completion
-                    cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
-                    int err = aio_suspend(aiocb_list, 1, NULL);
+            if (buffer.writeInProgress() && !outputBufferFull) {
+                // If there's no new data, go to sleep.
+                if (bytesConsumedThisIteration == 0 &&
+                    NanoLogConfig::POLL_INTERVAL_DURING_IO_US > 0)
+                {
+                    std::unique_lock<std::mutex> lock(condMutex);
+                    cyclesActive += PerfUtils::Cycles::rdtsc() -
+                                   cyclesAwakeStart;
+                    workAdded.wait_for(lock, std::chrono::microseconds(
+                            NanoLogConfig::POLL_INTERVAL_DURING_IO_US));
                     cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
-                    if (err != 0)
-                        perror("LogCompressor's Posix AIO "
-                                       "suspend operation failed");
-                } else {
-                    // If there's no new data, go to sleep.
-                    if (bytesConsumedThisIteration == 0 &&
-                        NanoLogConfig::POLL_INTERVAL_DURING_IO_US > 0)
-                    {
-                        std::unique_lock<std::mutex> lock(condMutex);
-                        cyclesActive += PerfUtils::Cycles::rdtsc() -
-                                       cyclesAwakeStart;
-                        workAdded.wait_for(lock, std::chrono::microseconds(
-                                NanoLogConfig::POLL_INTERVAL_DURING_IO_US));
-                        cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
-                    }
-
-                    if (aio_error(&aioCb) == EINPROGRESS)
-                        continue;
                 }
-            }
 
-            // Finishing up the IO
-            int err = aio_error(&aioCb);
-            ssize_t ret = aio_return(&aioCb);
-
-            if (err != 0) {
-                fprintf(stderr, "LogCompressor's POSIX AIO failed"
-                        " with %d: %s\r\n", err, strerror(err));
-            } else if (ret < 0) {
-                perror("LogCompressor's Posix AIO Write failed");
+                if (buffer.writeInProgress())
+                    continue;
             }
-            ++numAioWritesCompleted;
-            hasOutstandingOperation = false;
-            cyclesDiskIO_upperBound += (start - cyclesAtLastAIOStart);
 
             // We've completed an AIO, check if we need to notify
             if (syncStatus == WAITING_ON_AIO) {
+                cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
+                int err = buffer.swapBuffer(0);
+                cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+                if (err != 0)
+                    fprintf(stderr, "LogCompressor's write failed with %d: %s\n",
+                            err, strerror(err));
+
+                ++numAioWritesCompleted;
+                hasOutstandingOperation = false;
+                cyclesDiskIO_upperBound += (start - cyclesAtLastAIOStart);
                 std::unique_lock<std::mutex> lock(nanoLogSingleton.condMutex);
                 if (syncStatus == WAITING_ON_AIO) {
                     syncStatus = SYNC_COMPLETED;
@@ -567,32 +530,47 @@ RuntimeLogger::compressionThreadMain() {
             ssize_t bytesOver = bytesToWrite % 512;
 
             if (bytesOver != 0) {
-                memset(compressingBuffer, 0, 512 - bytesOver);
+                memset(buffer.getCompressingBuffer(), 0, 512 - bytesOver);
                 bytesToWrite = bytesToWrite + 512 - bytesOver;
                 padBytesWritten += (512 - bytesOver);
             }
         }
 
-        aioCb.aio_fildes = outputFd;
-        aioCb.aio_buf = compressingBuffer;
-        aioCb.aio_nbytes = bytesToWrite;
         totalBytesWritten += bytesToWrite;
 
-        cyclesAtLastAIOStart = PerfUtils::Cycles::rdtsc();
-        if (aio_write(&aioCb) == -1)
-            fprintf(stderr, "Error at aio_write(): %s\n", strerror(errno));
+        uint64_t tmp = PerfUtils::Cycles::rdtsc();
+        int err = buffer.swapBuffer(bytesToWrite);
+        
+        if (hasOutstandingOperation) {
+            cyclesActive += tmp - cyclesAwakeStart;
+            cyclesAwakeStart = PerfUtils::Cycles::rdtsc();
+            if (err != 0)
+                fprintf(stderr, "LogCompressor's write failed with %d: %s\n", err,
+                        strerror(err));
 
+            ++numAioWritesCompleted;
+            cyclesDiskIO_upperBound += (start - cyclesAtLastAIOStart);
+        }
+
+        cyclesAtLastAIOStart = tmp;
         hasOutstandingOperation = true;
-
-        // Swap buffers
-        encoder.swapBuffer(outputDoubleBuffer,
+        encoder.swapBuffer(buffer.getCompressingBuffer(),
                            NanoLogConfig::OUTPUT_BUFFER_SIZE);
-        std::swap(outputDoubleBuffer, compressingBuffer);
         outputBufferFull = false;
     }
 
     cycleAtThreadStart = 0;
     cyclesActive += PerfUtils::Cycles::rdtsc() - cyclesAwakeStart;
+}
+
+/**
+* Main writer thread that outputting a compressed log file.
+*/
+void
+RuntimeLogger::writerThreadMain() {
+    while (!writerThreadShouldExit) {
+        buffer.writeToFile(outputFd);
+    }
 }
 
 // Documentation in NanoLog.h
@@ -625,8 +603,16 @@ RuntimeLogger::setLogFile_internal(const char *filename) {
         workAdded.notify_all();
     }
 
+    // Stop the writer thread completely
+    writerThreadShouldExit = true;
+    buffer.swapBuffer(0);
+    writerThread.join();
+
     if (compressionThread.joinable())
         compressionThread.join();
+
+    if (writerThread.joinable())
+        writerThread.join();
 
     if (outputFd > 0)
         close(outputFd);
@@ -635,8 +621,10 @@ RuntimeLogger::setLogFile_internal(const char *filename) {
     // Relaunch thread
     nextInvocationIndexToBePersisted = 0; // Reset the dictionary
     compressionThreadShouldExit = false;
+    writerThreadShouldExit = false;
 #ifndef BENCHMARK_DISCARD_ENTRIES_AT_STAGINGBUFFER
     compressionThread = std::thread(&RuntimeLogger::compressionThreadMain, this);
+    writerThread = std::thread(&RuntimeLogger::writerThreadMain, this);
 #endif
 }
 
