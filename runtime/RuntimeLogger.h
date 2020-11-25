@@ -161,8 +161,6 @@ using namespace NanoLog;
 
         void setLogFile_internal(const char *filename);
 
-        void waitForAIO();
-
         /**
          * Allocates thread-local structures if they weren't already allocated.
          * This is used by the generated C++ code to ensure it has space to

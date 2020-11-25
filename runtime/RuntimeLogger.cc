@@ -314,39 +314,6 @@ RuntimeLogger::preallocate() {
 }
 
 /**
-* Internal helper function to wait for AIO completion.
-*/
-void
-RuntimeLogger::waitForAIO() {
-    if (hasOutstandingOperation) {
-        if (aio_error(&aioCb) == EINPROGRESS) {
-            const struct aiocb *const aiocb_list[] = {&aioCb};
-            int err = aio_suspend(aiocb_list, 1, NULL);
-
-            if (err != 0)
-                perror("LogCompressor's Posix AIO suspend operation failed");
-        }
-
-        int err = aio_error(&aioCb);
-        ssize_t ret = aio_return(&aioCb);
-
-        if (err != 0) {
-            fprintf(stderr, "LogCompressor's POSIX AIO failed with %d: %s\r\n",
-                    err, strerror(err));
-        } else if (ret < 0) {
-            perror("LogCompressor's Posix AIO Write operation failed");
-        }
-        ++numAioWritesCompleted;
-        hasOutstandingOperation = false;
-
-        if (syncStatus == WAITING_ON_AIO) {
-            syncStatus = SYNC_COMPLETED;
-            hintSyncCompleted.notify_one();
-        }
-    }
-}
-
-/**
 * Main compression thread that handles scanning through the StagingBuffers,
 * compressing log entries, and outputting a compressed log file.
 */
