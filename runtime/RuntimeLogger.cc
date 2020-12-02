@@ -48,7 +48,7 @@ RuntimeLogger::RuntimeLogger()
         , condMutex()
         , workAdded()
         , hintSyncCompleted()
-        , outputFd(-1)
+        , outputFile(nullptr)
         , buffer()
         , currentLogLevel(NOTICE)
         , cycleAtThreadStart(0)
@@ -60,7 +60,6 @@ RuntimeLogger::RuntimeLogger()
         , cyclesDiskIO_upperBound(0)
         , totalBytesRead(0)
         , totalBytesWritten(0)
-        , padBytesWritten(0)
         , logsProcessed(0)
         , numAioWritesCompleted(0)
         , coreId(-1)
@@ -72,14 +71,15 @@ RuntimeLogger::RuntimeLogger()
         stagingBufferPeekDist[i] = 0;
 
     const char *filename = NanoLogConfig::DEFAULT_LOG_FILE;
-    outputFd = open(filename, NanoLogConfig::FILE_PARAMS, 0666);
-    if (outputFd < 0) {
+    outputFile = fopen(filename, NanoLogConfig::FILE_PARAMS);
+    if (outputFile == nullptr) {
         fprintf(stderr, "NanoLog could not open the default file location "
                 "for the log file (\"%s\").\r\n Please check the permissions "
                 "or use NanoLog::setLogFile(const char* filename) to "
                 "specify a different log file.\r\n", filename);
         std::exit(-1);
     }
+    setvbuf(outputFile, nullptr, _IONBF, 0);
 
 #ifndef BENCHMARK_DISCARD_ENTRIES_AT_STAGINGBUFFER
     compressionThread = std::thread(&RuntimeLogger::compressionThreadMain, this);
@@ -109,10 +109,10 @@ RuntimeLogger::~RuntimeLogger() {
     if (nanoLogSingleton.writerThread.joinable())
         nanoLogSingleton.writerThread.join();
 
-    if (outputFd > 0)
-        close(outputFd);
+    if (outputFile != nullptr)
+        fclose(outputFile);
 
-    outputFd = 0;
+    outputFile = nullptr;
 }
 
 // Documentation in NanoLog.h
@@ -122,7 +122,7 @@ RuntimeLogger::getStats() {
     char buffer[1024];
     // Leaks abstraction, but basically flush so we get all the time
     uint64_t start = PerfUtils::Cycles::rdtsc();
-    fdatasync(nanoLogSingleton.outputFd);
+    fdatasync(fileno(nanoLogSingleton.outputFile));
     uint64_t stop = PerfUtils::Cycles::rdtsc();
     nanoLogSingleton.cyclesDiskIO_upperBound += (stop - start);
 
@@ -136,8 +136,6 @@ RuntimeLogger::getStats() {
             nanoLogSingleton.totalBytesWritten);
     double totalBytesReadDouble = static_cast<double>(
             nanoLogSingleton.totalBytesRead);
-    double padBytesWrittenDouble = static_cast<double>(
-            nanoLogSingleton.padBytesWritten);
     double numEventsProcessedDouble = static_cast<double>(
             nanoLogSingleton.logsProcessed);
 
@@ -197,14 +195,11 @@ RuntimeLogger::getStats() {
                 compressTime * 1.0e9 / numEventsProcessedDouble);
     out << buffer;
 
-    snprintf(buffer, 1024, "The compression ratio was %0.2lf-%0.2lfx "
-                   "(%lu bytes in, %lu bytes out, %lu pad bytes)\n",
-           1.0 * totalBytesReadDouble / (totalBytesWrittenDouble
-                                         + padBytesWrittenDouble),
+    snprintf(buffer, 1024, "The compression ratio was %0.2lf "
+                   "(%lu bytes in, %lu bytes out)\n",
            1.0 * totalBytesReadDouble / totalBytesWrittenDouble,
            nanoLogSingleton.totalBytesRead,
-           nanoLogSingleton.totalBytesWritten,
-           nanoLogSingleton.padBytesWritten);
+           nanoLogSingleton.totalBytesWritten);
     out << buffer;
 
     return out.str();
@@ -525,17 +520,6 @@ RuntimeLogger::compressionThreadMain() {
         if (bytesToWrite == 0)
             continue;
 
-        // Pad the output if necessary
-        if (NanoLogConfig::FILE_PARAMS & O_DIRECT) {
-            ssize_t bytesOver = bytesToWrite % 512;
-
-            if (bytesOver != 0) {
-                memset(buffer.getCompressingBuffer(), 0, 512 - bytesOver);
-                bytesToWrite = bytesToWrite + 512 - bytesOver;
-                padBytesWritten += (512 - bytesOver);
-            }
-        }
-
         totalBytesWritten += bytesToWrite;
 
         uint64_t tmp = PerfUtils::Cycles::rdtsc();
@@ -569,29 +553,29 @@ RuntimeLogger::compressionThreadMain() {
 void
 RuntimeLogger::writerThreadMain() {
     while (!writerThreadShouldExit) {
-        buffer.writeToFile(outputFd);
+        buffer.writeToFile(outputFile);
     }
 }
 
 // Documentation in NanoLog.h
 void
 RuntimeLogger::setLogFile_internal(const char *filename) {
-    // Check if it exists and is readable/writeable
-    if (access(filename, F_OK) == 0 && access(filename, R_OK | W_OK) != 0) {
-        std::string err = "Unable to read/write from new log file: ";
-        err.append(filename);
-        throw std::ios_base::failure(err);
-    }
-
     // Try to open the file
-    int newFd = open(filename, NanoLogConfig::FILE_PARAMS, 0666);
-    if (newFd < 0) {
-        std::string err = "Unable to open file new log file: '";
-        err.append(filename);
-        err.append("': ");
-        err.append(strerror(errno));
+    FILE* newFile = fopen(filename, NanoLogConfig::FILE_PARAMS);
+    if (newFile == nullptr) {
+        std::string err;
+        if (errno == EACCES) {
+            err = "Unable to read/write from new log file: ";
+            err.append(filename);
+        } else {
+            err = "Unable to open file new log file: '";
+            err.append(filename);
+            err.append("': ");
+            err.append(strerror(errno));
+        }
         throw std::ios_base::failure(err);
     }
+    setvbuf(outputFile, nullptr, _IONBF, 0);
 
     // Everything seems okay, stop the background thread and change files
     sync();
@@ -614,9 +598,9 @@ RuntimeLogger::setLogFile_internal(const char *filename) {
     if (writerThread.joinable())
         writerThread.join();
 
-    if (outputFd > 0)
-        close(outputFd);
-    outputFd = newFd;
+    if (outputFile != nullptr)
+        fclose(outputFile);
+    outputFile = newFile;
 
     // Relaunch thread
     nextInvocationIndexToBePersisted = 0; // Reset the dictionary

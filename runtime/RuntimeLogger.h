@@ -17,6 +17,7 @@
 #define RUNTIME_NANOLOG_H
 
 #include <cassert>
+#include <cstdio>
 
 #include <condition_variable>
 #include <mutex>
@@ -235,7 +236,7 @@ using namespace NanoLog;
 
         // File handle for the output file; should only be opened once at the
         // construction of the LogCompressor
-        int outputFd;
+        FILE* outputFile;
 
         // Buffer to stage compressed log message
         DoubleBuffer buffer;
@@ -275,10 +276,6 @@ using namespace NanoLog;
 
         // Metric: Number of bytes written to the output file (includes padding)
         uint64_t totalBytesWritten;
-
-        // Metric: Number of pad bytes written to round the file to the nearest
-        // 512B
-        uint64_t padBytesWritten;
 
         // Metric: Number of log statements compressed and outputted.
         uint64_t logsProcessed;

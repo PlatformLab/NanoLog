@@ -13,23 +13,11 @@
 
 class DoubleBuffer
 {
-    struct Deleter {
-        void operator()(char *__ptr) const { free(__ptr); }
-    };
-
-    using MemPtrT = std::unique_ptr<char, Deleter>;
+    using MemPtrT = std::unique_ptr<char[]>;
 
     static MemPtrT allocateMemory()
     {
-        char *tmp = (char *)operator new(NanoLogConfig::OUTPUT_BUFFER_SIZE,
-                                         std::align_val_t(512), std::nothrow);
-        if (tmp == nullptr) {
-            perror(
-                "The NanoLog system was not able to allocate enough memory "
-                "to support its operations. Quitting...\n");
-            std::exit(-1);
-        }
-        return MemPtrT{tmp};
+        return MemPtrT{new char[NanoLogConfig::OUTPUT_BUFFER_SIZE]};
     };
 
     static char *accessOnce(const MemPtrT &ptr)
@@ -79,7 +67,7 @@ public:
         }
     }
 
-    void writeToFile(int file) noexcept
+    void writeToFile(FILE* file) noexcept
     {
         unsigned tmp_size = 0;
         MemPtrT tmp_ptr = nullptr;
@@ -93,8 +81,8 @@ public:
 
         int res = 0;
         if (tmp_size != 0) {
-            res = write(file, tmp_ptr.get(), tmp_size);
-            res = (res < 0) ? errno : 0;
+            size_t wsize = fwrite(tmp_ptr.get(), 1u, tmp_size, file);
+            res = (wsize != tmp_size) ? errno : 0;
         }
 
         while (accessOnce(freeBuffer) != nullptr) {}
