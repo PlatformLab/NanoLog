@@ -23,7 +23,6 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <asm/unistd.h>
 #include <cstdio>
 #include <cstdlib>
 
