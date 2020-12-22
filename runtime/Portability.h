@@ -49,4 +49,12 @@
 #define NANOLOG_PRINTF_FORMAT_ATTR(string_index, first_to_check)
 #endif
 
+#if defined(_MSC_VER)
+extern "C" void _ReadWriteBarrier(void);
+#pragma intrinsic(_ReadWriteBarrier)
+#define NANOLOG_READ_WRITE_BARRIER _ReadWriteBarrier()
+#elif defined(__GNUC__)
+#define NANOLOG_READ_WRITE_BARRIER __asm__ __volatile__("" ::: "memory")
+#endif
+
 #endif /* NANOLOG_PORTABILITY_H */

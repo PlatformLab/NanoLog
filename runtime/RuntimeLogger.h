@@ -16,8 +16,8 @@
 #ifndef RUNTIME_NANOLOG_H
 #define RUNTIME_NANOLOG_H
 
-#include <aio.h>
 #include <cassert>
+#include <cstdio>
 
 #include <condition_variable>
 #include <mutex>
@@ -27,6 +27,7 @@
 
 #include "Config.h"
 #include "Common.h"
+#include "DoubleBuffer.h"
 #include "Fence.h"
 #include "Log.h"
 #include "NanoLog.h"
@@ -159,9 +160,9 @@ using namespace NanoLog;
 
         void compressionThreadMain();
 
-        void setLogFile_internal(const char *filename);
+        void writerThreadMain();
 
-        void waitForAIO();
+        void setLogFile_internal(const char *filename);
 
         /**
          * Allocates thread-local structures if they weren't already allocated.
@@ -194,9 +195,12 @@ using namespace NanoLog;
         // Protects reads and writes to threadBuffers
         std::mutex bufferMutex;
 
-        // Background thread that polls the various staging buffers, compresses
-        // the staged log messages, and outputs it to a file.
+        // Background thread that polls the various staging buffers and compresses
+        // the staged log messages.
         std::thread compressionThread;
+
+        // Background thread that writes log to file
+        std::thread writerThread;
 
         // Indicates there's an operation in aioCb that should be waited on
         bool hasOutstandingOperation;
@@ -204,6 +208,10 @@ using namespace NanoLog;
         // Flag signaling the compressionThread to stop running. This is
         // typically only set in testing or when the application is exiting.
         bool compressionThreadShouldExit;
+
+        // Flag signaling the writerThread to stop running. This is
+        // typically only set in testing or when the application is exiting.
+        bool writerThreadShouldExit;
 
         // Marks the progress of flushing all log messages to disk after a user
         // invokes the sync() API. To complete the operation, the background
@@ -228,21 +236,10 @@ using namespace NanoLog;
 
         // File handle for the output file; should only be opened once at the
         // construction of the LogCompressor
-        int outputFd;
+        FILE* outputFile;
 
-        // POSIX AIO structure used to communicate async IO requests
-        struct aiocb aioCb;
-
-        // Used to stage the compressed log messages before passing it on to the
-        // POSIX AIO library.
-
-        // Dynamically allocated buffer to stage compressed log message before
-        // handing it over to the POSIX AIO library for output.
-        char *compressingBuffer;
-
-        // Dynamically allocated double buffer that is swapped with the
-        // compressingBuffer when the latter is passed to the POSIX AIO library.
-        char *outputDoubleBuffer;
+        // Buffer to stage compressed log message
+        DoubleBuffer buffer;
 
         // Minimum log level that RuntimeLogger will accept. Anything lower will
         // be dropped.
@@ -279,10 +276,6 @@ using namespace NanoLog;
 
         // Metric: Number of bytes written to the output file (includes padding)
         uint64_t totalBytesWritten;
-
-        // Metric: Number of pad bytes written to round the file to the nearest
-        // 512B
-        uint64_t padBytesWritten;
 
         // Metric: Number of log statements compressed and outputted.
         uint64_t logsProcessed;
