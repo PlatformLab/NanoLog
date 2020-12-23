@@ -65,7 +65,16 @@ clean:
 
 clean-all: clean
 	rm -f libgtest.a testHelper/GeneratedCode.cc
-
+	
+ifeq ($(PREFIX),)
+    PREFIX := /usr/local
+endif
+install: libNanoLog.a
+	install -d $(DESTDIR)$(PREFIX)/lib/
+	install -m 644 libNanoLog.a $(DESTDIR)$(PREFIX)/lib/
+	install -d $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 644 *.h $(DESTDIR)$(PREFIX)/include/NanoLog/
+	install -m 755 decompressor $(DESTDIR)$(PREFIX)/bin/
 # Automatic rules to build *.h dependencies. Taken from
 # https://stackoverflow.com/questions/2394609/makefile-header-dependencies
 depend: .depend
@@ -76,3 +85,4 @@ depend: .depend
 	sed 's|[a-zA-Z0-9_-]*\.o|$(TEST_BUILD_DIR)/&|' ./.depend >> ./.depend
 
 include .depend
+
