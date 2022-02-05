@@ -13,6 +13,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <type_traits>
+
 #include "gtest/gtest.h"
 
 #include "TestUtil.h"
@@ -70,88 +72,98 @@ class NanoLogCpp17Test : public ::testing::Test {
   // Objects declared here can be used by all tests in the test case for Foo.
 };
 
-TEST_F(NanoLogCpp17Test, getParamInfo_constexpr) {
-    constexpr ParamType ret1 = getParamInfo("Hello World %*.*s asdf", 1);
+TEST_F(NanoLogCpp17Test, getParamInfos_constexpr) {
+    constexpr auto paramInfos = getParamInfos("Hello World %*.*s asdf");
+
+    constexpr ParamType ret1 = paramInfos.data.at(1);
     EXPECT_EQ(ParamType::DYNAMIC_PRECISION, ret1);
 
-    constexpr ParamType ret2 = getParamInfo("Hello World %*.*s asdf", 2);
+    constexpr ParamType ret2 = paramInfos.data.at(2);
     EXPECT_EQ(ParamType::STRING_WITH_DYNAMIC_PRECISION, ret2);
 
-    constexpr ParamType ret3 = getParamInfo("Hello World %*.*s asdf", 3);
-    EXPECT_EQ(ParamType::INVALID, ret3);
+    EXPECT_EQ(3, paramInfos.size);
 }
 
-TEST_F(NanoLogCpp17Test, getParamInfo) {
+TEST_F(NanoLogCpp17Test, getParamInfos) {
     // Regular testing
     const char testString[] = "Hello %*.*d %%%s %*.*s %10.500s %10.500d %+#.s";
-    EXPECT_EQ(ParamType::DYNAMIC_WIDTH, getParamInfo(testString, 0));
-    EXPECT_EQ(ParamType::DYNAMIC_PRECISION, getParamInfo(testString, 1));
-    EXPECT_EQ(ParamType::NON_STRING, getParamInfo(testString, 2));
-    EXPECT_EQ(ParamType::STRING_WITH_NO_PRECISION, getParamInfo(testString, 3));
-    EXPECT_EQ(ParamType::DYNAMIC_WIDTH, getParamInfo(testString, 4));
-    EXPECT_EQ(ParamType::DYNAMIC_PRECISION, getParamInfo(testString, 5));
-    EXPECT_EQ(ParamType::STRING_WITH_DYNAMIC_PRECISION, getParamInfo(testString, 6));
-    EXPECT_EQ(ParamType(500), getParamInfo(testString, 7));
-    EXPECT_EQ(ParamType::NON_STRING, getParamInfo(testString, 8));
-    EXPECT_EQ(ParamType(0), getParamInfo(testString, 9));
-    EXPECT_EQ(ParamType::INVALID, getParamInfo(testString, 10));
-    EXPECT_EQ(ParamType::INVALID, getParamInfo(testString, 11));
+    auto pI_testString = getParamInfos(testString);
+    EXPECT_EQ(ParamType::DYNAMIC_WIDTH, pI_testString.data.at(0));
+    EXPECT_EQ(ParamType::DYNAMIC_PRECISION, pI_testString.data.at(1));
+    EXPECT_EQ(ParamType::NON_STRING, pI_testString.data.at(2));
+    EXPECT_EQ(ParamType::STRING_WITH_NO_PRECISION, pI_testString.data.at(3));
+    EXPECT_EQ(ParamType::DYNAMIC_WIDTH, pI_testString.data.at(4));
+    EXPECT_EQ(ParamType::DYNAMIC_PRECISION, pI_testString.data.at(5));
+    EXPECT_EQ(ParamType::STRING_WITH_DYNAMIC_PRECISION, pI_testString.data.at(6));
+    EXPECT_EQ(ParamType(500), pI_testString.data.at(7));
+    EXPECT_EQ(ParamType::NON_STRING, pI_testString.data.at(8));
+    EXPECT_EQ(ParamType(0), pI_testString.data.at(9));
+    EXPECT_EQ(10, pI_testString.size);
 
     // Test escaped parameters
-    EXPECT_EQ(INVALID, getParamInfo("~S!@#$^&*()_+1234567890qwertyu\n"
-                                    "iopasdfghjkl;zxcv  bnm,\\\\\\\\r\\\\n\n"
-                                    "%%ud \\%%lf osdif<>\":L:];"));
+    auto pI_escParam = getParamInfos("~S!@#$^&*()_+1234567890qwertyu\n"
+                                     "iopasdfghjkl;zxcv  bnm,\\\\\\\\r\\\\n\n"
+                                     "%%ud \\%%lf osdif<>\":L:];");
+    EXPECT_EQ(0, pI_escParam.size);
 
     // Test all the types (ported from python unit tests)
     const char test_jzt[] = "%10.12jd %9ji %0*.*ju %jo %jx %jX %zu %zd %tu %td";
-    EXPECT_EQ(NON_STRING, getParamInfo(test_jzt, 0));
-    EXPECT_EQ(NON_STRING, getParamInfo(test_jzt, 1));
-    EXPECT_EQ(DYNAMIC_WIDTH, getParamInfo(test_jzt, 2));
-    EXPECT_EQ(DYNAMIC_PRECISION, getParamInfo(test_jzt, 3));
+    auto pI_test_jzt = getParamInfos(test_jzt);
+    EXPECT_EQ(NON_STRING, pI_test_jzt.data.at(0));
+    EXPECT_EQ(NON_STRING, pI_test_jzt.data.at(1));
+    EXPECT_EQ(DYNAMIC_WIDTH, pI_test_jzt.data.at(2));
+    EXPECT_EQ(DYNAMIC_PRECISION, pI_test_jzt.data.at(3));
     for (int i = 4; i <= 11; ++i)
-        EXPECT_EQ(NON_STRING, getParamInfo(test_jzt, i));
-    EXPECT_EQ(INVALID, getParamInfo(test_jzt, 12));
+        EXPECT_EQ(NON_STRING, pI_test_jzt.data.at(i));
+    EXPECT_EQ(12, pI_test_jzt.size);
 
     const char doubles[] = "%12.0f %12.3F %e %55.3E %-10.5g %G %a %A";
+    auto pI_doubles = getParamInfos(doubles);
     for (int i = 0; i <= 7; ++i)
-        EXPECT_EQ(NON_STRING, getParamInfo(doubles, i));
-    EXPECT_EQ(INVALID, getParamInfo(doubles, 8));
+        EXPECT_EQ(NON_STRING, pI_doubles.data.at(i));
+    EXPECT_EQ(8, pI_doubles.size);
 
     const char longDoubles[] = "%12.0Lf %12.3LF %Le %55.3LE %-10.5Lg %LG %La%LA";
+    auto pI_longDoubles = getParamInfos(longDoubles);
     for (int i = 0; i <= 7; ++i)
-        EXPECT_EQ(NON_STRING, getParamInfo(longDoubles, i));
-    EXPECT_EQ(INVALID, getParamInfo(longDoubles, 8));
+        EXPECT_EQ(NON_STRING, pI_longDoubles.data.at(i));
+    EXPECT_EQ(8, pI_longDoubles.size);
 
     const char basicInts[] = "%d %i %u %o %x %X %c %p";
+    auto pI_basicInts = getParamInfos(basicInts);
     for (int i = 0; i <= 7; ++i)
-        EXPECT_EQ(NON_STRING, getParamInfo(basicInts, i));
-    EXPECT_EQ(INVALID, getParamInfo(basicInts, 8));
+        EXPECT_EQ(NON_STRING, pI_basicInts.data.at(i));
+    EXPECT_EQ(8, pI_basicInts.size);
 
     const char lengthMods[] = "%hhd %hd %ld %lld %jd %zd %09.2td";
+    auto pI_lengthMods = getParamInfos(lengthMods);
     for (int i = 0; i <= 6; ++i)
-        EXPECT_EQ(NON_STRING, getParamInfo(lengthMods, i));
-    EXPECT_EQ(INVALID, getParamInfo(lengthMods, 7));
+        EXPECT_EQ(NON_STRING, pI_lengthMods.data.at(i));
+    EXPECT_EQ(7, pI_lengthMods.size);
 
     // Test all the types
-    EXPECT_EQ(INVALID, getParamInfo("Hello World!"));
+    EXPECT_EQ(0, getParamInfos("Hello, World!").size);
 
-    EXPECT_EQ(NON_STRING, getParamInfo("%hhd %hhi", 0));
-    EXPECT_EQ(NON_STRING, getParamInfo("%hhd %hhi", 1));
-    EXPECT_EQ(INVALID, getParamInfo("%hhd %hhi", 2));
+    auto pI_types = getParamInfos("%hhd %hhi");
+    EXPECT_EQ(NON_STRING, pI_types.data.at(0));
+    EXPECT_EQ(NON_STRING, pI_types.data.at(1));
+    EXPECT_EQ(2, pI_types.size);
 
     // Unsupported variations of %n
-    EXPECT_ANY_THROW(getParamInfo("%hhn"));
-    EXPECT_ANY_THROW(getParamInfo("%jn"));
-    EXPECT_ANY_THROW(getParamInfo("%zn"));
-    EXPECT_ANY_THROW(getParamInfo("%#0t4.02n"));
+    EXPECT_ANY_THROW(getParamInfos("%hhn"));
+    EXPECT_ANY_THROW(getParamInfos("%jn"));
+    EXPECT_ANY_THROW(getParamInfos("%zn"));
+    EXPECT_ANY_THROW(getParamInfos("%#0t4.02n"));
 
     // invalid specifier
-    EXPECT_ANY_THROW(getParamInfo("%hhj"));
+    EXPECT_ANY_THROW(getParamInfos("%hhj"));
 }
 
-TEST_F(NanoLogCpp17Test, analyzeFormatString) {
-    constexpr std::array<ParamType, 10> testArray = analyzeFormatString<10>(
-                              "Hello %*.*d %%%s %*.*s %10.500s %10.500d %+#.s");
+TEST_F(NanoLogCpp17Test, analyzeParamTypeContainer) {
+    constexpr std::array<ParamType, 10> testArray =
+            analyzeParamTypeContainer<10>(
+                    getParamInfos(
+                            "Hello %*.*d %%%s %*.*s %10.500s %10.500d %+#.s"));
 
     EXPECT_EQ(ParamType::DYNAMIC_WIDTH, testArray.at(0));
     EXPECT_EQ(ParamType::DYNAMIC_PRECISION, testArray.at(1));
@@ -165,24 +177,42 @@ TEST_F(NanoLogCpp17Test, analyzeFormatString) {
     EXPECT_EQ(ParamType(0), testArray.at(9));
 }
 
-TEST_F(NanoLogCpp17Test, analyzeFormatString_empty) {
-    constexpr std::array<ParamType, 0> testArray = analyzeFormatString<0>("a");
+TEST_F(NanoLogCpp17Test, analyzeParamTypeContainer_empty) {
+    constexpr std::array<ParamType, 0> testArray =
+            analyzeParamTypeContainer<0>(getParamInfos("a"));
     EXPECT_EQ(0U, testArray.size());
 }
 
-TEST_F(NanoLogCpp17Test, countFmtParams) {
-    EXPECT_EQ(10, countFmtParams("d %*.*d %%%s %*.*s %10.500s %10.500d %+#.s"));
-    EXPECT_EQ(0, countFmtParams("alsdjaklsjflsajfkdasjl%%%%f"));
-    EXPECT_EQ(0, countFmtParams(""));
+TEST_F(NanoLogCpp17Test, getParamInfos_count) {
+    EXPECT_EQ(10,
+            getParamInfos("d %*.*d %%%s %*.*s %10.500s %10.500d %+#.s").size);
+    EXPECT_EQ(0, getParamInfos("alsdjaklsjflsajfkdasjl%%%%f").size);
+    EXPECT_EQ(0, getParamInfos("").size);
 }
 
 TEST_F(NanoLogCpp17Test, getNumNibblesNeeded) {
     EXPECT_EQ(6, getNumNibblesNeeded(
-            "d %*.*d %%%s %*.*s %10.500s %10.500d %+#.s"));
-    EXPECT_EQ(0, getNumNibblesNeeded(""));
-    EXPECT_EQ(0, getNumNibblesNeeded("asldkfjaslkfjasfd"));
-    EXPECT_EQ(0, getNumNibblesNeeded("%s"));
-    EXPECT_EQ(1, getNumNibblesNeeded("%d"));
+            getParamInfos("d %*.*d %%%s %*.*s %10.500s %10.500d %+#.s")));
+    EXPECT_EQ(0, getNumNibblesNeeded(getParamInfos("")));
+    EXPECT_EQ(0, getNumNibblesNeeded(getParamInfos("asldkfjaslkfjasfd")));
+    EXPECT_EQ(0, getNumNibblesNeeded(getParamInfos("%s")));
+    EXPECT_EQ(1, getNumNibblesNeeded(getParamInfos("%d")));
+}
+
+TEST_F(NanoLogCpp17Test, getNumNibblesNeeded_large) {
+    // This test is mainly intended to ensure that the constexpr implementation
+    // of getNumNibblesNeeded shall not exceed the maximum constexpr evaluation
+    // steps of a compiler. Implementation as of commit 2a94d70 would be
+    // evaluated in 1395813 steps under Clang 13.0.1-rc1, which is greater than
+    // the default value of Clang's `-fconstexpr-steps`, 1048576.
+    constexpr auto paramInfo = getParamInfos(
+            "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, "
+            "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, "
+            "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, "
+            "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, ");
+    std::integral_constant<int, 40> justTypeObj =
+            std::integral_constant<int, getNumNibblesNeeded(paramInfo)>{};
+    EXPECT_EQ(40, justTypeObj());
 }
 
 TEST_F(NanoLogCpp17Test, store_argument) {
@@ -332,8 +362,8 @@ TEST_F(NanoLogCpp17Test, store_arguments) {
     char backing_buffer[1024];
     char *buffer = backing_buffer;
 
-    constexpr std::array<ParamType, 5> testArray = analyzeFormatString<5>(
-            "Hello %s %p %*.*s");
+    constexpr std::array<ParamType, 5> testArray = analyzeParamTypeContainer<5>(
+            getParamInfos("Hello %s %p %*.*s"));
     size_t stringSizes[5];
 
     // Do nothing
@@ -628,8 +658,8 @@ TEST_F(NanoLogCpp17Test, getArgSizes) {
     stringArgSizes[1] = 0; // reset
 
     // A few things
-    constexpr std::array<ParamType, 5> finalArray = analyzeFormatString<5>(
-            "Hello %s %p %*.*s");
+    constexpr std::array<ParamType, 5> finalArray =
+            analyzeParamTypeContainer<5>(getParamInfos("Hello %s %p %*.*s"));
     EXPECT_EQ(sizeof(uint32_t) + strlen("Stephen Yang")
                 + sizeof(void*)
                 + sizeof(int)
