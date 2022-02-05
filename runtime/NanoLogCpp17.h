@@ -17,10 +17,12 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cstddef>
 
 #include <algorithm>
 #include <iostream>
 #include <utility>
+#include <array>
 
 #include "Common.h"
 #include "Cycles.h"
@@ -42,6 +44,21 @@
  *          NanoLog decompressor.
  */
 namespace NanoLogInternal {
+
+/**
+ * A struct that contains a list of ParamType enum alongside with its actual
+ * size. Mainly used as return type of getParamInfos to store the ParamType
+ * extracted from format string.
+ *
+ * \tparam N
+ *      The maximum number of elements avaliable in this struct.
+ */
+
+ template <std::size_t N>
+ struct ParamTypeContainer{
+     std::array<ParamType, N> data;
+     std::size_t size;
+ };
 
 /**
  * Checks whether a character is with the terminal set of format specifier
@@ -116,26 +133,29 @@ isDigit(char c) {
 
 /**
  * Analyzes a static printf style format string and extracts type information
- * about the p-th parameter that would be used in a corresponding NANO_LOG()
+ * about all of the parameters that would be used in a corresponding NANO_LOG()
  * invocation.
  *
  * \tparam N
  *      Length of the static format string (automatically deduced)
  * \param fmt
  *      Format string to parse
- * \param paramNum
- *      p-th parameter to return type information for (starts from zero)
  * \return
- *      Returns an ParamType enum describing the type of the parameter
+ *      Returns a ParamTypeContainer<N> struct that contains all ParamType info
+ *      in order. Note: The maximum avaliable size template parameter N is set
+ *      with the fact that, the number of parameters in the format string shall
+ *      be less than the length of that string. And exceeding the maximum size
+ *      limit in core constant expression anyways will cause the program to be
+ *      ill-formed.
  */
-template<int N>
-constexpr inline ParamType
-getParamInfo(const char (&fmt)[N],
-             int paramNum=0)
+template <std::size_t N>
+constexpr inline ParamTypeContainer<N>
+getParamInfos(const char (&fmt)[N])
 {
-    int pos = 0;
-    while (pos < N - 1) {
-
+    ParamTypeContainer<N> paramTypes = {};
+    std::size_t pos = 0;
+    std::size_t paramIdx = 0;
+    while (pos + 1 < N) {
         // The code below searches for something that looks like a printf
         // specifier (i.e. something that follows the format of
         // %<flags><width>.<precision><length><terminal>). We only care
@@ -163,10 +183,9 @@ getParamInfo(const char (&fmt)[N],
 
                 // Consume width
                 if (fmt[pos] == '*') {
-                    if (paramNum == 0)
-                        return ParamType::DYNAMIC_WIDTH;
+                    paramTypes.data[paramIdx] = ParamType::DYNAMIC_WIDTH;
 
-                    --paramNum;
+                    ++paramIdx;
                     ++pos;
                 } else {
                     while (NanoLogInternal::isDigit(fmt[pos]))
@@ -180,11 +199,11 @@ getParamInfo(const char (&fmt)[N],
                     ++pos;  // consume '.'
 
                     if (fmt[pos] == '*') {
-                        if (paramNum == 0)
-                            return ParamType::DYNAMIC_PRECISION;
+                        paramTypes.data[paramIdx] =
+                                ParamType::DYNAMIC_PRECISION;
 
                         hasDynamicPrecision = true;
-                        --paramNum;
+                        ++paramIdx;
                         ++pos;
                     } else {
                         precision = 0;
@@ -212,128 +231,90 @@ getParamInfo(const char (&fmt)[N],
                             "%n specifiers are not support in NanoLog!");
                 }
 
-                if (paramNum != 0) {
-                    --paramNum;
-                    ++pos;
-                    continue;
+                if (fmt[pos] != 's'){
+                    paramTypes.data[paramIdx] = ParamType::NON_STRING;
+                    ++paramIdx;
+                } else if (hasDynamicPrecision) {
+                    paramTypes.data[paramIdx] =
+                            ParamType::STRING_WITH_DYNAMIC_PRECISION;
+                    ++paramIdx;
+                } else if (precision == -1) {
+                    paramTypes.data[paramIdx] =
+                            ParamType::STRING_WITH_NO_PRECISION;
+                    ++paramIdx;
                 } else {
-                    if (fmt[pos] != 's')
-                        return ParamType::NON_STRING;
-
-                    if (hasDynamicPrecision)
-                        return ParamType::STRING_WITH_DYNAMIC_PRECISION;
-
-                    if (precision == -1)
-                        return ParamType::STRING_WITH_NO_PRECISION;
-                    else
-                        return ParamType(precision);
+                    paramTypes.data[paramIdx] = ParamType(precision);
+                    ++paramIdx;
                 }
             }
         }
     }
 
-    return ParamType::INVALID;
-}
-
-
-/**
- * Helper to analyzeFormatString. This level of indirection is needed to
- * unpack the index_sequence generated in analyzeFormatString and
- * use the sequence as indices for calling getParamInfo.
- *
- * \tparam N
- *      Length of the format string (automatically deduced)
- * \tparam Indices
- *      An index sequence from [0, N) where N is the number of parameters in
- *      the format string (automatically deduced)
- *
- * \param fmt
- *      printf format string to analyze
- *
- * \return
- *      An std::array describing the types at each index (zero based).
- */
-template<int N, std::size_t... Indices>
-constexpr std::array<ParamType, sizeof...(Indices)>
-analyzeFormatStringHelper(const char (&fmt)[N], std::index_sequence<Indices...>)
-{
-    return {{ getParamInfo(fmt, Indices)... }};
+    paramTypes.size = paramIdx;
+    return paramTypes;
 }
 
 
 /**
  * Computes a ParamType array describing the parameters that would be used
- * with the provided printf style format string. The indices of the array
- * correspond with the parameter position in the variable args portion of
- * the invocation.
+ * with the provided ParamTypeContainer analyzed from the printf style format
+ * string. The indices of the array correspond with the parameter position in
+ * the variable args portion of the invocation.
  *
  * \template NParams
  *      The number of additional format parameters that follow the format
  *      string in a printf-like function. For example printf("%*.*d", 9, 8, 7)
  *      would have NParams = 3
  * \template N
- *      length of the printf style format string (automatically deduced)
- *
- * \param fmt
- *      Format string to generate the array for
+ *      template parameter N of the ParamTypeContainer parameter (automatically
+ *      deduced)
+ * \param paramTypes
+ *      ParamTypeContainer object to generate the array for
  *
  * \return
  *      An std::array where the n-th index indicates that the
  *      n-th format parameter is a "%s" or not.
  */
-template<int NParams, size_t N>
+template<int NParams, std::size_t N>
 constexpr std::array<ParamType, NParams>
-analyzeFormatString(const char (&fmt)[N])
+analyzeParamTypeContainer(const ParamTypeContainer<N> &paramTypes)
 {
-    return analyzeFormatStringHelper(fmt, std::make_index_sequence<NParams>{});
-}
-
-/**
- * Counts the number of parameters that need to be passed in for a particular
- * printf style format string.
- *
- * One subtle point is that we are counting parameters, not specifiers, so a
- * specifier of "%*.*d" will actually count as 3 since the two '*" will result
- * in a parameter being passed in each.
- *
- * \tparam N
- *      length of the printf style format string (automatically deduced)
- *
- * \param fmt
- *      printf style format string to analyze
- *
- * @return
- */
-template<int N>
-constexpr inline int
-countFmtParams(const char (&fmt)[N])
-{
-    int count = 0;
-    while (getParamInfo(fmt, count) != ParamType::INVALID)
-        ++count;
-    return count;
+    std::array<ParamType, NParams> ret = {};
+    int fillSize = NParams;
+    if (NParams > static_cast<int>(paramTypes.size))
+        fillSize = static_cast<int>(paramTypes.size);
+    for (int i = 0; i < fillSize; ++i) {
+        ret[i] = paramTypes.data[i];
+    }
+    if (NParams > static_cast<int>(paramTypes.size)) {
+        for (int i = paramTypes.size; i < NParams; ++i) {
+            ret[i] = ParamType::INVALID;
+        }
+    }
+    return ret;
 }
 
 /**
  * Counts the number of nibbles that would be needed to represent all
  * the non-string and dynamic width/precision specifiers for a given
- * printf style format string in the NanoLog system.
+ * ParamTypeContainer in the NanoLog system.
  *
  * \tparam N
- *      length of the printf style format string (automatically deduced)
- * \param fmt
- *      printf style format string to analyze
+ *      template parameter N of the ParamTypeContainer parameter (automatically
+ *      deduced)
+ * \param paramTypes
+ *      ParamTypeContainer object to analyze
  *
  * \return
- *      Number of non-string specifiers in the format string
+ *      Number of non-string specifiers in the paramTypes object.
  */
 template<size_t N>
 constexpr int
-getNumNibblesNeeded(const char (&fmt)[N])
+getNumNibblesNeeded(const ParamTypeContainer<N> &paramTypes)
 {
     int numNibbles = 0;
-    for (int i = 0; i < countFmtParams(fmt); ++i) {
-        ParamType t = getParamInfo(fmt, i);
+    for (int i = 0; i < paramTypes.size; ++i) {
+        ParamType t = paramTypes.data[i];
         if (t == NON_STRING || t == DYNAMIC_PRECISION || t == DYNAMIC_WIDTH)
             ++numNibbles;
     }
@@ -1071,8 +1052,9 @@ checkFormat(NANOLOG_PRINTF_FORMAT const char *, ...) {}
  *      Log arguments associated with the printf-like string.
  */
 #define NANO_LOG(severity, format, ...) do { \
-    constexpr int numNibbles = NanoLogInternal::getNumNibblesNeeded(format); \
-    constexpr int nParams = NanoLogInternal::countFmtParams(format); \
+    constexpr auto paramTypeInfo = NanoLogInternal::getParamInfos(format); \
+    constexpr int numNibbles = NanoLogInternal::getNumNibblesNeeded(paramTypeInfo); \
+    constexpr int nParams = paramTypeInfo.size; \
     \
     /*** Very Important*** These must be 'static' so that we can save pointers
      * to these variables and have them persist beyond the invocation.
@@ -1081,7 +1063,7 @@ checkFormat(NANOLOG_PRINTF_FORMAT const char *, ...) {}
      * used by the compression function, which is invoked in another thread
      * at a much later time. */ \
     static constexpr std::array<NanoLogInternal::ParamType, nParams> paramTypes = \
-                                NanoLogInternal::analyzeFormatString<nParams>(format); \
+                                NanoLogInternal::analyzeParamTypeContainer<nParams>(paramTypeInfo); \
     static int logId = NanoLogInternal::UNASSIGNED_LOGID; \
     \
     if (NanoLog::severity > NanoLog::getLogLevel()) \
