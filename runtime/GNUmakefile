@@ -61,18 +61,22 @@ decompressor: $(GENERATED_OBJ) Cycles.o Util.o Log.o LogDecompressor.cc
 	$(CXX) $(CXX_ARGS) $(EXTRA_NANOLOG_FLAGS) $^ -o decompressor $(INCLUDES) -Igenerated -Werror
 
 clean:
-	rm -f Perf test compressedLog ./decompressor $(GENERATED_OBJ) $(TEST_BUILD_DIR)/*.o *.o *.gch *.log ./.depend
+	rm -f Perf test compressedLog ./decompressor $(GENERATED_OBJ) $(TEST_BUILD_DIR)/*.o *.o *.gch *.log ./.depend ./.depend-test
 
 clean-all: clean
 	rm -f libgtest.a testHelper/GeneratedCode.cc
 
 # Automatic rules to build *.h dependencies. Taken from
 # https://stackoverflow.com/questions/2394609/makefile-header-dependencies
-depend: .depend
+depend: .depend .depend-test
 
 .depend: $(SRCS)
 	rm -f ./.depend
 	$(CXX) $(CXX_ARGS) $(INCLUDES) -MM $^ > ./.depend;
-	sed 's|[a-zA-Z0-9_-]*\.o|$(TEST_BUILD_DIR)/&|' ./.depend >> ./.depend
 
-include .depend
+.depend-test: .depend
+	rm -f ./.depend-test
+	sed 's|[a-zA-Z0-9_-]*\.o|$(TEST_BUILD_DIR)/&|' ./.depend > ./.depend-test
+
+-include .depend
+-include .depend-test
