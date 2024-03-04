@@ -19,6 +19,7 @@
 #include <cstring>
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <utility>
 
@@ -1005,6 +1006,9 @@ log(int &logId,
     using namespace NanoLogInternal::Log;
     assert(N == static_cast<uint32_t>(sizeof...(Ts)));
 
+    if (severity > NanoLog::getLogLevel())
+        return;
+
     if (logId == UNASSIGNED_LOGID) {
         const ParamType *array = paramTypes.data();
         StaticLogInfo info(&compress<Ts...>,
@@ -1083,9 +1087,6 @@ checkFormat(NANOLOG_PRINTF_FORMAT const char *, ...) {}
     static constexpr std::array<NanoLogInternal::ParamType, nParams> paramTypes = \
                                 NanoLogInternal::analyzeFormatString<nParams>(format); \
     static int logId = NanoLogInternal::UNASSIGNED_LOGID; \
-    \
-    if (NanoLog::severity > NanoLog::getLogLevel()) \
-        break; \
     \
     /* Triggers the GNU printf checker by passing it into a no-op function.
      * Trick: This call is surrounded by an if false so that the VA_ARGS don't
