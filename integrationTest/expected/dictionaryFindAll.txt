@@ -54,7 +54,7 @@ ieieieieieieie2
   50 | folder/../SimpleTestObject.h | 45   | In the header, I am %d
   51 | main.cc              | 435  | L=%Lf %LF %Le %LE %Lg %LG %La %LA
   52 | main.cc              | 89   | Let's try out all the types! Pointer = %p! uint8_t = %u! uint16_t = %u! uint32_t = %u! uint64_t = %lu! float = %f! double = %lf! hexadecimal = %x! Just a normal character = %c
-  53 | main.cc              | 457  | Loop test!
+  53 | main.cc              | 464  | Loop test!
   54 | main.cc              | 237  | Make sure that the inserted code is before the ++i
   55 | folder/Sample.h      | 50   | Messages in the Header File
   56 | main.cc              | 43   | More simplicity
@@ -93,3 +93,4 @@ ieieieieieieie2
   89 | main.cc              | 205  | sneaky #define LOG
   90 | main.cc              | 426  | t=%td %ti %tu %to %tx %tx
   91 | main.cc              | 417  | z=%zd %zi %zu %zo %zx %zx
+  92 | main.cc              | 451  | This value %d won't be printed.

@@ -444,6 +444,13 @@ void testAllTheTypes() {
         (long double)14.0);
 }
 
+// Expression should be evaluated when severity is lower than NanoLog's.
+void expressionShouldBeEvaluated(){
+    NanoLog::setLogLevel(NOTICE);
+    int val = 0;
+    NANO_LOG(DEBUG, "This value %d won't be printed.", val++);
+    assert(val == 1);
+}
 
 int main()
 {
@@ -472,6 +479,8 @@ int main()
     st.logSomething();
 
     logLevelTest();
+
+    expressionShouldBeEvaluated();
 
     NanoLog::sync();
 
